@@ -18,7 +18,7 @@
             { "$ref": "#/$defs/insight" },
             { "$ref": "#/$defs/incident" },
             { "$ref": "#/$defs/pattern" },
-            { "$ref": "#/$defs/review" }
+            { "$ref": "#/$defs/reviewLearning" }
           ]
         }
       ],
@@ -224,7 +224,7 @@
             "insight",
             "incident",
             "pattern",
-            "review"
+            "review_learning"
           ]
         },
         "title": {
@@ -437,13 +437,13 @@
         }
       }
     },
-    "review": {
+    "reviewLearning": {
       "type": "object",
-      "required": ["review"],
+      "required": ["review_learning"],
       "properties": {
         "id": { "type": "string", "pattern": "^rev_[0-9A-HJKMNP-TV-Z]{26}$" },
-        "type": { "const": "review" },
-        "review": {
+        "type": { "const": "review_learning" },
+        "review_learning": {
           "type": "object",
           "required": ["category"],
           "properties": {

@@ -54,3 +54,7 @@ The final bundle check must keep these conditions true:
 - all machine files parse;
 - root handoff instructions reference every implementation contract;
 - archive contains no temporary DB, credential, API key, or absolute local path.
+
+## Post-handoff amendments
+
+This report reflects the schema state at handoff. `schemas/canonical-v1.schema.json` was amended during WP-01 (see `implementation/decision-log.md` ID-020): Review Learning's frontmatter `type` changed from `review` to `review_learning` to resolve an inconsistency with `checkpoint-v1.schema.json`, `migrations/001_initial.sql`, and `mcp-contract.md`. The "All 8 canonical document type positive fixtures" row above was re-verified against the amended schema with `jsonschema` 4.25.1 (Draft 2020-12); the other rows in this report were not re-run and still describe the original handoff bundle.
