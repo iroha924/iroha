@@ -60,6 +60,15 @@ describe("redactUrlLikeCredentials", () => {
   it("leaves a Windows drive-letter local path unchanged", () => {
     expect(redactUrlLikeCredentials("C:\\Users\\dev\\repo.git")).toBe("C:\\Users\\dev\\repo.git");
   });
+
+  it("does not let an '@' inside the query string be mistaken for a userinfo boundary", () => {
+    // No path segment before "?", so a userinfo match that doesn't stop at
+    // "?" can cross it and backtrack onto the query value's own "@" —
+    // mis-parsing part of the query as userinfo and the rest as the host.
+    expect(redactUrlLikeCredentials("https://example.com?access_token=a@b")).toBe(
+      "https://example.com",
+    );
+  });
 });
 
 describe("redactUrlLikeCredentialsInText", () => {
@@ -95,6 +104,24 @@ describe("redactUrlLikeCredentialsInText", () => {
 
     expect(redactUrlLikeCredentialsInText(text)).toBe(
       "https://safe.example/x,https://evil.example/y",
+    );
+  });
+
+  it("redacts a credentialed URL whose password itself contains a comma", () => {
+    // A comma/semicolon is a legal unencoded userinfo character (RFC 3986
+    // sub-delims). Treating it as a hard text-delimiter (as an earlier
+    // version of this module did) truncates the match before its "@" is
+    // ever seen, so the credential is never recognized as one at all.
+    const text = "https://user:p,ss@example.invalid/repo.git";
+
+    expect(redactUrlLikeCredentialsInText(text)).toBe("https://example.invalid/repo.git");
+  });
+
+  it("still separates a comma-joined pair when the first URL's password has a comma", () => {
+    const text = "https://user:p,ss@one.example/x,https://tok@two.example/y";
+
+    expect(redactUrlLikeCredentialsInText(text)).toBe(
+      "https://one.example/x,https://two.example/y",
     );
   });
 });

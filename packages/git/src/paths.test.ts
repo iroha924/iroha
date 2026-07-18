@@ -171,6 +171,22 @@ describe("toRepoRelativePath", () => {
     }
   });
 
+  it.skipIf(process.platform === "win32")(
+    "treats a literal backslash as an ordinary filename character, not a separator",
+    async () => {
+      // POSIX allows `\` in a filename (Git can track a file literally named
+      // "a\b.txt"); node:path's POSIX behavior (dirname/basename/sep, used
+      // throughout this module) already never treats `\` as a separator, so
+      // this only needs to lock that in, not implement anything new.
+      const weirdName = "a\\b.txt";
+      await writeFile(join(root, weirdName), "hi", "utf8");
+
+      const result = await toRepoRelativePath(root, join(root, weirdName));
+
+      expect(result).toEqual({ ok: true, value: weirdName });
+    },
+  );
+
   it("accepts a symlink inside the root that stays inside it", async () => {
     const realDir = join(root, "real-target");
     await mkdir(realDir);

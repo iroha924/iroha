@@ -88,6 +88,22 @@ describe("ensureRepositorySalt", () => {
     expect(await readFile(configPath, "utf8")).toBe("{ not valid json");
   });
 
+  it("fails instead of silently rotating the salt when repositorySalt is present but undecodable", async () => {
+    await mkdir(irohaDir, { recursive: true });
+    const configPath = join(irohaDir, "local-config.json");
+    // Wrong length after base64url decode (not the required 32 bytes) —
+    // syntactically valid JSON, but semantically corrupt.
+    await writeFile(configPath, JSON.stringify({ repositorySalt: "not-a-valid-salt" }), "utf8");
+
+    const result = await ensureRepositorySalt(irohaDir, new CryptoRandomSource());
+
+    expect(result.ok).toBe(false);
+    // A silently minted replacement salt would fork future digests from
+    // rows already hashed with the old (now-lost) key with no error raised.
+    const written = JSON.parse(await readFile(configPath, "utf8"));
+    expect(written.repositorySalt).toBe("not-a-valid-salt");
+  });
+
   it("does not embed the absolute irohaDir path in the error", async () => {
     await mkdir(irohaDir, { recursive: true });
     await writeFile(join(irohaDir, "local-config.json"), "{ not valid json", "utf8");

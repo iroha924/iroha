@@ -67,12 +67,22 @@ export async function ensureRepositorySalt(
   const configPath = join(irohaDir, LOCAL_CONFIG_FILE);
   try {
     const existing = await readLocalConfig(configPath);
-    const existingSalt =
-      typeof existing.repositorySalt === "string"
-        ? decodeBase64Url(existing.repositorySalt)
-        : undefined;
-    if (existingSalt) {
-      return ok(existingSalt);
+    if (Object.hasOwn(existing, "repositorySalt")) {
+      const existingSalt =
+        typeof existing.repositorySalt === "string"
+          ? decodeBase64Url(existing.repositorySalt)
+          : undefined;
+      if (existingSalt) {
+        return ok(existingSalt);
+      }
+      // A present-but-undecodable salt (wrong length, malformed base64url,
+      // wrong type, ...) must not be silently replaced: minting a new one
+      // here would fork future prompt/tool digests from rows already
+      // written with the old key, with no error to signal that the local
+      // HMAC keyspace just changed underneath already-persisted data.
+      return err(
+        new IrohaError("INTERNAL_ERROR", `Invalid repositorySalt in ${LOCAL_CONFIG_FILE}`),
+      );
     }
 
     const salt = random.bytes(SALT_BYTES);

@@ -2,48 +2,88 @@ import { err, type IrohaError, ok, type Result } from "@iroha/domain";
 import { redactUrlLikeCredentialsInText } from "./credential-redaction.js";
 import { runGit } from "./run-git.js";
 
-// `git remote get-url <missing>` fails with exit code 2 and exactly this
-// stderr line (confirmed by manual reproduction) — distinct from "not a git
-// repository" (exit 128) or any other failure, which must not be collapsed
-// into the same "no remote configured" result.
-const NO_SUCH_REMOTE = /^error: No such remote '/;
+// A `file://` URL's "path" component is itself a filesystem path, and a
+// bare/POSIX/UNC/Windows-drive-letter path has no scheme at all — none of
+// these can be redacted down to something safe the way a credential-bearing
+// `scheme://` URL can, since the ENTIRE value is the sensitive part (an
+// absolute local filesystem path), not just a userinfo/query slot within it.
+// mcp-contract.md §8 forbids returning filesystem absolute paths in any
+// DB/API/MCP-reachable text, and `repositories.remote_url_normalized`
+// (database-schema.md) is nullable, so suppressing it entirely for a
+// local-path remote applies that existing invariant rather than adding a
+// new one.
+const WINDOWS_DRIVE_PATH = /^[a-zA-Z]:[\\/]/;
+const UNC_PATH = /^\\\\/;
+const FILE_SCHEME = /^file:\/\//i;
+
+function isLocalAbsolutePath(value: string): boolean {
+  return (
+    FILE_SCHEME.test(value) ||
+    value.startsWith("/") ||
+    WINDOWS_DRIVE_PATH.test(value) ||
+    UNC_PATH.test(value)
+  );
+}
 
 /**
- * Strips embedded credentials from a Git remote URL so it is safe to store.
+ * Strips embedded credentials from a Git remote URL so it is safe to store,
+ * and returns `null` in place of a local absolute path (see
+ * `isLocalAbsolutePath`) since no partial redaction can make one safe.
+ *
  * Only `scheme://[user[:token]@]host/...` URLs carry a slot that can hold a
  * secret — the userinfo (e.g. a GitHub PAT as the "username") and, less
  * conventionally, the query string or fragment (e.g. a presigned URL's
  * `?access_token=...`) — so only that form is rewritten, dropping both.
- * SCP-like remotes (`git@host:path`) and bare local paths (including
- * Windows drive letters, which would otherwise look like an SCP `host:path`
- * pair) are returned unchanged — SCP syntax has no field for a password, and
- * the leading `user@` there is a fixed transport user, not a secret.
+ * SCP-like remotes (`git@host:path`) are returned unchanged — SCP syntax has
+ * no field for a password, the leading `user@` there is a fixed transport
+ * user rather than a secret, and (unlike a local path) the value doesn't
+ * reveal anything about the local filesystem.
  *
  * Uses the text-scanning redactor, not the single-URL one: Git accepts (and
  * `remote get-url` prints back) a value containing an embedded newline, and
  * a single-URL-shaped match would only strip the first of two such URLs,
  * leaving a second one's credentials untouched.
  */
-export function sanitizeRemoteUrl(rawUrl: string): string {
-  return redactUrlLikeCredentialsInText(rawUrl.trim());
+export function sanitizeRemoteUrl(rawUrl: string): string | null {
+  const trimmed = rawUrl.trim();
+  if (isLocalAbsolutePath(trimmed)) {
+    return null;
+  }
+  return redactUrlLikeCredentialsInText(trimmed);
 }
 
 /**
  * Reads the given remote's URL and returns it with credentials stripped.
- * Returns `null` (not an error) only when Git reports the specific "no such
- * remote" condition, since a fresh or local-only repository legitimately has
- * none. Any other failure (not a repository, timeout, missing Git binary,
- * ...) propagates as an error instead of being silently reinterpreted as
- * "no remote configured".
+ * Returns `null` (not an error) both when no such remote is configured (a
+ * fresh or local-only repository legitimately has none) and when the
+ * configured remote is a local absolute path (see `sanitizeRemoteUrl`). Any
+ * other failure (not a repository, timeout, missing Git binary, ...)
+ * propagates as an error instead of being silently reinterpreted as "no
+ * remote configured".
+ *
+ * Reads `remote.<name>.url` directly via `git config --local --get` rather
+ * than `git remote get-url`: per Git's own docs, `remote get-url` expands
+ * any local `url.<base>.insteadOf` rewrite the current machine has
+ * configured, so two teammates with different rewrite config would compute
+ * a different `remote_url_normalized` for the identical repository. `--get`
+ * on a missing key exits with status 1 and no stderr (git-config(1)); that
+ * exit code alone (not stderr text, unlike Git's other subcommands) is what
+ * distinguishes "no such remote" from other failures here. `--local` makes
+ * "not inside a repository" its own distinguishable failure (exit 128,
+ * `fatal: --local can only be used inside a git repository`) instead of
+ * being silently indistinguishable from "no such remote" (both would
+ * otherwise be exit 1 with empty stderr) — confirmed by manual reproduction.
  */
 export async function getSanitizedRemoteUrl(
   cwd: string,
   remoteName = "origin",
 ): Promise<Result<string | null, IrohaError>> {
-  const result = await runGit(["remote", "get-url", remoteName], { cwd });
+  const result = await runGit(["config", "--local", "--get", `remote.${remoteName}.url`], {
+    cwd,
+  });
   if (!result.ok) {
-    const stderr = (result.error.details as { stderr?: string } | undefined)?.stderr;
-    if (stderr !== undefined && NO_SUCH_REMOTE.test(stderr)) {
+    const exitCode = (result.error.details as { exitCode?: number | null } | undefined)?.exitCode;
+    if (exitCode === 1) {
       return ok(null);
     }
     return err(result.error);

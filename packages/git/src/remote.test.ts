@@ -35,16 +35,27 @@ describe("sanitizeRemoteUrl", () => {
     );
   });
 
-  it("leaves a Windows drive-letter local path unchanged (backslash form)", () => {
-    expect(sanitizeRemoteUrl("C:\\Users\\dev\\repo.git")).toBe("C:\\Users\\dev\\repo.git");
+  it("suppresses a Windows drive-letter local path instead of exposing it (backslash form)", () => {
+    // mcp-contract.md §8: absolute filesystem paths never reach the model
+    // or persistence; unlike a credential-bearing scheme:// URL, there is
+    // no sub-slot to redact here — the whole value is the sensitive part.
+    expect(sanitizeRemoteUrl("C:\\Users\\dev\\repo.git")).toBe(null);
   });
 
-  it("leaves a Windows drive-letter local path unchanged (forward-slash form)", () => {
-    expect(sanitizeRemoteUrl("C:/Users/dev/repo.git")).toBe("C:/Users/dev/repo.git");
+  it("suppresses a Windows drive-letter local path instead of exposing it (forward-slash form)", () => {
+    expect(sanitizeRemoteUrl("C:/Users/dev/repo.git")).toBe(null);
   });
 
-  it("leaves a bare Unix local path unchanged", () => {
-    expect(sanitizeRemoteUrl("/srv/git/repo.git")).toBe("/srv/git/repo.git");
+  it("suppresses a bare Unix absolute local path instead of exposing it", () => {
+    expect(sanitizeRemoteUrl("/srv/git/repo.git")).toBe(null);
+  });
+
+  it("suppresses a file:// remote instead of exposing its filesystem path", () => {
+    expect(sanitizeRemoteUrl("file:///srv/git/repo.git")).toBe(null);
+  });
+
+  it("suppresses a UNC path instead of exposing it", () => {
+    expect(sanitizeRemoteUrl("\\\\fileserver\\share\\repo.git")).toBe(null);
   });
 
   it("strips a credential-bearing query string", () => {
@@ -111,5 +122,38 @@ describe("getSanitizedRemoteUrl", () => {
     } finally {
       await removeTempDir(outsideDir);
     }
+  });
+
+  it("returns null for a configured local absolute path remote instead of exposing it", async () => {
+    const otherRepoDir = await createTempGitRepo();
+    try {
+      await runGit(["remote", "add", "origin", otherRepoDir], { cwd: repoDir });
+
+      const result = await getSanitizedRemoteUrl(repoDir, "origin");
+
+      expect(result).toEqual({ ok: true, value: null });
+    } finally {
+      await removeTempDir(otherRepoDir);
+    }
+  });
+
+  it("reads the configured remote URL, not a locally rewritten insteadOf mirror", async () => {
+    await runGit(["remote", "add", "origin", "https://github.com/org/repo.git"], {
+      cwd: repoDir,
+    });
+    // A per-machine rewrite (e.g. a corporate mirror or SSH-over-HTTPS
+    // preference) must not leak into `remote_url_normalized`: two teammates
+    // with different local rewrites would otherwise compute a different
+    // value for the identical repository. `git remote get-url` applies this
+    // rewrite; `git config --get remote.<name>.url` (what this package uses)
+    // must not.
+    await runGit(
+      ["config", "--local", "url.https://mirror.internal/.insteadOf", "https://github.com/"],
+      { cwd: repoDir },
+    );
+
+    const result = await getSanitizedRemoteUrl(repoDir, "origin");
+
+    expect(result).toEqual({ ok: true, value: "https://github.com/org/repo.git" });
   });
 });
