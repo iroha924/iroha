@@ -92,6 +92,20 @@ describe("resolveGitLocation", () => {
       expect(result.error.code).toBe("REPOSITORY_NOT_FOUND");
     }
   });
+
+  it("does not embed the absolute cwd in the error message or details", async () => {
+    const outside = await realpath(tmpdir());
+
+    const result = await resolveGitLocation(outside);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      // mcp-contract.md §8: filesystem absolute paths are never returned to
+      // the model, and IrohaError.message/details can reach MCP responses.
+      expect(result.error.message.includes(outside)).toBe(false);
+      expect(JSON.stringify(result.error.details ?? {}).includes(outside)).toBe(false);
+    }
+  });
 });
 
 describe("resolveGitPath", () => {

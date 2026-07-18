@@ -73,4 +73,18 @@ describe("ensureRepositorySalt", () => {
     expect(written.someOtherField).toBe("keep-me");
     expect(typeof written.repositorySalt).toBe("string");
   });
+
+  it("fails instead of silently rotating the salt when local-config.json is malformed", async () => {
+    await mkdir(irohaDir, { recursive: true });
+    const configPath = join(irohaDir, "local-config.json");
+    await writeFile(configPath, "{ not valid json", "utf8");
+
+    const result = await ensureRepositorySalt(irohaDir, new CryptoRandomSource());
+
+    expect(result.ok).toBe(false);
+    // The malformed file must be left untouched, not overwritten with a
+    // freshly rotated salt that would break digest comparability with any
+    // prior session that already used the original (unreadable) salt.
+    expect(await readFile(configPath, "utf8")).toBe("{ not valid json");
+  });
 });

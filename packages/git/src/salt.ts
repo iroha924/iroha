@@ -14,14 +14,25 @@ function decodeBase64Url(value: string): Uint8Array | undefined {
   return decoded.length === SALT_BYTES ? new Uint8Array(decoded) : undefined;
 }
 
+/**
+ * A missing file is the only condition treated as an empty config — any
+ * other read failure (malformed JSON, permission denied, ...) propagates,
+ * so `ensureRepositorySalt` reports an error instead of silently minting a
+ * new salt (and discarding whatever else was in the file) on top of state
+ * it could not actually verify was absent.
+ */
 async function readLocalConfig(configPath: string): Promise<Record<string, unknown>> {
+  let raw: string;
   try {
-    const raw = await readFile(configPath, "utf8");
-    const parsed: unknown = JSON.parse(raw);
-    return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : {};
-  } catch {
-    return {};
+    raw = await readFile(configPath, "utf8");
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code === "ENOENT") {
+      return {};
+    }
+    throw cause;
   }
+  const parsed: unknown = JSON.parse(raw);
+  return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : {};
 }
 
 async function writeLocalConfig(

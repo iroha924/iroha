@@ -34,14 +34,59 @@ const LOCAL_GIT_ENV_VARS = [
   "GIT_PREFIX",
   "GIT_SHALLOW_FILE",
   "GIT_COMMON_DIR",
+  // Not part of `--local-env-vars`, but has the same cwd-discovery-breaking
+  // effect: confirmed by manual reproduction that an inherited
+  // `GIT_CEILING_DIRECTORIES` naming the repo root makes `git rev-parse
+  // --show-toplevel` fail with "not a git repository" when run from a
+  // subdirectory, breaking the WP-02 subdirectory-launch acceptance path.
+  // https://git-scm.com/docs/git#Documentation/git.txt-codeGITCEILINGDIRECTORIEScode
+  "GIT_CEILING_DIRECTORIES",
+];
+
+// Confirmed by manual reproduction: `GIT_TRACE=/path git ...` appends the
+// raw, unredacted command line (including any credentialed argument) to
+// that file — entirely bypassing the redaction this module applies to
+// stdout/stderr/args/cause. These must be cleared too, or an ambient trace
+// variable in the parent environment silently defeats every other
+// protection in this file.
+const GIT_TRACE_ENV_VARS = [
+  "GIT_TRACE",
+  "GIT_TRACE_PACK_ACCESS",
+  "GIT_TRACE_PACKET",
+  "GIT_TRACE_PACKFILE",
+  "GIT_TRACE_PERFORMANCE",
+  "GIT_TRACE_REFS",
+  "GIT_TRACE_SETUP",
+  "GIT_TRACE_SHALLOW",
+  "GIT_TRACE_CURL",
+  "GIT_TRACE_CURL_NO_DATA",
+  "GIT_TRACE_FSMONITOR",
+  "GIT_TRACE2",
+  "GIT_TRACE2_EVENT",
+  "GIT_TRACE2_PERF",
+  "GIT_TRACE2_CONFIG_PARAMS",
 ];
 
 function buildCleanEnv(): NodeJS.ProcessEnv {
   const env = { ...process.env };
-  for (const key of LOCAL_GIT_ENV_VARS) {
+  for (const key of [...LOCAL_GIT_ENV_VARS, ...GIT_TRACE_ENV_VARS]) {
     delete env[key];
   }
   return env;
+}
+
+/**
+ * `execFile`'s error carries the raw, unredacted command line in both
+ * `.message` and `.cmd` (confirmed by manual reproduction) — attaching it
+ * as `cause` would leak credentials through any caller that logs or
+ * serializes the error's cause chain, even though `message`/`details` on
+ * the `IrohaError` itself are redacted. A synthetic `Error` with only a
+ * redacted message preserves the general failure shape without the leak.
+ */
+function sanitizeExecError(error: Error): Error {
+  const sanitized = new Error(redactUrlLikeCredentialsInText(error.message));
+  sanitized.name = error.name;
+  return sanitized;
 }
 
 /**
@@ -76,7 +121,7 @@ export function runGit(
           resolve(
             err(
               new IrohaError("INTERNAL_ERROR", `git ${redactedArgs.join(" ")} failed`, {
-                cause: error,
+                cause: sanitizeExecError(error),
                 details: {
                   args: redactedArgs,
                   stderr: redactUrlLikeCredentialsInText(stderr.trim()),

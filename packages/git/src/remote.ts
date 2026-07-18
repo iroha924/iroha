@@ -1,7 +1,12 @@
-import type { IrohaError } from "@iroha/domain";
-import { ok, type Result } from "@iroha/domain";
+import { err, type IrohaError, ok, type Result } from "@iroha/domain";
 import { redactUrlLikeCredentials } from "./credential-redaction.js";
 import { runGit } from "./run-git.js";
+
+// `git remote get-url <missing>` fails with exit code 2 and exactly this
+// stderr line (confirmed by manual reproduction) — distinct from "not a git
+// repository" (exit 128) or any other failure, which must not be collapsed
+// into the same "no remote configured" result.
+const NO_SUCH_REMOTE = /^error: No such remote '/;
 
 /**
  * Strips embedded credentials from a Git remote URL so it is safe to store.
@@ -20,8 +25,11 @@ export function sanitizeRemoteUrl(rawUrl: string): string {
 
 /**
  * Reads the given remote's URL and returns it with credentials stripped.
- * Returns `null` (not an error) when the remote is not configured, since a
- * fresh or local-only repository legitimately has none.
+ * Returns `null` (not an error) only when Git reports the specific "no such
+ * remote" condition, since a fresh or local-only repository legitimately has
+ * none. Any other failure (not a repository, timeout, missing Git binary,
+ * ...) propagates as an error instead of being silently reinterpreted as
+ * "no remote configured".
  */
 export async function getSanitizedRemoteUrl(
   cwd: string,
@@ -29,7 +37,11 @@ export async function getSanitizedRemoteUrl(
 ): Promise<Result<string | null, IrohaError>> {
   const result = await runGit(["remote", "get-url", remoteName], { cwd });
   if (!result.ok) {
-    return ok(null);
+    const stderr = (result.error.details as { stderr?: string } | undefined)?.stderr;
+    if (stderr !== undefined && NO_SUCH_REMOTE.test(stderr)) {
+      return ok(null);
+    }
+    return err(result.error);
   }
   return ok(sanitizeRemoteUrl(result.value));
 }

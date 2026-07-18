@@ -57,6 +57,20 @@ describe("toRepoRelativePath", () => {
     }
   });
 
+  it("does not embed absolute paths in the traversal-rejection error", async () => {
+    const target = join(root, "..", "etc", "passwd");
+
+    const result = await toRepoRelativePath(root, target);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      // mcp-contract.md §8: filesystem absolute paths are never returned to
+      // the model, and this error can reach an MCP response as-is.
+      expect(result.error.message.includes(root)).toBe(false);
+      expect(JSON.stringify(result.error.details ?? {}).includes(root)).toBe(false);
+    }
+  });
+
   it("accepts a legitimate filename that merely starts with two dots", async () => {
     await writeFile(join(root, "..config"), "not traversal", "utf8");
 

@@ -1,3 +1,6 @@
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getSanitizedRemoteUrl, sanitizeRemoteUrl } from "./remote.js";
 import { runGit } from "./run-git.js";
@@ -86,5 +89,16 @@ describe("getSanitizedRemoteUrl", () => {
     const result = await getSanitizedRemoteUrl(repoDir, "origin");
 
     expect(result).toEqual({ ok: true, value: "https://github.com/org/repo.git" });
+  });
+
+  it("propagates a REPOSITORY_NOT_FOUND-style error instead of returning null when cwd is not a repository", async () => {
+    const outsideDir = await mkdtemp(join(tmpdir(), "iroha-remote-outside-test-"));
+    try {
+      const result = await getSanitizedRemoteUrl(outsideDir, "origin");
+
+      expect(result.ok).toBe(false);
+    } finally {
+      await removeTempDir(outsideDir);
+    }
   });
 });

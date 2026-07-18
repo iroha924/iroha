@@ -25,10 +25,12 @@ async function resolveGitRevParsePath(
 ): Promise<Result<string, IrohaError>> {
   const result = await runGit(args, { cwd });
   if (!result.ok) {
+    // No `cwd`/resolved-path values in message or details: mcp-contract.md
+    // §8 forbids returning filesystem absolute paths to the model, and this
+    // error can reach an MCP response as-is.
     return err(
-      new IrohaError("REPOSITORY_NOT_FOUND", `Not a Git repository (or any parent): ${cwd}`, {
+      new IrohaError("REPOSITORY_NOT_FOUND", "Not a Git repository (or any parent)", {
         cause: result.error,
-        details: { cwd },
       }),
     );
   }
@@ -36,12 +38,7 @@ async function resolveGitRevParsePath(
   try {
     return ok(await safeRealpath(absolute));
   } catch (cause) {
-    return err(
-      new IrohaError("INTERNAL_ERROR", `Failed to resolve path: ${absolute}`, {
-        cause,
-        details: { cwd },
-      }),
-    );
+    return err(new IrohaError("INTERNAL_ERROR", "Failed to resolve Git path", { cause }));
   }
 }
 

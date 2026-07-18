@@ -1,3 +1,5 @@
+import { mkdir, mkdtemp, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runGit } from "./run-git.js";
@@ -58,6 +60,18 @@ describe("runGit", () => {
     }
   });
 
+  it("does not leak a credentialed argument through error.cause", async () => {
+    const credentialedUrl = "https://ghp_secrettoken@example.invalid/org/repo.git";
+    const result = await runGit(["not-a-real-subcommand", credentialedUrl], { cwd: repoDir });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      const cause = result.error.cause;
+      const causeText = cause instanceof Error ? `${cause.message} ${JSON.stringify(cause)}` : "";
+      expect(causeText.includes("ghp_secrettoken")).toBe(false);
+    }
+  });
+
   it("redacts a credentialed URL Git echoes back verbatim in stderr", async () => {
     const credentialedUrl = "https://ghp_secrettoken@example.invalid/org/repo.git";
     // Git treats an unmatched pathspec-looking argument to `checkout` as a
@@ -96,6 +110,53 @@ describe("runGit", () => {
         process.env.GIT_DIR = previousGitDir;
       }
       await removeTempDir(otherRepoDir);
+    }
+  });
+
+  it("does not leak a credentialed argument via an inherited GIT_TRACE", async () => {
+    const traceDir = await mkdtemp(join(tmpdir(), "iroha-git-trace-test-"));
+    const traceFile = join(traceDir, "trace.log");
+    const previousTrace = process.env.GIT_TRACE;
+    try {
+      // Confirmed by manual reproduction: GIT_TRACE=<file> makes Git append
+      // the raw command line, credentials included, to that file — entirely
+      // outside our own stdout/stderr/args/cause redaction.
+      process.env.GIT_TRACE = traceFile;
+      const credentialedUrl = "https://ghp_secrettoken@example.invalid/org/repo.git";
+
+      await runGit(["not-a-real-subcommand", credentialedUrl], { cwd: repoDir });
+
+      const traceContent = await readFile(traceFile, "utf8").catch(() => "");
+      expect(traceContent.includes("ghp_secrettoken")).toBe(false);
+    } finally {
+      if (previousTrace === undefined) {
+        delete process.env.GIT_TRACE;
+      } else {
+        process.env.GIT_TRACE = previousTrace;
+      }
+      await removeTempDir(traceDir);
+    }
+  });
+
+  it("ignores an inherited GIT_CEILING_DIRECTORIES that would block subdirectory discovery", async () => {
+    const subdir = join(repoDir, "nested");
+    await mkdir(subdir);
+    const previousCeiling = process.env.GIT_CEILING_DIRECTORIES;
+    try {
+      // Confirmed by manual reproduction: GIT_CEILING_DIRECTORIES naming the
+      // repo root makes `git rev-parse --show-toplevel` fail with "not a
+      // git repository" when run from a subdirectory of that same repo.
+      process.env.GIT_CEILING_DIRECTORIES = repoDir;
+
+      const result = await runGit(["rev-parse", "--show-toplevel"], { cwd: subdir });
+
+      expect(result.ok).toBe(true);
+    } finally {
+      if (previousCeiling === undefined) {
+        delete process.env.GIT_CEILING_DIRECTORIES;
+      } else {
+        process.env.GIT_CEILING_DIRECTORIES = previousCeiling;
+      }
     }
   });
 });

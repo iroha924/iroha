@@ -62,12 +62,10 @@ export async function toRepoRelativePath(
     realRoot = await safeRealpath(root);
     realTarget = await safeRealpath(absoluteTarget);
   } catch (cause) {
-    return err(
-      new IrohaError("INVALID_INPUT", `Failed to resolve path: ${targetPath}`, {
-        cause,
-        details: { root, targetPath },
-      }),
-    );
+    // No `root`/`targetPath` in message or details: mcp-contract.md §8
+    // forbids returning filesystem absolute paths to the model, and this
+    // error can reach an MCP response as-is.
+    return err(new IrohaError("INVALID_INPUT", "Failed to resolve path", { cause }));
   }
 
   const rel = relative(realRoot, realTarget);
@@ -75,11 +73,7 @@ export async function toRepoRelativePath(
     return ok("");
   }
   if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
-    return err(
-      new IrohaError("INVALID_INPUT", `Path escapes repository root: ${targetPath}`, {
-        details: { root, targetPath },
-      }),
-    );
+    return err(new IrohaError("INVALID_INPUT", "Path escapes repository root"));
   }
   return ok(rel.split(sep).join("/"));
 }
