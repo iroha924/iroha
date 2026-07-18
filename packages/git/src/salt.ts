@@ -9,9 +9,22 @@ function encodeBase64Url(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString("base64url");
 }
 
+/**
+ * `Buffer.from(value, "base64url")` is lenient — confirmed by reproduction
+ * that it accepts regular base64 `+`/`/` characters and other input
+ * `encodeBase64Url` would never produce, and can still return exactly
+ * `SALT_BYTES` bytes from such a string. A length check alone would accept
+ * that as a valid stored salt. Round-tripping (re-encode the decoded bytes
+ * and compare to the original string) catches any such deviation without
+ * having to hand-maintain the exact base64url grammar ourselves.
+ */
 function decodeBase64Url(value: string): Uint8Array | undefined {
   const decoded = Buffer.from(value, "base64url");
-  return decoded.length === SALT_BYTES ? new Uint8Array(decoded) : undefined;
+  if (decoded.length !== SALT_BYTES) {
+    return undefined;
+  }
+  const bytes = new Uint8Array(decoded);
+  return encodeBase64Url(bytes) === value ? bytes : undefined;
 }
 
 /**

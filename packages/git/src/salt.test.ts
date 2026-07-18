@@ -104,6 +104,23 @@ describe("ensureRepositorySalt", () => {
     expect(written.repositorySalt).toBe("not-a-valid-salt");
   });
 
+  it("fails instead of silently accepting a salt encoded outside the base64url alphabet", async () => {
+    await mkdir(irohaDir, { recursive: true });
+    const configPath = join(irohaDir, "local-config.json");
+    // Confirmed by reproduction: Buffer.from(value, "base64url") is lenient
+    // — this decodes to exactly 32 bytes despite "+" never appearing in
+    // encodeBase64Url's own output (which uses "-"/"_", not "+"/"/"). A
+    // length-only check would accept it as a valid stored salt.
+    const junk = "+".repeat(43);
+    await writeFile(configPath, JSON.stringify({ repositorySalt: junk }), "utf8");
+
+    const result = await ensureRepositorySalt(irohaDir, new CryptoRandomSource());
+
+    expect(result.ok).toBe(false);
+    const written = JSON.parse(await readFile(configPath, "utf8"));
+    expect(written.repositorySalt).toBe(junk);
+  });
+
   it.each([
     ["null", "null"],
     ["a bare string", '"just a string"'],

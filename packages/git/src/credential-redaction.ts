@@ -30,15 +30,16 @@ export function redactUrlLikeCredentials(value: string): string {
   return `${scheme}://${rest}`;
 }
 
-// Only true hard boundaries a URL can never legitimately contain: whitespace
-// and enclosing/quoting punctuation. `,` and `;` are deliberately NOT
-// included — both are valid unencoded userinfo/query characters per RFC 3986
-// sub-delims, and a password containing one (e.g. "p,ss") must not truncate
-// the match before its "@" is seen. Confirmed by reproduction: an earlier
-// version of this regex also excluded `,`/`;`, which cut
-// "https://user:p,ss@host/path" down to "https://user:p" — a substring with
-// no "@" left in it at all, so `redactUrlLikeCredentials` found no userinfo
-// boundary to strip and the whole credential passed through unredacted.
+// Enclosing/quoting punctuation Git's own diagnostic text commonly wraps a
+// URL in (e.g. the single quotes around an unmatched pathspec), plus
+// whitespace. `,` and `;` are deliberately NOT included — both are valid
+// unencoded userinfo/query characters per RFC 3986 sub-delims, and a
+// password containing one (e.g. "p,ss") must not truncate the match before
+// its "@" is seen. `'`, `(`, `)` ARE sub-delims too, so they have the same
+// problem in principle — handled not by excluding them here (that would
+// also stop Git's own quoted-pathspec text from being trimmed correctly)
+// but by never applying this delimiter search until *after* the userinfo
+// has already been consumed — see `redactUrlLikeCredentialsInText`.
 const HARD_DELIMITER = /[\s'"<>()[\]{}]/;
 
 // Marks where each candidate URL starts. Boundaries between adjacent
@@ -48,6 +49,18 @@ const HARD_DELIMITER = /[\s'"<>()[\]{}]/;
 // boundary at the second `https://`, even though `,` is no longer a hard
 // delimiter.
 const SCHEME_START = /[a-zA-Z][a-zA-Z0-9+.-]*:\/\//g;
+
+// Matches only "scheme://[userinfo@]" — the same backtracking userinfo
+// logic as SCHEME_URL, but stops right after the userinfo instead of also
+// consuming host+path. Used to find where HARD_DELIMITER search is safe to
+// start: applying it any earlier (an earlier version of this function did)
+// lets a delimiter character that's actually part of the password — `)` or
+// `'`, both valid unencoded RFC 3986 userinfo characters, same as `,`/`;`
+// before them — truncate the match before the real host "@" is ever
+// reached. Confirmed by reproduction: "https://user:p)ss@host/path" cut down
+// to "https://user:p" (no "@" left in it), passing the whole credential
+// through unredacted, the same failure shape as the earlier `,` bug.
+const SCHEME_AND_USERINFO = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\/(?:[^/?#]*@)?/;
 
 /**
  * Redacts every `scheme://`-shaped substring found anywhere inside free-form
@@ -68,8 +81,11 @@ export function redactUrlLikeCredentialsInText(text: string): string {
     result += text.slice(cursor, start);
 
     const nextStart = starts[i + 1] ?? text.length;
-    const delimiter = HARD_DELIMITER.exec(text.slice(start, nextStart));
-    const end = delimiter ? start + delimiter.index : nextStart;
+    const span = text.slice(start, nextStart);
+    const prefixMatch = SCHEME_AND_USERINFO.exec(span);
+    const prefixLength = prefixMatch ? prefixMatch[0].length : 0;
+    const delimiter = HARD_DELIMITER.exec(span.slice(prefixLength));
+    const end = start + (delimiter ? prefixLength + delimiter.index : span.length);
 
     result += redactUrlLikeCredentials(text.slice(start, end));
     cursor = end;

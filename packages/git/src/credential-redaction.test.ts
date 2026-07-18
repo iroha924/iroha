@@ -125,6 +125,34 @@ describe("redactUrlLikeCredentialsInText", () => {
       "https://one.example/x,https://two.example/y",
     );
   });
+
+  it("redacts a credentialed URL whose password contains a closing parenthesis", () => {
+    // ")" is a valid unencoded RFC 3986 userinfo character, same category
+    // as "," fixed above — HARD_DELIMITER still treats it as a boundary
+    // (needed to correctly trim Git's own quoted-pathspec text elsewhere),
+    // so this only works because the delimiter search now starts after the
+    // userinfo has already been consumed via SCHEME_AND_USERINFO.
+    const text = "https://user:p)ss@example.invalid/repo.git";
+
+    expect(redactUrlLikeCredentialsInText(text)).toBe("https://example.invalid/repo.git");
+  });
+
+  it("redacts a credentialed URL whose password contains a single quote", () => {
+    const text = "https://user:p'ss@example.invalid/repo.git";
+
+    expect(redactUrlLikeCredentialsInText(text)).toBe("https://example.invalid/repo.git");
+  });
+
+  it("still trims a trailing quote from Git's own quoted pathspec text", () => {
+    // Regression guard for the fix above: HARD_DELIMITER must still apply
+    // to the host+path portion, just not to the userinfo portion.
+    const text =
+      "error: pathspec 'https://ghp_secrettoken@example.invalid/org/repo.git' did not match";
+
+    expect(redactUrlLikeCredentialsInText(text)).toBe(
+      "error: pathspec 'https://example.invalid/org/repo.git' did not match",
+    );
+  });
 });
 
 describe("redactAbsolutePathsInText", () => {
