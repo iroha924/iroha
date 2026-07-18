@@ -119,6 +119,24 @@ describe("sanitizeRemoteUrl", () => {
     expect(sanitizeRemoteUrl(angleJoined)).toBe(null);
   });
 
+  it("suppresses a file: URL joined to other content by a pipe with no whitespace", () => {
+    // Confirmed by reproduction: Git stores this verbatim as one value.
+    // "|" is not in any punctuation allowlist tried so far (space, comma,
+    // semicolon, parens/brackets/quotes/angle-brackets) — the boundary
+    // check no longer enumerates specific punctuation at all, so this
+    // (and any future joiner character) is covered without needing its
+    // own dedicated fix.
+    const pipeJoined = "https://github.com/org/repo.git|file:///Users/alice/private.git";
+
+    expect(sanitizeRemoteUrl(pipeJoined)).toBe(null);
+  });
+
+  it("suppresses a file: URL joined to other content by an @ with no whitespace", () => {
+    const atJoined = "https://github.com/org/repo.git@file:///Users/alice/private.git";
+
+    expect(sanitizeRemoteUrl(atJoined)).toBe(null);
+  });
+
   it("strips a credential-bearing query string", () => {
     expect(sanitizeRemoteUrl("https://github.com/org/repo.git?access_token=SECRET")).toBe(
       "https://github.com/org/repo.git",

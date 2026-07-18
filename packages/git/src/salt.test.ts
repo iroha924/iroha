@@ -104,6 +104,26 @@ describe("ensureRepositorySalt", () => {
     expect(written.repositorySalt).toBe("not-a-valid-salt");
   });
 
+  it.each([
+    ["null", "null"],
+    ["a bare string", '"just a string"'],
+    ["an array", "[1, 2, 3]"],
+  ])(
+    "fails instead of silently rotating the salt when local-config.json is %s",
+    async (_label, jsonContent) => {
+      await mkdir(irohaDir, { recursive: true });
+      const configPath = join(irohaDir, "local-config.json");
+      await writeFile(configPath, jsonContent, "utf8");
+
+      const result = await ensureRepositorySalt(irohaDir, new CryptoRandomSource());
+
+      expect(result.ok).toBe(false);
+      // Silently treating this as "no config yet" would mint and persist a
+      // new salt over content that was never actually verified absent.
+      expect(await readFile(configPath, "utf8")).toBe(jsonContent);
+    },
+  );
+
   it("does not embed the absolute irohaDir path in the error", async () => {
     await mkdir(irohaDir, { recursive: true });
     await writeFile(join(irohaDir, "local-config.json"), "{ not valid json", "utf8");

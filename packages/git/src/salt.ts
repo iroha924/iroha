@@ -20,6 +20,13 @@ function decodeBase64Url(value: string): Uint8Array | undefined {
  * so `ensureRepositorySalt` reports an error instead of silently minting a
  * new salt (and discarding whatever else was in the file) on top of state
  * it could not actually verify was absent.
+ *
+ * `JSON.parse` succeeding is not enough: `null`, a string, a number, or an
+ * array are all syntactically valid JSON but not a config object, and
+ * `typeof x === "object"` alone is true for an array too. Treating any of
+ * these as "empty" would silently mint and persist a new salt over
+ * semantically corrupt (not merely absent) local state — the same class of
+ * bug as an undecodable `repositorySalt` value, just one level up.
  */
 async function readLocalConfig(configPath: string): Promise<Record<string, unknown>> {
   let raw: string;
@@ -32,7 +39,10 @@ async function readLocalConfig(configPath: string): Promise<Record<string, unkno
     throw cause;
   }
   const parsed: unknown = JSON.parse(raw);
-  return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : {};
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error(`${LOCAL_CONFIG_FILE} does not contain a JSON object`);
+  }
+  return parsed as Record<string, unknown>;
 }
 
 async function writeLocalConfig(

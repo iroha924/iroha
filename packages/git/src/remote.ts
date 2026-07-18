@@ -14,35 +14,27 @@ import { runGit } from "./run-git.js";
 // new one.
 // A local-path marker (`file:` scheme, bare POSIX absolute path, Windows
 // drive letter, or UNC path) found anywhere in the value, not just at the
-// very start. Confirmed by reproduction across several rounds that Git
-// stores two values joined with no helpful separator of their own —
-// newline, a literal space, a comma, a semicolon, a bare `(` — verbatim as
-// a single config value, so a token/line-start-only scan (or a boundary set
-// enumerated one reported joiner at a time) keeps finding a new joiner
-// character it doesn't yet handle. Scanning the whole, unsplit value for a
-// marker anywhere sidesteps needing to enumerate every joiner Git happens
-// to tolerate.
+// very start. Confirmed by reproduction across many rounds that Git stores
+// two values joined by no helpful separator of their own — newline, space,
+// comma, semicolon, `(`, `<`, `|`, and presumably others not yet tried —
+// verbatim as a single config value. An earlier version of this check
+// required the marker to be preceded by one of an *enumerated* set of
+// separator characters; every round found one more punctuation character
+// Git tolerates that the enumeration didn't yet cover, because "which
+// punctuation might join two values" has no finite, principled answer.
 //
-// The marker must still be preceded by the start of the value or one of
-// those separators — not truly "anywhere" — because without that a bare
-// `/` would false-positive on every ordinary URL's own path, and a lone
-// `[a-zA-Z]:` would false-positive on the "s:" that sits right before
-// "://" in every "https://"/"ssh://" (any scheme name ending just before
-// "://" reduces to exactly that two-character shape). The boundary is what
-// tells a marker starting a NEW segment apart from one that's merely part
-// of an already-safe URL's interior.
-//
-// The boundary set here is credential-redaction.ts's `HARD_DELIMITER`
-// (whitespace and enclosing/quoting punctuation) plus `,` and `;` — which
-// `HARD_DELIMITER` deliberately excludes, since those can be part of a
-// legitimate password there. That exclusion doesn't apply here: this
-// function's only failure mode from over-detecting is an overly cautious
-// `null` (safe), never a leak, so being more aggressive about what counts
-// as a boundary is fine. Kept as a separate literal rather than importing
-// `HARD_DELIMITER` (2 near-duplicate character classes doesn't meet this
-// project's 3-occurrence bar for extracting a shared constant) — if either
-// set changes, check whether the other should too.
-const LOCAL_PATH_MARKER = /(?:^|[\s'"<>()[\]{},;])(?:file:\/+|\/|[a-zA-Z]:[\\/]|\\\\)/i;
+// This version inverts the check: instead of an allowlist of what a
+// boundary IS, it excludes only what a boundary can NEVER be — the marker
+// must not be immediately preceded by a letter, digit, `:`, `/`, or `\`.
+// That's exactly (and only) what's needed to avoid the two concrete
+// false-positive shapes a marker-anywhere scan risks: a bare `/` matching
+// inside an ordinary URL's own path (always preceded by a letter/digit, or
+// by the `:`/`/` right after "scheme:"), and `[a-zA-Z]:` matching the "s:"
+// that sits right before "://" in "https://"/"ssh://" (always preceded by
+// another letter). Every other character — any punctuation, ASCII or not,
+// known today or not — is a valid boundary, so no future joiner character
+// can reopen this same gap.
+const LOCAL_PATH_MARKER = /(?<![a-zA-Z0-9:/\\])(?:file:\/+|\/|[a-zA-Z]:[\\/]|\\\\)/i;
 
 function isLocalAbsolutePath(value: string): boolean {
   return LOCAL_PATH_MARKER.test(value);
