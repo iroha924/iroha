@@ -46,11 +46,23 @@ function splitSegments(pathWithoutRoot: string): string[] {
  * time and applying `..` ourselves (rather than delegating a
  * multi-segment string to a single `fs.realpath()` call) sidesteps that
  * platform difference instead of relying on it.
+ *
+ * `resolved` caches each confirmed-non-symlink segment's `fs.realpath()`
+ * result, keyed by its full accumulated path. An absolute symlink target
+ * restarts resolution from the filesystem root, so without this cache a
+ * symlink cycle re-walks every ancestor directory from scratch on every one
+ * of the (bounded but real) `MAX_SYMLINK_DEPTH` iterations before it gives
+ * up — confirmed by an actual windows-2025 CI timeout (Windows syscall
+ * latency made that redundant O(depth × ancestor count) work exceed the
+ * default 5s test timeout, though the same quadratic blowup exists on every
+ * platform). A symlink segment is deliberately never cached — re-reading it
+ * fresh is what lets the depth counter actually advance.
  */
 async function resolveFrom(
   base: string,
   segments: readonly string[],
   depth: number,
+  resolved: Map<string, string>,
 ): Promise<string> {
   if (depth > MAX_SYMLINK_DEPTH) {
     throw new Error("Too many levels of symbolic links");
@@ -67,6 +79,12 @@ async function resolveFrom(
     }
 
     const candidate = `${current}${sep}${segment}`;
+    const cached = resolved.get(candidate);
+    if (cached !== undefined) {
+      current = cached;
+      continue;
+    }
+
     const stat = await lstat(candidate).catch(() => undefined);
     if (stat === undefined) {
       current = candidate;
@@ -80,13 +98,15 @@ async function resolveFrom(
           await realpath(linkRoot),
           splitSegments(linkTarget.slice(linkRoot.length)),
           depth + 1,
+          resolved,
         );
       } else {
-        current = await resolveFrom(current, splitSegments(linkTarget), depth + 1);
+        current = await resolveFrom(current, splitSegments(linkTarget), depth + 1, resolved);
       }
       continue;
     }
     current = await realpath(candidate);
+    resolved.set(candidate, current);
   }
   return current;
 }
@@ -100,7 +120,7 @@ export async function safeRealpath(targetPath: string): Promise<string> {
   const absolute = isAbsolute(targetPath) ? targetPath : `${process.cwd()}${sep}${targetPath}`;
   const root = parse(absolute).root;
   const realRoot = await realpath(root);
-  return resolveFrom(realRoot, splitSegments(absolute.slice(root.length)), 0);
+  return resolveFrom(realRoot, splitSegments(absolute.slice(root.length)), 0, new Map());
 }
 
 /**
