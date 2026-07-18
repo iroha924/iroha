@@ -2,8 +2,27 @@ import { mkdir, mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { runGit } from "./run-git.js";
+import { runGit, stripKnownDangerousEnvVars } from "./run-git.js";
 import { createTempGitRepo, removeTempDir } from "./test-helpers/tmp-repo.js";
+
+describe("stripKnownDangerousEnvVars", () => {
+  it("removes a known-dangerous key regardless of case", () => {
+    // Windows env var names are case-insensitive; git.exe would honor a
+    // lowercase `git_dir` exported by the parent process exactly like
+    // `GIT_DIR`. A denylist that only deletes the canonical-case spelling
+    // would miss it.
+    const result = stripKnownDangerousEnvVars({
+      git_dir: "/some/other/repo/.git",
+      GIT_DIR: "/another/repo/.git",
+      Git_Trace: "/tmp/trace.log",
+      gIt_cEiLiNg_DiReCtOrIeS: "/some/repo",
+      language: "ja_JP.UTF-8",
+      PATH: "/usr/bin",
+    });
+
+    expect(result).toEqual({ PATH: "/usr/bin" });
+  });
+});
 
 describe("runGit", () => {
   let repoDir: string;
@@ -42,7 +61,7 @@ describe("runGit", () => {
     }
   });
 
-  it("redacts a credentialed argument from a failing command's error message and details", async () => {
+  it("never includes argument values in a failing command's error message or details", async () => {
     const credentialedUrl = "https://ghp_secrettoken@example.invalid/org/repo.git";
     // An unknown subcommand fails before Git ever touches the network, so
     // this stays fast and offline — only our own error formatting is under
@@ -53,18 +72,20 @@ describe("runGit", () => {
     if (!result.ok) {
       expect(result.error.message.includes("ghp_secrettoken")).toBe(false);
       expect(JSON.stringify(result.error.details).includes("ghp_secrettoken")).toBe(false);
-      expect(result.error.details?.args).toEqual([
-        "not-a-real-subcommand",
-        "https://example.invalid/org/repo.git",
-      ]);
+      // Only the subcommand and a count survive — never the credentialed arg.
+      expect(result.error.details).toMatchObject({
+        subcommand: "not-a-real-subcommand",
+        argCount: 2,
+      });
     }
   });
 
-  it("redacts a credentialed URL embedded mid-argument, not just whole-string URLs", async () => {
+  it("never includes a -c key=value argument's value, not just whole-string URLs", async () => {
     // A `-c key=value`-shaped argument (Git's config-override form) can
-    // embed a credentialed URL anywhere after the `=`; the argument itself
-    // does not START WITH scheme://, so an anchored (whole-string) URL
-    // matcher misses it entirely.
+    // embed a credentialed URL anywhere after the `=`; regex-based
+    // redaction anchored to the start of the string would miss it, but
+    // since no argument VALUE is included at all here, this is moot by
+    // construction.
     const configArg =
       "http.extraHeader=Authorization: Bearer https://ghp_secrettoken@example.invalid/";
     const result = await runGit(["not-a-real-subcommand", "-c", configArg], { cwd: repoDir });

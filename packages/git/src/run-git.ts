@@ -1,3 +1,4 @@
+import type { ExecFileException } from "node:child_process";
 import { execFile } from "node:child_process";
 import { err, IrohaError, ok, type Result } from "@iroha/domain";
 import { redactUrlLikeCredentialsInText } from "./credential-redaction.js";
@@ -72,33 +73,60 @@ const GIT_TRACE_ENV_VARS = [
   "GIT_TRACE2_CONFIG_PARAMS",
 ];
 
-function buildCleanEnv(): NodeJS.ProcessEnv {
-  const env = { ...process.env };
-  for (const key of [...LOCAL_GIT_ENV_VARS, ...GIT_TRACE_ENV_VARS]) {
-    delete env[key];
+// `location.ts`/`remote.ts` pattern-match specific English stderr prefixes
+// ("fatal: not a git repository", "No such remote") to distinguish known
+// conditions from other failures. Git's UI strings are gettext-wrapped and
+// translated under a non-English locale, which would make those matches
+// silently stop working. `LANGUAGE` takes priority over `LC_ALL`/`LANG` for
+// GNU gettext lookup, so it must be stripped too, not just overridden.
+const ALWAYS_STRIPPED_ENV_VARS = [...LOCAL_GIT_ENV_VARS, ...GIT_TRACE_ENV_VARS, "LANGUAGE"];
+
+/**
+ * Case-insensitively removes every known-dangerous key from `source`.
+ * Windows environment variable names are case-insensitive, but a plain
+ * `delete env["GIT_DIR"]` only removes that exact spelling — confirmed via
+ * Node.js docs that Windows resolves case-variant duplicates within a
+ * single `env` object, which is a different guarantee from "the parent
+ * process's lowercase `git_dir` gets removed". A denylist that isn't
+ * case-insensitive can silently miss a variant the parent process exported.
+ */
+export function stripKnownDangerousEnvVars(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const dangerous = new Set(ALWAYS_STRIPPED_ENV_VARS.map((key) => key.toLowerCase()));
+  const result: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (!dangerous.has(key.toLowerCase())) {
+      result[key] = value;
+    }
   }
-  // `location.ts`/`remote.ts` pattern-match specific English stderr prefixes
-  // ("fatal: not a git repository", "No such remote") to distinguish known
-  // conditions from other failures. Git's UI strings are gettext-wrapped and
-  // translated under a non-English locale, which would make those matches
-  // silently stop working. `LANGUAGE` takes priority over `LC_ALL`/`LANG`
-  // for GNU gettext lookup, so it must be cleared too, not just overridden.
+  return result;
+}
+
+function buildCleanEnv(): NodeJS.ProcessEnv {
+  const env = stripKnownDangerousEnvVars(process.env);
   env.LC_ALL = "C";
   env.LANG = "C";
-  delete env.LANGUAGE;
   return env;
 }
 
 /**
  * `execFile`'s error carries the raw, unredacted command line in both
- * `.message` and `.cmd` (confirmed by manual reproduction) — attaching it
- * as `cause` would leak credentials through any caller that logs or
- * serializes the error's cause chain, even though `message`/`details` on
- * the `IrohaError` itself are redacted. A synthetic `Error` with only a
- * redacted message preserves the general failure shape without the leak.
+ * `.message` and `.cmd` (confirmed by manual reproduction). Rather than
+ * redact that text (a denylist that keeps needing new patterns — see
+ * `.claude/rules/secure-subprocess-and-credentials.md`), this builds a
+ * synthetic `Error` from only non-sensitive fields: the process-level exit
+ * code/signal. No argument text of any shape can reach `cause` this way.
  */
-function sanitizeExecError(error: Error): Error {
-  const sanitized = new Error(redactUrlLikeCredentialsInText(error.message));
+function buildDiagnosticCause(error: ExecFileException): Error {
+  const parts: string[] = [];
+  if (error.code !== undefined) {
+    parts.push(`code=${error.code}`);
+  }
+  if (error.signal) {
+    parts.push(`signal=${error.signal}`);
+  }
+  const sanitized = new Error(
+    parts.length > 0 ? `git process failed (${parts.join(", ")})` : "git process failed",
+  );
   sanitized.name = error.name;
   return sanitized;
 }
@@ -124,23 +152,28 @@ export function runGit(
       },
       (error, stdout, stderr) => {
         if (error) {
-          // A caller-supplied arg (e.g. a credentialed remote URL) must not
-          // survive into the error message or details verbatim — both can
-          // reach logs, `--json` CLI output, or doctor diagnostics. Git
-          // itself redacts credentials from *its own* "unable to access"
-          // network errors, but echoes an unmatched pathspec argument back
-          // verbatim (confirmed by reproduction), so stderr needs the same
-          // treatment as args. Uses the text-scanning redactor, not the
-          // whole-string one: a `-c key=value` argument embeds a URL after
-          // an arbitrary prefix (e.g. `http.extraHeader=Authorization: ...`),
-          // which a matcher anchored to the start of the string would miss.
-          const redactedArgs = args.map(redactUrlLikeCredentialsInText);
+          // No argument VALUE of any shape reaches message/details/cause —
+          // redacting known-dangerous shapes (URLs, -c key=value, ...) is a
+          // denylist that this package spent six review rounds discovering
+          // gaps in. `args[0]` (the subcommand/flag, e.g. "checkout", "-c")
+          // is never a value a caller would pass a secret as, so it's safe
+          // to keep for diagnostics; still run it through the redactor as
+          // defense in depth since it costs nothing. `stderr` still needs
+          // redaction: it's Git's own output, required by location.ts and
+          // remote.ts to distinguish known failure conditions, so it can't
+          // simply be omitted the way our own args construction can.
+          const firstArg = args[0];
+          const subcommand =
+            firstArg !== undefined ? redactUrlLikeCredentialsInText(firstArg) : "(no subcommand)";
           resolve(
             err(
-              new IrohaError("INTERNAL_ERROR", `git ${redactedArgs.join(" ")} failed`, {
-                cause: sanitizeExecError(error),
+              new IrohaError("INTERNAL_ERROR", `git ${subcommand} failed`, {
+                cause: buildDiagnosticCause(error),
                 details: {
-                  args: redactedArgs,
+                  subcommand,
+                  argCount: args.length,
+                  exitCode: error.code ?? null,
+                  signal: error.signal ?? null,
                   stderr: redactUrlLikeCredentialsInText(stderr.trim()),
                 },
               }),

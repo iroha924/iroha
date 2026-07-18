@@ -151,6 +151,26 @@ describe("toRepoRelativePath", () => {
     }
   });
 
+  it("rejects a path that escapes through a symlink whose own target contains ..", async () => {
+    // A -> "B/.." (a relative symlink target string, not resolved by us),
+    // B -> outside (absolute symlink to outside the repo). Resolving A/secret
+    // must dereference A to "B/..", then dereference B to `outside`, then go
+    // up from THERE — landing outside the repo — not join() the literal
+    // strings "B" and ".." together, which would cancel back to `root`
+    // before B is ever considered a symlink.
+    const outsideDir = join(outside, "dir");
+    await mkdir(outsideDir, { recursive: true });
+    await symlink(outsideDir, join(root, "B"));
+    await symlink("B/..", join(root, "A"));
+
+    const result = await toRepoRelativePath(root, join(root, "A", "secret"));
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("INVALID_INPUT");
+    }
+  });
+
   it("accepts a symlink inside the root that stays inside it", async () => {
     const realDir = join(root, "real-target");
     await mkdir(realDir);
