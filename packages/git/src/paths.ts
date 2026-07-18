@@ -1,4 +1,4 @@
-import { lstat, readlink } from "node:fs/promises";
+import { lstat, readlink, realpath } from "node:fs/promises";
 import { dirname, isAbsolute, join, parse, relative, sep } from "node:path";
 import { err, IrohaError, ok, type Result } from "@iroha/domain";
 
@@ -57,7 +57,14 @@ export async function safeRealpath(targetPath: string, depth = 0): Promise<strin
         : join(dirname(candidate), linkTarget);
       current = await safeRealpath(absoluteLinkTarget, depth + 1);
     } else {
-      current = candidate;
+      // `realpath`, not the plain joined string: on Windows this also
+      // canonicalizes 8.3 short filenames (e.g. `RUNNER~1`) to their real
+      // long form (`runneradmin`) — confirmed by an actual windows-2025 CI
+      // failure, where `%TEMP%` itself resolves through a short name. Safe
+      // to call here since `candidate` is already known to exist and not be
+      // a symlink, so this only normalizes casing/short-name spelling, not
+      // meaning.
+      current = await realpath(candidate);
     }
   }
   return current;
