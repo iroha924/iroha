@@ -55,15 +55,26 @@ export async function toRepoRelativePath(
   root: string,
   targetPath: string,
 ): Promise<Result<string, IrohaError>> {
-  const realRoot = await safeRealpath(root);
   const absoluteTarget = isAbsolute(targetPath) ? targetPath : resolve(root, targetPath);
-  const realTarget = await safeRealpath(absoluteTarget);
+  let realRoot: string;
+  let realTarget: string;
+  try {
+    realRoot = await safeRealpath(root);
+    realTarget = await safeRealpath(absoluteTarget);
+  } catch (cause) {
+    return err(
+      new IrohaError("INVALID_INPUT", `Failed to resolve path: ${targetPath}`, {
+        cause,
+        details: { root, targetPath },
+      }),
+    );
+  }
 
   const rel = relative(realRoot, realTarget);
   if (rel === "") {
     return ok("");
   }
-  if (rel.startsWith("..") || isAbsolute(rel)) {
+  if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
     return err(
       new IrohaError("INVALID_INPUT", `Path escapes repository root: ${targetPath}`, {
         details: { root, targetPath },

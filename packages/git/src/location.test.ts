@@ -1,4 +1,4 @@
-import { mkdir, realpath } from "node:fs/promises";
+import { mkdir, realpath, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -111,5 +111,15 @@ describe("resolveGitPath", () => {
     const result = await resolveGitPath(repoDir, "iroha");
 
     expect(result).toEqual({ ok: true, value: join(realRoot, ".git", "iroha") });
+  });
+
+  it("returns an error Result instead of throwing when the target is a symlink cycle", async () => {
+    const gitDir = join(repoDir, ".git");
+    await symlink(join(gitDir, "cycle-b"), join(gitDir, "cycle-a"));
+    await symlink(join(gitDir, "cycle-a"), join(gitDir, "cycle-b"));
+
+    const result = await resolveGitPath(repoDir, "cycle-a");
+
+    expect(result.ok).toBe(false);
   });
 });

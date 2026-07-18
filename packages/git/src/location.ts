@@ -33,7 +33,16 @@ async function resolveGitRevParsePath(
     );
   }
   const absolute = isAbsolute(result.value) ? result.value : resolve(cwd, result.value);
-  return ok(await safeRealpath(absolute));
+  try {
+    return ok(await safeRealpath(absolute));
+  } catch (cause) {
+    return err(
+      new IrohaError("INTERNAL_ERROR", `Failed to resolve path: ${absolute}`, {
+        cause,
+        details: { cwd },
+      }),
+    );
+  }
 }
 
 export async function resolveGitLocation(cwd: string): Promise<Result<GitLocation, IrohaError>> {

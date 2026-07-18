@@ -57,6 +57,23 @@ describe("toRepoRelativePath", () => {
     }
   });
 
+  it("accepts a legitimate filename that merely starts with two dots", async () => {
+    await writeFile(join(root, "..config"), "not traversal", "utf8");
+
+    const result = await toRepoRelativePath(root, join(root, "..config"));
+
+    expect(result).toEqual({ ok: true, value: "..config" });
+  });
+
+  it("accepts a legitimate directory name that starts with two dots", async () => {
+    await mkdir(join(root, "..foo"), { recursive: true });
+    await writeFile(join(root, "..foo", "file.txt"), "not traversal", "utf8");
+
+    const result = await toRepoRelativePath(root, join(root, "..foo", "file.txt"));
+
+    expect(result).toEqual({ ok: true, value: "..foo/file.txt" });
+  });
+
   it("rejects a symlink inside the root that escapes to outside it", async () => {
     await writeFile(join(outside, "secret.txt"), "top secret", "utf8");
     const escapeLink = join(root, "escape");
@@ -79,6 +96,20 @@ describe("toRepoRelativePath", () => {
     await symlink(join(outside, "not-created-yet.txt"), danglingLink);
 
     const result = await toRepoRelativePath(root, danglingLink);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("INVALID_INPUT");
+    }
+  });
+
+  it("returns an error Result instead of throwing on a symlink cycle", async () => {
+    const a = join(root, "cycle-a");
+    const b = join(root, "cycle-b");
+    await symlink(b, a);
+    await symlink(a, b);
+
+    const result = await toRepoRelativePath(root, a);
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
