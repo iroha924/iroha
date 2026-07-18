@@ -54,6 +54,20 @@ describe("sanitizeRemoteUrl", () => {
     expect(sanitizeRemoteUrl("file:///srv/git/repo.git")).toBe(null);
   });
 
+  it("suppresses a single-slash file: remote instead of exposing its filesystem path", () => {
+    // Confirmed by reproduction: Git accepts and stores "file:/path" (one
+    // slash) as a remote URL identically to "file://"/"file:///".
+    expect(sanitizeRemoteUrl("file:/Users/alice/private.git")).toBe(null);
+  });
+
+  it("leaves a relative file: remote unchanged, unlike an absolute one", () => {
+    // No leading slash after "file:" means no absolute filesystem path is
+    // being exposed — consistent with this module's existing scope of only
+    // suppressing absolute local paths (relative bare paths are left alone
+    // too; see "leaves an SCP-like SSH remote unchanged" etc. above).
+    expect(sanitizeRemoteUrl("file:relative/path.git")).toBe("file:relative/path.git");
+  });
+
   it("suppresses a UNC path instead of exposing it", () => {
     expect(sanitizeRemoteUrl("\\\\fileserver\\share\\repo.git")).toBe(null);
   });
@@ -150,6 +164,24 @@ describe("getSanitizedRemoteUrl", () => {
     } finally {
       await removeTempDir(otherRepoDir);
     }
+  });
+
+  it("uses the first configured URL, not the last, when a remote has multiple", async () => {
+    await runGit(["remote", "add", "origin", "https://first.example/repo.git"], {
+      cwd: repoDir,
+    });
+    // Git supports configuring more than one URL per remote (push fans out
+    // to all of them, but fetch always uses only the first). Confirmed by
+    // reproduction that `git config --get` (a single value) returns the
+    // *last* configured one in that case, while Git itself uses the first —
+    // this must match Git's actual fetch behavior, not `--get`'s pick.
+    await runGit(["remote", "set-url", "--add", "origin", "https://second.example/repo.git"], {
+      cwd: repoDir,
+    });
+
+    const result = await getSanitizedRemoteUrl(repoDir, "origin");
+
+    expect(result).toEqual({ ok: true, value: "https://first.example/repo.git" });
   });
 
   it("reads the configured remote URL, not a locally rewritten insteadOf mirror", async () => {

@@ -14,7 +14,13 @@ import { runGit } from "./run-git.js";
 // new one.
 const WINDOWS_DRIVE_PATH = /^[a-zA-Z]:[\\/]/;
 const UNC_PATH = /^\\\\/;
-const FILE_SCHEME = /^file:\/\//i;
+// One or more slashes, not exactly two: confirmed by reproduction that Git
+// accepts and stores `file:/Users/alice/private.git` (a single slash) as a
+// remote URL identically to the more familiar `file://`/`file:///` forms —
+// all three name a local, absolute path. `file:relative/path` (no slash at
+// all right after the colon) is deliberately excluded, matching this
+// module's existing scope of only suppressing *absolute* local paths.
+const FILE_SCHEME = /^file:\/+/i;
 
 function isLocalAbsolutePathToken(token: string): boolean {
   return (
@@ -73,13 +79,24 @@ export function sanitizeRemoteUrl(rawUrl: string): string | null {
  * propagates as an error instead of being silently reinterpreted as "no
  * remote configured".
  *
- * Reads `remote.<name>.url` directly via `git config --local --get` rather
- * than `git remote get-url`: per Git's own docs, `remote get-url` expands
- * any local `url.<base>.insteadOf` rewrite the current machine has
+ * Reads `remote.<name>.url` directly via `git config --local --get-all`
+ * rather than `git remote get-url`: per Git's own docs, `remote get-url`
+ * expands any local `url.<base>.insteadOf` rewrite the current machine has
  * configured, so two teammates with different rewrite config would compute
- * a different `remote_url_normalized` for the identical repository. `--get`
- * on a missing key exits with status 1 and no stderr (git-config(1)); that
- * exit code alone (not stderr text, unlike Git's other subcommands) is what
+ * a different `remote_url_normalized` for the identical repository.
+ *
+ * Uses `--get-all` (returning every configured value, newline-separated),
+ * not `--get` (a single value) — confirmed by reproduction: `git remote
+ * set-url --add <name> <url>` can configure more than one URL for the same
+ * remote (Git fans push out to all of them, but fetch always uses only the
+ * first). `--get` returns the *last* configured value in that case, while
+ * Git itself (and `git remote get-url`, sans its `insteadOf` problem) uses
+ * the *first* as the fetch URL. Taking `--get`'s answer would record
+ * metadata for a URL Git never actually fetches from.
+ *
+ * `--get-all` shares `--get`'s exit-code semantics for our purposes: a
+ * missing key exits with status 1 and no stderr (git-config(1)); that exit
+ * code alone (not stderr text, unlike Git's other subcommands) is what
  * distinguishes "no such remote" from other failures here. `--local` makes
  * "not inside a repository" its own distinguishable failure (exit 128,
  * `fatal: --local can only be used inside a git repository`) instead of
@@ -90,7 +107,7 @@ export async function getSanitizedRemoteUrl(
   cwd: string,
   remoteName = "origin",
 ): Promise<Result<string | null, IrohaError>> {
-  const result = await runGit(["config", "--local", "--get", `remote.${remoteName}.url`], {
+  const result = await runGit(["config", "--local", "--get-all", `remote.${remoteName}.url`], {
     cwd,
   });
   if (!result.ok) {
@@ -100,5 +117,6 @@ export async function getSanitizedRemoteUrl(
     }
     return err(result.error);
   }
-  return ok(sanitizeRemoteUrl(result.value));
+  const firstFetchUrl = result.value.split("\n")[0] ?? "";
+  return ok(sanitizeRemoteUrl(firstFetchUrl));
 }
