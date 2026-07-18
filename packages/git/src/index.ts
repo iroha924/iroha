@@ -3,6 +3,7 @@
  */
 export const packageName = "@iroha/git";
 
+export * from "./credential-redaction.js";
 export * from "./location.js";
 export * from "./paths.js";
 export * from "./remote.js";

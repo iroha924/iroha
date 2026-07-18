@@ -31,7 +31,13 @@ async function writeLocalConfig(
 ): Promise<void> {
   await mkdir(irohaDir, { recursive: true });
   const tempPath = `${configPath}.tmp-${process.pid}-${Date.now()}`;
-  await writeFile(tempPath, `${JSON.stringify(content, null, 2)}\n`, "utf8");
+  // mode 0o600: this file holds the HMAC repository salt, so it must not be
+  // left world-readable under the OS default umask (rename() carries the
+  // temp file's mode over on POSIX, so setting it here is sufficient).
+  await writeFile(tempPath, `${JSON.stringify(content, null, 2)}\n`, {
+    encoding: "utf8",
+    mode: 0o600,
+  });
   await rename(tempPath, configPath);
 }
 

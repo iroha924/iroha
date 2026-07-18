@@ -43,6 +43,12 @@ describe("sanitizeRemoteUrl", () => {
   it("leaves a bare Unix local path unchanged", () => {
     expect(sanitizeRemoteUrl("/srv/git/repo.git")).toBe("/srv/git/repo.git");
   });
+
+  it("strips a credential-bearing query string", () => {
+    expect(sanitizeRemoteUrl("https://github.com/org/repo.git?access_token=SECRET")).toBe(
+      "https://github.com/org/repo.git",
+    );
+  });
 });
 
 describe("getSanitizedRemoteUrl", () => {
@@ -65,6 +71,17 @@ describe("getSanitizedRemoteUrl", () => {
     await runGit(["remote", "add", "origin", "https://token123@github.com/org/repo.git"], {
       cwd: repoDir,
     });
+
+    const result = await getSanitizedRemoteUrl(repoDir, "origin");
+
+    expect(result).toEqual({ ok: true, value: "https://github.com/org/repo.git" });
+  });
+
+  it("strips a query-string token from a configured remote", async () => {
+    await runGit(
+      ["remote", "add", "origin", "https://github.com/org/repo.git?access_token=SECRET"],
+      { cwd: repoDir },
+    );
 
     const result = await getSanitizedRemoteUrl(repoDir, "origin");
 

@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { err, IrohaError, ok, type Result } from "@iroha/domain";
+import { redactUrlLikeCredentials } from "./credential-redaction.js";
 
 export interface RunGitOptions {
   cwd: string;
@@ -26,11 +27,15 @@ export function runGit(
       },
       (error, stdout, stderr) => {
         if (error) {
+          // A caller-supplied arg (e.g. a credentialed remote URL) must not
+          // survive into the error message or details verbatim — both can
+          // reach logs, `--json` CLI output, or doctor diagnostics.
+          const redactedArgs = args.map(redactUrlLikeCredentials);
           resolve(
             err(
-              new IrohaError("INTERNAL_ERROR", `git ${args.join(" ")} failed`, {
+              new IrohaError("INTERNAL_ERROR", `git ${redactedArgs.join(" ")} failed`, {
                 cause: error,
-                details: { args, stderr: stderr.trim() },
+                details: { args: redactedArgs, stderr: stderr.trim() },
               }),
             ),
           );

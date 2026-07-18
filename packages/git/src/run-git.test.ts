@@ -38,4 +38,22 @@ describe("runGit", () => {
       expect(result.error.code).toBe("INTERNAL_ERROR");
     }
   });
+
+  it("redacts a credentialed argument from a failing command's error message and details", async () => {
+    const credentialedUrl = "https://ghp_secrettoken@example.invalid/org/repo.git";
+    // An unknown subcommand fails before Git ever touches the network, so
+    // this stays fast and offline — only our own error formatting is under
+    // test here, not Git's own (already-redacting) stderr.
+    const result = await runGit(["not-a-real-subcommand", credentialedUrl], { cwd: repoDir });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message.includes("ghp_secrettoken")).toBe(false);
+      expect(JSON.stringify(result.error.details).includes("ghp_secrettoken")).toBe(false);
+      expect(result.error.details?.args).toEqual([
+        "not-a-real-subcommand",
+        "https://example.invalid/org/repo.git",
+      ]);
+    }
+  });
 });

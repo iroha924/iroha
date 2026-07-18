@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CryptoRandomSource, FixedRandomSource } from "@iroha/domain";
@@ -29,6 +29,17 @@ describe("ensureRepositorySalt", () => {
 
     const written = JSON.parse(await readFile(join(irohaDir, "local-config.json"), "utf8"));
     expect(typeof written.repositorySalt).toBe("string");
+  });
+
+  it("creates the salt file readable/writable by the owner only", async () => {
+    await ensureRepositorySalt(irohaDir, new CryptoRandomSource());
+
+    // Windows has no POSIX rwxrwxrwx permission model, so this is only
+    // meaningful — and only tested — on POSIX platforms.
+    if (process.platform !== "win32") {
+      const fileStat = await stat(join(irohaDir, "local-config.json"));
+      expect(fileStat.mode & 0o777).toBe(0o600);
+    }
   });
 
   it("returns the same salt on a second call instead of regenerating", async () => {

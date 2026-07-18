@@ -70,6 +70,22 @@ describe("toRepoRelativePath", () => {
     }
   });
 
+  it("rejects a dangling symlink inside the root whose target is outside it", async () => {
+    // The target does not exist yet (e.g. a file about to be written through
+    // the symlink) — fs.realpath fails with ENOENT for the link itself, which
+    // must not be mistaken for "this path doesn't exist yet, treat it as a
+    // literal in-repo path".
+    const danglingLink = join(root, "escape-dangling");
+    await symlink(join(outside, "not-created-yet.txt"), danglingLink);
+
+    const result = await toRepoRelativePath(root, danglingLink);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("INVALID_INPUT");
+    }
+  });
+
   it("accepts a symlink inside the root that stays inside it", async () => {
     const realDir = join(root, "real-target");
     await mkdir(realDir);
@@ -105,5 +121,23 @@ describe("safeRealpath", () => {
     const result = await safeRealpath(target);
 
     expect(result).toBe(join(await realpath(root), "a", "b", "c.txt"));
+  });
+
+  it("follows a dangling symlink to its (also nonexistent) target instead of treating it literally", async () => {
+    const link = join(root, "dangling-link");
+    await symlink(join(root, "nested", "missing.txt"), link);
+
+    const result = await safeRealpath(link);
+
+    expect(result).toBe(join(await realpath(root), "nested", "missing.txt"));
+  });
+
+  it("throws instead of looping forever on a symlink cycle", async () => {
+    const a = join(root, "a");
+    const b = join(root, "b");
+    await symlink(b, a);
+    await symlink(a, b);
+
+    await expect(safeRealpath(a)).rejects.toThrow(/symbolic links/);
   });
 });
