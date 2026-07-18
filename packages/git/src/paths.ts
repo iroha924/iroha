@@ -1,70 +1,106 @@
 import { lstat, readlink, realpath } from "node:fs/promises";
-import { basename, dirname, isAbsolute, relative, sep } from "node:path";
+import { dirname, isAbsolute, parse, relative, sep } from "node:path";
 import { err, IrohaError, ok, type Result } from "@iroha/domain";
 
 /** Matches the SYMLOOP_MAX most platforms enforce for genuine symlink chains. */
 const MAX_SYMLINK_DEPTH = 40;
 
+const IS_WINDOWS = process.platform === "win32";
+// POSIX allows a literal backslash in a filename (round-6 finding: a naive
+// splitter must not treat `\` as a separator there), but Windows accepts
+// both `/` and `\` as separators — so which characters split a path is
+// itself platform-dependent, matching `node:path`'s own platform-native
+// behavior used everywhere else in this module.
+const SEGMENT_SPLIT = IS_WINDOWS ? /[\\/]+/ : /\//;
+
+function splitSegments(pathWithoutRoot: string): string[] {
+  return pathWithoutRoot.split(SEGMENT_SPLIT).filter((segment) => segment.length > 0);
+}
+
 /**
- * Resolves symlinks, tolerating a target that does not exist yet (e.g. a
- * file about to be written, or a `git rev-parse --git-path` output for a
- * namespace directory Git has not created).
+ * Walks `segments` one at a time starting from `base` (an already-resolved,
+ * symlink-free absolute path), applying each in turn:
  *
- * Delegates to `fs.realpath()` as the fast path rather than re-implementing
- * path resolution: POSIX `realpath(3)` (and Node's own implementation,
- * confirmed against `lib/fs.js`) already resolves symlinks component by
- * component *before* applying `..`, so it correctly handles `..` embedded
- * anywhere in `targetPath` — including after a symlink — as long as the
- * raw, uncollapsed string reaches it. `fs.realpath()` also canonicalizes
- * Windows 8.3 short filenames, which a from-scratch reimplementation must
- * remember to do and previously didn't (confirmed by an actual windows-2025
- * CI failure).
+ * - `..` moves up via `dirname()` on our own already-resolved `current` —
+ *   pure JS bookkeeping, no filesystem call.
+ * - an ordinary name that resolves to a symlink is dereferenced (via
+ *   `readlink`, recursing on the link's own target — which may itself embed
+ *   further `..` or symlinks) instead of being appended literally.
+ * - an ordinary name that exists and is not a symlink is canonicalized via
+ *   `fs.realpath()` on the single-segment-extended path (safe: by this
+ *   point the string has no unresolved symlink or ".." left in it), which
+ *   also normalizes Windows 8.3 short filenames and drive-letter/path
+ *   casing (confirmed by an actual windows-2025 CI failure when an earlier
+ *   version of this function skipped that step).
+ * - a name that doesn't exist yet is appended literally, tolerating a
+ *   target that isn't on disk yet (e.g. a file about to be written, or a
+ *   `git rev-parse --git-path` output for a namespace directory Git hasn't
+ *   created).
  *
- * `fs.realpath()` only requires the *whole* path to resolve, so the sole
- * case handled here by hand is a target that doesn't fully exist yet: walk
- * up to the nearest ancestor that does resolve (recursively, since an
- * ancestor can itself be missing or a dangling symlink), then rejoin the
- * unresolved tail literally. A component that fails to resolve is checked
- * for being a dangling symlink (exists, but its target does not) and, if
- * so, is still followed via `readlink` rather than treated as literal —
- * otherwise a symlink pointing outside the repository to a not-yet-created
- * file would resolve as an ordinary in-repo path, defeating the
- * symlink-escape checks in `toRepoRelativePath`.
+ * Never hands the OS a single string containing both `..` and a
+ * not-yet-resolved symlink: confirmed by an actual windows-2025 CI failure
+ * that Windows path canonicalization collapses `..` lexically *before* the
+ * filesystem driver resolves a reparse point (symlink) earlier in the same
+ * string — the reverse of POSIX `realpath(3)`, which resolves symlinks
+ * component by component *before* applying `..`. Resolving one segment at a
+ * time and applying `..` ourselves (rather than delegating a
+ * multi-segment string to a single `fs.realpath()` call) sidesteps that
+ * platform difference instead of relying on it.
  */
-export async function safeRealpath(targetPath: string, depth = 0): Promise<string> {
+async function resolveFrom(
+  base: string,
+  segments: readonly string[],
+  depth: number,
+): Promise<string> {
   if (depth > MAX_SYMLINK_DEPTH) {
-    throw new Error(`Too many levels of symbolic links resolving ${targetPath}`);
+    throw new Error("Too many levels of symbolic links");
   }
 
-  // Concatenation, not `path.resolve`/`path.join`: both lexically collapse
-  // ".." before any symlink in the string is considered. The raw string
-  // must reach `fs.realpath()`/`fs.lstat()` unmodified so the kernel (not
-  // JS string logic) resolves ".." against the real, symlink-dereferenced
-  // location — see the docstring above.
-  const absolute = isAbsolute(targetPath) ? targetPath : `${process.cwd()}${sep}${targetPath}`;
+  let current = base;
+  for (const segment of segments) {
+    if (segment === ".") {
+      continue;
+    }
+    if (segment === "..") {
+      current = dirname(current);
+      continue;
+    }
 
-  try {
-    return await realpath(absolute);
-  } catch {
-    const stat = await lstat(absolute).catch(() => undefined);
-    if (stat?.isSymbolicLink()) {
-      if (depth >= MAX_SYMLINK_DEPTH) {
-        throw new Error(`Too many levels of symbolic links resolving ${targetPath}`);
+    const candidate = `${current}${sep}${segment}`;
+    const stat = await lstat(candidate).catch(() => undefined);
+    if (stat === undefined) {
+      current = candidate;
+      continue;
+    }
+    if (stat.isSymbolicLink()) {
+      const linkTarget = await readlink(candidate);
+      if (isAbsolute(linkTarget)) {
+        const linkRoot = parse(linkTarget).root;
+        current = await resolveFrom(
+          await realpath(linkRoot),
+          splitSegments(linkTarget.slice(linkRoot.length)),
+          depth + 1,
+        );
+      } else {
+        current = await resolveFrom(current, splitSegments(linkTarget), depth + 1);
       }
-      const linkTarget = await readlink(absolute);
-      const absoluteLinkTarget = isAbsolute(linkTarget)
-        ? linkTarget
-        : `${dirname(absolute)}${sep}${linkTarget}`;
-      return safeRealpath(absoluteLinkTarget, depth + 1);
+      continue;
     }
-
-    const parent = dirname(absolute);
-    if (parent === absolute) {
-      return absolute;
-    }
-    const realParent = await safeRealpath(parent, depth);
-    return `${realParent}${sep}${basename(absolute)}`;
+    current = await realpath(candidate);
   }
+  return current;
+}
+
+/**
+ * Resolves symlinks and `..` in `targetPath`, tolerating a target that does
+ * not exist yet. See `resolveFrom` for why this walks one segment at a time
+ * instead of delegating to a single `fs.realpath()` call.
+ */
+export async function safeRealpath(targetPath: string): Promise<string> {
+  const absolute = isAbsolute(targetPath) ? targetPath : `${process.cwd()}${sep}${targetPath}`;
+  const root = parse(absolute).root;
+  const realRoot = await realpath(root);
+  return resolveFrom(realRoot, splitSegments(absolute.slice(root.length)), 0);
 }
 
 /**
@@ -77,11 +113,6 @@ export async function toRepoRelativePath(
   root: string,
   targetPath: string,
 ): Promise<Result<string, IrohaError>> {
-  // Plain concatenation, not `path.join`/`path.resolve`: both of those
-  // lexically collapse `..` before `safeRealpath` ever sees it, which is
-  // exactly the bug this function exists to avoid (see `safeRealpath`'s
-  // docstring) — the raw, uncollapsed string must reach `safeRealpath` so
-  // it can walk `..` symlink-aware, one segment at a time.
   const absoluteTarget = isAbsolute(targetPath) ? targetPath : `${root}${sep}${targetPath}`;
   let realRoot: string;
   let realTarget: string;

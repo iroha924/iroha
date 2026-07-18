@@ -58,6 +58,12 @@ describe("sanitizeRemoteUrl", () => {
     expect(sanitizeRemoteUrl("\\\\fileserver\\share\\repo.git")).toBe(null);
   });
 
+  it("suppresses the whole value when a local path appears on a later line", () => {
+    const multiline = "https://github.com/org/repo.git\nfile:///Users/alice/private.git";
+
+    expect(sanitizeRemoteUrl(multiline)).toBe(null);
+  });
+
   it("strips a credential-bearing query string", () => {
     expect(sanitizeRemoteUrl("https://github.com/org/repo.git?access_token=SECRET")).toBe(
       "https://github.com/org/repo.git",

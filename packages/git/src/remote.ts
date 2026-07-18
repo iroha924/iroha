@@ -16,13 +16,23 @@ const WINDOWS_DRIVE_PATH = /^[a-zA-Z]:[\\/]/;
 const UNC_PATH = /^\\\\/;
 const FILE_SCHEME = /^file:\/\//i;
 
-function isLocalAbsolutePath(value: string): boolean {
+function isLocalAbsolutePathLine(line: string): boolean {
   return (
-    FILE_SCHEME.test(value) ||
-    value.startsWith("/") ||
-    WINDOWS_DRIVE_PATH.test(value) ||
-    UNC_PATH.test(value)
+    FILE_SCHEME.test(line) ||
+    line.startsWith("/") ||
+    WINDOWS_DRIVE_PATH.test(line) ||
+    UNC_PATH.test(line)
   );
+}
+
+// Checked line by line, not just at the start of the whole value: Git
+// accepts (and can print back) a value containing an embedded newline, and
+// a value like "https://github.com/org/repo.git\nfile:///Users/alice/x.git"
+// has a safe first line but a local-path second line — checking only
+// whether the whole trimmed value starts with a local-path marker would
+// miss it and let that second line's absolute path through unredacted.
+function isLocalAbsolutePath(value: string): boolean {
+  return value.split("\n").some((line) => isLocalAbsolutePathLine(line));
 }
 
 /**
