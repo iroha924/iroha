@@ -40,3 +40,28 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+
+  # Uses the gitleaks CLI directly (not gitleaks-action, which requires a
+  # paid GITLEAKS_LICENSE for organization-owned repositories). The core CLI
+  # is MIT-licensed and free; verified by running it locally against this
+  # repo's history before adding this job.
+  secrets-scan:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - run: |
+          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 \
+            git /repo --no-banner --redact -v
+
+  # SARIF/Code Scanning upload is skipped (upload-sarif: false) since it
+  # requires GitHub Advanced Security on private repos; the vulnerability
+  # check itself (fail-on-vuln) still gates the job regardless of visibility.
+  dependency-scan:
+    permissions:
+      contents: read
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.3.8
+    with:
+      upload-sarif: false

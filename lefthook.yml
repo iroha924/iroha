@@ -1,0 +1,35 @@
+# Verified against the installed lefthook 2.1.10 binary (`lefthook validate`
+# + live commit tests), not only documentation. See README.md.
+pre-commit:
+  parallel: true
+  jobs:
+    - name: biome
+      glob: "*.{js,jsx,ts,tsx,json,jsonc,css}"
+      run: pnpm exec biome check --write --staged --no-errors-on-unmatched
+      stage_fixed: true
+
+    - name: typecheck
+      run: pnpm typecheck
+
+    - name: secret-scan
+      run: >-
+        ! git diff --cached -U0 |
+        grep -nEI "(-----BEGIN (RSA|EC|OPENSSH|DSA|PGP) PRIVATE KEY-----|AKIA[0-9A-Z]{16}|gh[ps]_[A-Za-z0-9]{36}|xox[baprs]-[A-Za-z0-9-]{10,48}|sk-[A-Za-z0-9]{20,})"
+
+    - name: merge-conflict-markers
+      run: >-
+        ! git diff --cached -U0 |
+        grep -nE "^\+(<<<<<<< |=======$|>>>>>>> )"
+
+commit-msg:
+  jobs:
+    - name: commitlint
+      run: pnpm exec commitlint --edit {1}
+
+pre-push:
+  jobs:
+    - name: test
+      run: pnpm test
+
+    - name: build
+      run: pnpm build

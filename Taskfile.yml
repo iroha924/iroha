@@ -1,0 +1,59 @@
+# Thin wrapper around the pnpm/turbo scripts in package.json — this file is
+# not a second source of truth for build logic, only a nicer CLI surface.
+version: "3"
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+
+  install:
+    desc: Install workspace dependencies (frozen lockfile)
+    cmds:
+      - corepack pnpm install --frozen-lockfile
+
+  format:
+    desc: Format all files with Biome
+    cmds:
+      - pnpm format
+
+  lint:
+    desc: Lint all packages
+    cmds:
+      - pnpm lint
+
+  typecheck:
+    desc: Typecheck all packages
+    cmds:
+      - pnpm typecheck
+
+  test:
+    desc: Run unit tests across the workspace
+    cmds:
+      - pnpm test
+
+  build:
+    desc: Build all packages
+    cmds:
+      - pnpm build
+
+  verify:
+    desc: Run the full local verification sequence (lint, typecheck, test, build)
+    cmds:
+      - task: lint
+      - task: typecheck
+      - task: test
+      - task: build
+
+  hooks:
+    desc: Install git hooks (lefthook)
+    cmds:
+      - pnpm exec lefthook install
+
+  clean:
+    desc: Remove node_modules, dist, and turbo cache across the workspace
+    cmds:
+      - find . -name node_modules -type d -prune -exec rm -rf {} +
+      - find . -name dist -type d -not -path "./node_modules/*" -prune -exec rm -rf {} +
+      - find . -name .turbo -type d -prune -exec rm -rf {} +

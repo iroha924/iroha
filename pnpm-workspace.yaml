@@ -8,8 +8,12 @@ disallowWorkspaceCycles: true
 saveWorkspaceProtocol: rolling
 
 catalog:
+  ajv: 8.20.0
+  ajv-formats: 3.0.1
   "@biomejs/biome": 2.5.4
   "@changesets/cli": 2.31.1
+  "@commitlint/cli": 21.2.1
+  "@commitlint/config-conventional": 21.2.0
   "@libsql/client": 0.17.4
   "@modelcontextprotocol/sdk": 1.29.0
   "@types/node": 24.13.3
@@ -17,6 +21,7 @@ catalog:
   "@types/react-dom": 19.2.3
   "@vitejs/plugin-react": 6.0.3
   hono: 4.12.30
+  lefthook: 2.1.10
   playwright: 1.61.1
   react: 19.2.7
   react-dom: 19.2.7
@@ -25,3 +30,10 @@ catalog:
   vite: 8.1.5
   vitest: 4.1.10
   zod: 4.4.3
+
+allowBuilds:
+  # lefthook's postinstall only runs `lefthook install -f`, using the
+  # prebuilt binary resolved from a normal, checksum-verified
+  # optionalDependency (lefthook-<os>-<arch>) — no network fetch at
+  # install time. Same trust model as @biomejs/cli-* / esbuild binaries.
+  lefthook: true
