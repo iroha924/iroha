@@ -77,3 +77,29 @@ export function redactUrlLikeCredentialsInText(text: string): string {
   result += text.slice(cursor);
   return result;
 }
+
+// A filesystem path marker (POSIX absolute, home-relative, Windows
+// drive-letter, or UNC) immediately preceded by the start of the text,
+// whitespace, or a quote — never by `:` or `/`, so this never fires inside
+// an already-processed "scheme://host/path" URL's own interior (its `/`s
+// are always preceded by `:` or another `/`, neither of which is a
+// boundary here). Confirmed by reproduction: a malformed `GIT_CONFIG_GLOBAL`
+// file makes Git itself print e.g. "fatal: bad config line 1 in file
+// /tmp/xxx/.gitconfig" — an absolute path Git generated, not something a
+// caller's argument echoed back, so no scheme marker exists to scan for.
+const ABSOLUTE_PATH_IN_TEXT = /(^|[\s'"])(?:\/|~\/|[a-zA-Z]:[\\/]|\\\\)[^\s'"]*/g;
+
+/**
+ * Replaces every filesystem-path-shaped substring in free-form text (e.g.
+ * Git's own stderr) with a placeholder — mcp-contract.md §8 forbids
+ * returning filesystem absolute paths in any DB/API/MCP-reachable text, and
+ * Git's diagnostic messages can embed one with no credential-URL shape for
+ * `redactUrlLikeCredentialsInText` to catch. Apply this *after* credential
+ * redaction, not before: this leaves an already-redacted URL's own `/`s
+ * alone (see `ABSOLUTE_PATH_IN_TEXT`), but running it first would let a
+ * still-credentialed URL's leading `/` (if boundary-preceded) get replaced
+ * wholesale instead of just having its userinfo stripped.
+ */
+export function redactAbsolutePathsInText(text: string): string {
+  return text.replace(ABSOLUTE_PATH_IN_TEXT, (_match, boundary: string) => `${boundary}<path>`);
+}

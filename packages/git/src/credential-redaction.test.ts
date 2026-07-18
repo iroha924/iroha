@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  redactAbsolutePathsInText,
   redactUrlLikeCredentials,
   redactUrlLikeCredentialsInText,
 } from "./credential-redaction.js";
@@ -122,6 +123,39 @@ describe("redactUrlLikeCredentialsInText", () => {
 
     expect(redactUrlLikeCredentialsInText(text)).toBe(
       "https://one.example/x,https://two.example/y",
+    );
+  });
+});
+
+describe("redactAbsolutePathsInText", () => {
+  it("redacts an absolute path Git embeds in its own diagnostic text", () => {
+    // Confirmed by reproduction: a malformed GIT_CONFIG_GLOBAL file makes
+    // Git print this exact shape, with no credential-URL marker for
+    // redactUrlLikeCredentialsInText to find.
+    const stderr = "fatal: bad config line 1 in file /tmp/xxx/.gitconfig";
+
+    expect(redactAbsolutePathsInText(stderr)).toBe("fatal: bad config line 1 in file <path>");
+  });
+
+  it("leaves an already credential-redacted URL's own slashes untouched", () => {
+    const text = "error: pathspec 'https://example.invalid/org/repo.git' did not match";
+
+    expect(redactAbsolutePathsInText(text)).toBe(text);
+  });
+
+  it("leaves text with no absolute path unchanged", () => {
+    const text = "fatal: not a git repository (or any of the parent directories): .git";
+
+    expect(redactAbsolutePathsInText(text)).toBe(text);
+  });
+
+  it("redacts a path at the very start of the text", () => {
+    // The whole run of non-whitespace/quote characters is consumed as part
+    // of the path match, including a trailing punctuation character like
+    // ":" — a minor cosmetic loss, not a correctness issue, given the goal
+    // is eliminating the path text, not reformatting the surrounding prose.
+    expect(redactAbsolutePathsInText("/etc/passwd: permission denied")).toBe(
+      "<path> permission denied",
     );
   });
 });

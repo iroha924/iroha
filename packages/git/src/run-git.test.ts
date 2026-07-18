@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -172,6 +172,37 @@ describe("runGit", () => {
         process.env.GIT_TRACE = previousTrace;
       }
       await removeTempDir(traceDir);
+    }
+  });
+
+  it("redacts an absolute path Git itself embeds in stderr, not just credentialed URLs", async () => {
+    const configDir = await mkdtemp(join(tmpdir(), "iroha-git-badconfig-test-"));
+    const badConfigFile = join(configDir, "gitconfig");
+    const previousConfigGlobal = process.env.GIT_CONFIG_GLOBAL;
+    try {
+      // Confirmed by manual reproduction: a malformed file referenced via
+      // GIT_CONFIG_GLOBAL makes Git print its own absolute path in stderr
+      // (e.g. "fatal: bad config line 1 in file /tmp/xxx/gitconfig") — a
+      // path Git generated itself, with no credential-URL shape for
+      // redactUrlLikeCredentialsInText alone to catch.
+      await writeFile(badConfigFile, "[bad\n", "utf8");
+      process.env.GIT_CONFIG_GLOBAL = badConfigFile;
+
+      const result = await runGit(["rev-parse", "--show-toplevel"], { cwd: repoDir });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        const details = result.error.details as { stderr?: string } | undefined;
+        expect(details?.stderr?.includes(badConfigFile)).toBe(false);
+        expect(details?.stderr?.includes(configDir)).toBe(false);
+      }
+    } finally {
+      if (previousConfigGlobal === undefined) {
+        delete process.env.GIT_CONFIG_GLOBAL;
+      } else {
+        process.env.GIT_CONFIG_GLOBAL = previousConfigGlobal;
+      }
+      await removeTempDir(configDir);
     }
   });
 

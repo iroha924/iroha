@@ -16,8 +16,9 @@ import { runGit } from "./run-git.js";
 // drive letter, or UNC path) found anywhere in the value, not just at the
 // very start. Confirmed by reproduction across several rounds that Git
 // stores two values joined with no helpful separator of their own —
-// newline, a literal space, a comma, a semicolon — verbatim as a single
-// config value, so a token/line-start-only scan keeps finding a new joiner
+// newline, a literal space, a comma, a semicolon, a bare `(` — verbatim as
+// a single config value, so a token/line-start-only scan (or a boundary set
+// enumerated one reported joiner at a time) keeps finding a new joiner
 // character it doesn't yet handle. Scanning the whole, unsplit value for a
 // marker anywhere sidesteps needing to enumerate every joiner Git happens
 // to tolerate.
@@ -30,7 +31,18 @@ import { runGit } from "./run-git.js";
 // "://" reduces to exactly that two-character shape). The boundary is what
 // tells a marker starting a NEW segment apart from one that's merely part
 // of an already-safe URL's interior.
-const LOCAL_PATH_MARKER = /(?:^|[\s,;])(?:file:\/+|\/|[a-zA-Z]:[\\/]|\\\\)/i;
+//
+// The boundary set here is credential-redaction.ts's `HARD_DELIMITER`
+// (whitespace and enclosing/quoting punctuation) plus `,` and `;` — which
+// `HARD_DELIMITER` deliberately excludes, since those can be part of a
+// legitimate password there. That exclusion doesn't apply here: this
+// function's only failure mode from over-detecting is an overly cautious
+// `null` (safe), never a leak, so being more aggressive about what counts
+// as a boundary is fine. Kept as a separate literal rather than importing
+// `HARD_DELIMITER` (2 near-duplicate character classes doesn't meet this
+// project's 3-occurrence bar for extracting a shared constant) — if either
+// set changes, check whether the other should too.
+const LOCAL_PATH_MARKER = /(?:^|[\s'"<>()[\]{},;])(?:file:\/+|\/|[a-zA-Z]:[\\/]|\\\\)/i;
 
 function isLocalAbsolutePath(value: string): boolean {
   return LOCAL_PATH_MARKER.test(value);

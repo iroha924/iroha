@@ -1,7 +1,10 @@
 import type { ExecFileException } from "node:child_process";
 import { execFile } from "node:child_process";
 import { err, IrohaError, ok, type Result } from "@iroha/domain";
-import { redactUrlLikeCredentialsInText } from "./credential-redaction.js";
+import {
+  redactAbsolutePathsInText,
+  redactUrlLikeCredentialsInText,
+} from "./credential-redaction.js";
 
 export interface RunGitOptions {
   cwd: string;
@@ -159,9 +162,13 @@ export function runGit(
           // is never a value a caller would pass a secret as, so it's safe
           // to keep for diagnostics; still run it through the redactor as
           // defense in depth since it costs nothing. `stderr` still needs
-          // redaction: it's Git's own output, required by location.ts and
-          // remote.ts to distinguish known failure conditions, so it can't
-          // simply be omitted the way our own args construction can.
+          // both redactors: it's Git's own output, required by location.ts
+          // to distinguish known failure conditions, so it can't simply be
+          // omitted the way our own args construction can — and Git's own
+          // diagnostic text can embed an absolute filesystem path with no
+          // credential-URL shape (confirmed by reproduction: a malformed
+          // global config makes `git rev-parse` print that config file's
+          // absolute path), which only `redactAbsolutePathsInText` catches.
           const firstArg = args[0];
           const subcommand =
             firstArg !== undefined ? redactUrlLikeCredentialsInText(firstArg) : "(no subcommand)";
@@ -174,7 +181,7 @@ export function runGit(
                   argCount: args.length,
                   exitCode: error.code ?? null,
                   signal: error.signal ?? null,
-                  stderr: redactUrlLikeCredentialsInText(stderr.trim()),
+                  stderr: redactAbsolutePathsInText(redactUrlLikeCredentialsInText(stderr.trim())),
                 },
               }),
             ),

@@ -103,6 +103,22 @@ describe("sanitizeRemoteUrl", () => {
     expect(sanitizeRemoteUrl(semicolonJoined)).toBe(null);
   });
 
+  it("suppresses a file: URL joined to other content by a parenthesis with no whitespace", () => {
+    // Confirmed by reproduction: Git stores this verbatim as one value. "("
+    // is one of credential-redaction.ts's HARD_DELIMITER characters, so an
+    // earlier boundary set covering only whitespace/comma/semicolon missed
+    // it, even though the sibling module already treated it as a boundary.
+    const parenJoined = "https://github.com/org/repo.git(file:///Users/alice/private.git";
+
+    expect(sanitizeRemoteUrl(parenJoined)).toBe(null);
+  });
+
+  it("suppresses a file: URL joined to other content by an angle bracket with no whitespace", () => {
+    const angleJoined = "https://github.com/org/repo.git<file:///Users/alice/private.git";
+
+    expect(sanitizeRemoteUrl(angleJoined)).toBe(null);
+  });
+
   it("strips a credential-bearing query string", () => {
     expect(sanitizeRemoteUrl("https://github.com/org/repo.git?access_token=SECRET")).toBe(
       "https://github.com/org/repo.git",
