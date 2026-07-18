@@ -56,12 +56,17 @@ jobs:
           docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 \
             git /repo --no-banner --redact -v
 
-  # SARIF/Code Scanning upload is skipped (upload-sarif: false) since it
-  # requires GitHub Advanced Security on private repos; the vulnerability
-  # check itself (fail-on-vuln) still gates the job regardless of visibility.
+  # iroha924/iroha is public, so Code Scanning (SARIF upload) is free and
+  # enabled. The reusable workflow's own job declares these three
+  # permissions unconditionally, so the caller must grant them even with
+  # upload-sarif: false — verified by an actual failed run (startup_failure:
+  # "requesting 'actions: read, security-events: write', but is only
+  # allowed 'actions: none, security-events: none'") before this fix.
   dependency-scan:
     permissions:
+      actions: read
       contents: read
+      security-events: write
     uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.3.8
     with:
-      upload-sarif: false
+      upload-sarif: true
