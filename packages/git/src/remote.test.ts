@@ -87,6 +87,22 @@ describe("sanitizeRemoteUrl", () => {
     expect(sanitizeRemoteUrl(spaceJoined)).toBe(null);
   });
 
+  it("suppresses a file: URL joined to other content by a comma with no whitespace", () => {
+    // Confirmed by reproduction: Git stores this verbatim as one value. A
+    // whitespace-only token split (an earlier version of this check) never
+    // sees a boundary here at all, since there is no whitespace anywhere in
+    // the string.
+    const commaJoined = "https://github.com/org/repo.git,file:///Users/alice/private.git";
+
+    expect(sanitizeRemoteUrl(commaJoined)).toBe(null);
+  });
+
+  it("suppresses a file: URL joined to other content by a semicolon with no whitespace", () => {
+    const semicolonJoined = "https://github.com/org/repo.git;file:///Users/alice/private.git";
+
+    expect(sanitizeRemoteUrl(semicolonJoined)).toBe(null);
+  });
+
   it("strips a credential-bearing query string", () => {
     expect(sanitizeRemoteUrl("https://github.com/org/repo.git?access_token=SECRET")).toBe(
       "https://github.com/org/repo.git",

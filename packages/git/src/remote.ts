@@ -12,35 +12,28 @@ import { runGit } from "./run-git.js";
 // (database-schema.md) is nullable, so suppressing it entirely for a
 // local-path remote applies that existing invariant rather than adding a
 // new one.
-const WINDOWS_DRIVE_PATH = /^[a-zA-Z]:[\\/]/;
-const UNC_PATH = /^\\\\/;
-// One or more slashes, not exactly two: confirmed by reproduction that Git
-// accepts and stores `file:/Users/alice/private.git` (a single slash) as a
-// remote URL identically to the more familiar `file://`/`file:///` forms —
-// all three name a local, absolute path. `file:relative/path` (no slash at
-// all right after the colon) is deliberately excluded, matching this
-// module's existing scope of only suppressing *absolute* local paths.
-const FILE_SCHEME = /^file:\/+/i;
+// A local-path marker (`file:` scheme, bare POSIX absolute path, Windows
+// drive letter, or UNC path) found anywhere in the value, not just at the
+// very start. Confirmed by reproduction across several rounds that Git
+// stores two values joined with no helpful separator of their own —
+// newline, a literal space, a comma, a semicolon — verbatim as a single
+// config value, so a token/line-start-only scan keeps finding a new joiner
+// character it doesn't yet handle. Scanning the whole, unsplit value for a
+// marker anywhere sidesteps needing to enumerate every joiner Git happens
+// to tolerate.
+//
+// The marker must still be preceded by the start of the value or one of
+// those separators — not truly "anywhere" — because without that a bare
+// `/` would false-positive on every ordinary URL's own path, and a lone
+// `[a-zA-Z]:` would false-positive on the "s:" that sits right before
+// "://" in every "https://"/"ssh://" (any scheme name ending just before
+// "://" reduces to exactly that two-character shape). The boundary is what
+// tells a marker starting a NEW segment apart from one that's merely part
+// of an already-safe URL's interior.
+const LOCAL_PATH_MARKER = /(?:^|[\s,;])(?:file:\/+|\/|[a-zA-Z]:[\\/]|\\\\)/i;
 
-function isLocalAbsolutePathToken(token: string): boolean {
-  return (
-    FILE_SCHEME.test(token) ||
-    token.startsWith("/") ||
-    WINDOWS_DRIVE_PATH.test(token) ||
-    UNC_PATH.test(token)
-  );
-}
-
-// Checked token by token (split on any whitespace, not just newlines), not
-// just at the start of the whole value: Git accepts (and can print back) a
-// value containing an embedded newline OR a literal space — confirmed by
-// reproduction that `git remote add origin 'https://x/repo.git
-// /Users/alice/private.git'` stores that verbatim as one config value — so
-// a local path can appear anywhere after other, safe-looking content.
-// `String.prototype.split(/\s+/)` already splits on "\n" (it's whitespace),
-// so this single split covers both the newline- and space-joined cases.
 function isLocalAbsolutePath(value: string): boolean {
-  return value.split(/\s+/).some((token) => isLocalAbsolutePathToken(token));
+  return LOCAL_PATH_MARKER.test(value);
 }
 
 /**
