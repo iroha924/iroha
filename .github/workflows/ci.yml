@@ -3,12 +3,16 @@
 # https://github.com/actions/runner-images (2026-07-18):
 #   macos-14        -> macOS 14 arm64 (GitHub flags this image "Deprecated"; still GA today.
 #                       Re-check runner-images before it is removed.)
-#   macos-14-large  -> macOS 14 x64 (Intel; only "-large" runners still ship x64 macOS.
-#                       Large runners require a paid plan/org runner group — see WP-00 risks.)
 #   ubuntu-22.04    -> Ubuntu 22.04 x64
 #   ubuntu-22.04-arm -> Ubuntu 22.04 arm64
 #   windows-2025    -> Windows 11 x64 proxy (Windows Server; native Win11 is not hosted)
 #   WSL2 is not representable on hosted runners; covered by later dedicated jobs/fixtures.
+#
+#   macOS x64 ("-large" runners, the only hosted x64 macOS option left) is
+#   intentionally NOT covered here: it requires a paid spending limit on
+#   this GitHub account (confirmed by an actual failed run: "recent account
+#   payments have failed or your spending limit needs to be increased").
+#   See implementation/decision-log.md ID-021.
 name: CI
 
 on:
@@ -23,7 +27,6 @@ jobs:
       matrix:
         os:
           - macos-14
-          - macos-14-large
           - ubuntu-22.04
           - ubuntu-22.04-arm
           - windows-2025
