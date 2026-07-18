@@ -1,0 +1,27 @@
+{
+  "name": "@iroha/dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "iroha — local dashboard SPA",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "biome check src",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  }
+}

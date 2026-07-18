@@ -1,0 +1,25 @@
+{
+  "name": "iroha",
+  "private": true,
+  "packageManager": "pnpm@11.14.0",
+  "engines": {
+    "node": ">=24.0.0 <25"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:contracts": "turbo run test:contracts",
+    "test:integration": "turbo run test:integration",
+    "test:e2e": "turbo run test:e2e",
+    "test:package": "turbo run test:package",
+    "format": "biome format --write .",
+    "changeset": "changeset"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "catalog:",
+    "@changesets/cli": "catalog:",
+    "turbo": "2.10.5"
+  }
+}

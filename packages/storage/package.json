@@ -1,0 +1,33 @@
+{
+  "name": "@iroha/storage",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "iroha — libSQL connection, migrations, repositories",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown src/index.ts --dts",
+    "lint": "biome check src",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@iroha/domain": "workspace:*",
+    "@iroha/config": "workspace:*",
+    "@libsql/client": "catalog:"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

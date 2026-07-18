@@ -1,0 +1,42 @@
+# WP-00 CI matrix skeleton.
+# Tier 1 mapping (docs/product/implementation/compatibility.md §6), verified against
+# https://github.com/actions/runner-images (2026-07-18):
+#   macos-14        -> macOS 14 arm64 (GitHub flags this image "Deprecated"; still GA today.
+#                       Re-check runner-images before it is removed.)
+#   macos-14-large  -> macOS 14 x64 (Intel; only "-large" runners still ship x64 macOS.
+#                       Large runners require a paid plan/org runner group — see WP-00 risks.)
+#   ubuntu-22.04    -> Ubuntu 22.04 x64
+#   ubuntu-22.04-arm -> Ubuntu 22.04 arm64
+#   windows-2025    -> Windows 11 x64 proxy (Windows Server; native Win11 is not hosted)
+#   WSL2 is not representable on hosted runners; covered by later dedicated jobs/fixtures.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-14
+          - macos-14-large
+          - ubuntu-22.04
+          - ubuntu-22.04-arm
+          - windows-2025
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - run: corepack enable
+      - run: corepack pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build

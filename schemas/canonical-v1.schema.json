@@ -1,0 +1,466 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://iroha-labs.com/schemas/canonical-v1.schema.json",
+  "title": "iroha canonical document envelope v1",
+  "type": "object",
+  "required": ["frontmatter", "body"],
+  "properties": {
+    "frontmatter": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "#/$defs/commonFrontmatter" },
+        {
+          "oneOf": [
+            { "$ref": "#/$defs/sessionSummary" },
+            { "$ref": "#/$defs/decision" },
+            { "$ref": "#/$defs/rule" },
+            { "$ref": "#/$defs/concept" },
+            { "$ref": "#/$defs/insight" },
+            { "$ref": "#/$defs/incident" },
+            { "$ref": "#/$defs/pattern" },
+            { "$ref": "#/$defs/review" }
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "body": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100000
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "ulid": {
+      "type": "string",
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "entityId": {
+      "type": "string",
+      "pattern": "^(ses|dec|rul|con|ins|inc|pat|rev|chk|iss|pr|cmt|com|fil|sym|act|repo)_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "label": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "maxLength": 64
+    },
+    "actorRef": {
+      "type": "object",
+      "required": ["provider", "display_name"],
+      "properties": {
+        "provider": {
+          "enum": ["git", "github", "gitlab", "local"]
+        },
+        "id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "display_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        }
+      },
+      "additionalProperties": false
+    },
+    "scope": {
+      "type": "object",
+      "required": ["repository", "paths", "symbols"],
+      "properties": {
+        "repository": {
+          "type": "string",
+          "pattern": "^repo_[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "paths": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "not": { "pattern": "^(?:/|[A-Za-z]:|.*(?:^|/)\\.\\.(?:/|$))" }
+          },
+          "uniqueItems": true
+        },
+        "symbols": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "uniqueItems": true
+        },
+        "languages": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9+#.-]{1,32}$"
+          },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "source": {
+      "type": "object",
+      "required": ["type", "ref"],
+      "properties": {
+        "type": {
+          "enum": [
+            "session",
+            "checkpoint",
+            "issue",
+            "pull_request",
+            "review",
+            "commit",
+            "file",
+            "symbol",
+            "document",
+            "url"
+          ]
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "maxLength": 2048
+        },
+        "path": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "line_start": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "line_end": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "quote_hash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "captured_at": {
+          "$ref": "#/$defs/timestamp"
+        }
+      },
+      "additionalProperties": false
+    },
+    "relation": {
+      "type": "object",
+      "required": ["type", "target"],
+      "properties": {
+        "type": {
+          "enum": [
+            "ADDRESSES",
+            "IMPLEMENTED_IN",
+            "PRODUCED",
+            "AUTHORED_BY",
+            "REVIEWED_IN",
+            "DERIVED_FROM",
+            "APPLIES_TO",
+            "AFFECTS",
+            "VALIDATED_BY",
+            "BLOCKED_BY",
+            "SUPERSEDES",
+            "CONTRADICTS",
+            "DUPLICATES",
+            "RELATED_TO",
+            "PARENT_OF"
+          ]
+        },
+        "target": {
+          "$ref": "#/$defs/entityId"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "additionalProperties": false
+    },
+    "commonFrontmatter": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "id",
+        "type",
+        "title",
+        "status",
+        "revision",
+        "created_at",
+        "updated_at",
+        "created_by",
+        "approved_by",
+        "approved_at",
+        "labels",
+        "scope",
+        "sources",
+        "relations"
+      ],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "id": { "$ref": "#/$defs/entityId" },
+        "type": {
+          "enum": [
+            "session_summary",
+            "decision",
+            "rule",
+            "concept",
+            "insight",
+            "incident",
+            "pattern",
+            "review"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "status": {
+          "enum": ["approved", "superseded", "archived"]
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "created_at": { "$ref": "#/$defs/timestamp" },
+        "updated_at": { "$ref": "#/$defs/timestamp" },
+        "created_by": { "$ref": "#/$defs/actorRef" },
+        "approved_by": { "$ref": "#/$defs/actorRef" },
+        "approved_at": { "$ref": "#/$defs/timestamp" },
+        "labels": {
+          "type": "array",
+          "maxItems": 50,
+          "items": { "$ref": "#/$defs/label" },
+          "uniqueItems": true
+        },
+        "scope": { "$ref": "#/$defs/scope" },
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "items": { "$ref": "#/$defs/source" }
+        },
+        "relations": {
+          "type": "array",
+          "maxItems": 200,
+          "items": { "$ref": "#/$defs/relation" }
+        }
+      }
+    },
+    "sessionSummary": {
+      "type": "object",
+      "required": ["session"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^ses_[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "type": { "const": "session_summary" },
+        "session": {
+          "type": "object",
+          "required": ["platforms", "run_count", "outcome"],
+          "properties": {
+            "platforms": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "enum": ["claude_code", "codex"] },
+              "uniqueItems": true
+            },
+            "run_count": { "type": "integer", "minimum": 1 },
+            "outcome": {
+              "enum": ["completed", "partial", "blocked", "no_change"]
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "required": ["decision"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^dec_[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "type": { "const": "decision" },
+        "decision": {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "enum": ["architecture", "product", "implementation", "process"]
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "rule": {
+      "type": "object",
+      "required": ["rule"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^rul_[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "type": { "const": "rule" },
+        "rule": {
+          "type": "object",
+          "required": ["enforcement", "severity"],
+          "properties": {
+            "enforcement": { "enum": ["advisory", "guardrail"] },
+            "severity": { "enum": ["info", "warning", "error"] },
+            "guard": {
+              "type": "object",
+              "required": ["tools", "paths"],
+              "properties": {
+                "tools": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": { "type": "string", "maxLength": 100 },
+                  "uniqueItems": true
+                },
+                "paths": {
+                  "type": "array",
+                  "items": { "type": "string", "maxLength": 500 },
+                  "uniqueItems": true
+                },
+                "deny_commands": {
+                  "type": "array",
+                  "items": { "type": "string", "maxLength": 500 },
+                  "uniqueItems": true
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": { "enforcement": { "const": "guardrail" } },
+                "required": ["enforcement"]
+              },
+              "then": { "properties": { "guard": true }, "required": ["guard"] }
+            },
+            {
+              "if": {
+                "properties": { "enforcement": { "const": "advisory" } },
+                "required": ["enforcement"]
+              },
+              "then": { "not": { "required": ["guard"] } }
+            }
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "concept": {
+      "type": "object",
+      "required": ["concept"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^con_[0-9A-HJKMNP-TV-Z]{26}$" },
+        "type": { "const": "concept" },
+        "concept": {
+          "type": "object",
+          "required": ["domain"],
+          "properties": { "domain": { "type": "string", "maxLength": 120 } },
+          "additionalProperties": false
+        }
+      }
+    },
+    "insight": {
+      "type": "object",
+      "required": ["insight"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^ins_[0-9A-HJKMNP-TV-Z]{26}$" },
+        "type": { "const": "insight" },
+        "insight": {
+          "type": "object",
+          "required": ["category"],
+          "properties": {
+            "category": {
+              "enum": ["implementation", "review", "quality", "domain", "process"]
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "incident": {
+      "type": "object",
+      "required": ["incident"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^inc_[0-9A-HJKMNP-TV-Z]{26}$" },
+        "type": { "const": "incident" },
+        "incident": {
+          "type": "object",
+          "required": ["severity", "resolution"],
+          "properties": {
+            "severity": { "enum": ["low", "medium", "high", "critical"] },
+            "resolution": { "enum": ["open", "mitigated", "resolved"] }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "pattern": {
+      "type": "object",
+      "required": ["pattern"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^pat_[0-9A-HJKMNP-TV-Z]{26}$" },
+        "type": { "const": "pattern" },
+        "pattern": {
+          "type": "object",
+          "required": ["maturity"],
+          "properties": {
+            "maturity": { "enum": ["emerging", "established", "deprecated"] }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "required": ["review"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^rev_[0-9A-HJKMNP-TV-Z]{26}$" },
+        "type": { "const": "review" },
+        "review": {
+          "type": "object",
+          "required": ["category"],
+          "properties": {
+            "category": {
+              "enum": [
+                "correctness",
+                "security",
+                "performance",
+                "maintainability",
+                "testing",
+                "product"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  }
+}
