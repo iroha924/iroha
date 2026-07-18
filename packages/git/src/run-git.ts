@@ -1,9 +1,6 @@
 import { execFile } from "node:child_process";
 import { err, IrohaError, ok, type Result } from "@iroha/domain";
-import {
-  redactUrlLikeCredentials,
-  redactUrlLikeCredentialsInText,
-} from "./credential-redaction.js";
+import { redactUrlLikeCredentialsInText } from "./credential-redaction.js";
 
 export interface RunGitOptions {
   cwd: string;
@@ -80,6 +77,15 @@ function buildCleanEnv(): NodeJS.ProcessEnv {
   for (const key of [...LOCAL_GIT_ENV_VARS, ...GIT_TRACE_ENV_VARS]) {
     delete env[key];
   }
+  // `location.ts`/`remote.ts` pattern-match specific English stderr prefixes
+  // ("fatal: not a git repository", "No such remote") to distinguish known
+  // conditions from other failures. Git's UI strings are gettext-wrapped and
+  // translated under a non-English locale, which would make those matches
+  // silently stop working. `LANGUAGE` takes priority over `LC_ALL`/`LANG`
+  // for GNU gettext lookup, so it must be cleared too, not just overridden.
+  env.LC_ALL = "C";
+  env.LANG = "C";
+  delete env.LANGUAGE;
   return env;
 }
 
@@ -124,8 +130,11 @@ export function runGit(
           // itself redacts credentials from *its own* "unable to access"
           // network errors, but echoes an unmatched pathspec argument back
           // verbatim (confirmed by reproduction), so stderr needs the same
-          // treatment as args.
-          const redactedArgs = args.map(redactUrlLikeCredentials);
+          // treatment as args. Uses the text-scanning redactor, not the
+          // whole-string one: a `-c key=value` argument embeds a URL after
+          // an arbitrary prefix (e.g. `http.extraHeader=Authorization: ...`),
+          // which a matcher anchored to the start of the string would miss.
+          const redactedArgs = args.map(redactUrlLikeCredentialsInText);
           resolve(
             err(
               new IrohaError("INTERNAL_ERROR", `git ${redactedArgs.join(" ")} failed`, {

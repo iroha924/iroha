@@ -60,6 +60,22 @@ describe("runGit", () => {
     }
   });
 
+  it("redacts a credentialed URL embedded mid-argument, not just whole-string URLs", async () => {
+    // A `-c key=value`-shaped argument (Git's config-override form) can
+    // embed a credentialed URL anywhere after the `=`; the argument itself
+    // does not START WITH scheme://, so an anchored (whole-string) URL
+    // matcher misses it entirely.
+    const configArg =
+      "http.extraHeader=Authorization: Bearer https://ghp_secrettoken@example.invalid/";
+    const result = await runGit(["not-a-real-subcommand", "-c", configArg], { cwd: repoDir });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message.includes("ghp_secrettoken")).toBe(false);
+      expect(JSON.stringify(result.error.details).includes("ghp_secrettoken")).toBe(false);
+    }
+  });
+
   it("does not leak a credentialed argument through error.cause", async () => {
     const credentialedUrl = "https://ghp_secrettoken@example.invalid/org/repo.git";
     const result = await runGit(["not-a-real-subcommand", credentialedUrl], { cwd: repoDir });
@@ -189,6 +205,39 @@ describe("runGit", () => {
         process.env.GIT_REDIRECT_STDERR = previousStderr;
       }
       await removeTempDir(redirectDir);
+    }
+  });
+
+  it("forces a C locale regardless of the parent process's LANG/LC_ALL/LANGUAGE", async () => {
+    // location.ts/remote.ts pattern-match specific English stderr text
+    // ("fatal: not a git repository", "No such remote"), which breaks under
+    // a translated Git build. This machine's Git has no gettext/NLS support
+    // (confirmed via `git --version --build-options`), so this can't
+    // reproduce an actual translated message locally — it only proves the
+    // locale variables set here don't leak through from the parent process.
+    const previousLang = process.env.LANG;
+    const previousLcAll = process.env.LC_ALL;
+    const previousLanguage = process.env.LANGUAGE;
+    try {
+      process.env.LANG = "ja_JP.UTF-8";
+      process.env.LC_ALL = "ja_JP.UTF-8";
+      process.env.LANGUAGE = "ja_JP.UTF-8";
+
+      const result = await runGit(["rev-parse", "--is-inside-work-tree"], { cwd: repoDir });
+
+      expect(result).toEqual({ ok: true, value: "true" });
+    } finally {
+      for (const [key, previous] of [
+        ["LANG", previousLang],
+        ["LC_ALL", previousLcAll],
+        ["LANGUAGE", previousLanguage],
+      ] as const) {
+        if (previous === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = previous;
+        }
+      }
     }
   });
 });

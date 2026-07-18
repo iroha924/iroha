@@ -131,6 +131,26 @@ describe("toRepoRelativePath", () => {
     }
   });
 
+  it("rejects a path that escapes through a symlink followed by ..", async () => {
+    // repo/link -> outside, so "link/../secret.txt" must resolve through
+    // the symlink FIRST, then go up from `outside` — landing outside the
+    // repo — not lexically cancel "link/.." back down to the repo root
+    // before the symlink is ever considered. Built with a template literal,
+    // not `path.join`/`path.resolve`: both would collapse "link/.." down to
+    // nothing before the string ever reached `toRepoRelativePath`, silently
+    // testing something else entirely.
+    await writeFile(join(outside, "secret.txt"), "top secret", "utf8");
+    const escapeLink = join(root, "link");
+    await symlink(outside, escapeLink);
+
+    const result = await toRepoRelativePath(root, `${escapeLink}/../secret.txt`);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("INVALID_INPUT");
+    }
+  });
+
   it("accepts a symlink inside the root that stays inside it", async () => {
     const realDir = join(root, "real-target");
     await mkdir(realDir);

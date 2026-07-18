@@ -85,4 +85,16 @@ describe("redactUrlLikeCredentialsInText", () => {
 
     expect(redactUrlLikeCredentialsInText(text)).toBe(text);
   });
+
+  it("redacts two URLs joined by a comma, with no whitespace between them", () => {
+    // Git accepts (and can print back) a value like this; without a comma
+    // boundary the whole thing matches as one URL, and the second URL's
+    // credential is treated as part of the first URL's path/query and
+    // survives redaction.
+    const text = "https://safe.example/x,https://tok@evil.example/y";
+
+    expect(redactUrlLikeCredentialsInText(text)).toBe(
+      "https://safe.example/x,https://evil.example/y",
+    );
+  });
 });

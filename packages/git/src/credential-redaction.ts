@@ -22,7 +22,14 @@ export function redactUrlLikeCredentials(value: string): string {
   return `${scheme}://${rest}`;
 }
 
-const EMBEDDED_URL = /[a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^\s'"]+/g;
+// Stops at whitespace/quotes and at common human-text delimiters
+// (`,;<>()[]{}`) that can join two URLs with no whitespace between them
+// (confirmed by reproduction: "https://a/x,https://tok@b/y") — not just
+// formal URI-reserved characters, since the goal here is finding candidate
+// credential-bearing substrings conservatively, not RFC-accurate URI
+// parsing. Erring toward more (shorter) matches is safe: each is redacted
+// independently, so over-splitting never lets a credential slip through.
+const EMBEDDED_URL = /[a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^\s'",;<>()[\]{}]+/g;
 
 /**
  * Redacts every `scheme://`-shaped substring found anywhere inside free-form

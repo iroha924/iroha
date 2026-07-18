@@ -1,48 +1,66 @@
-import { lstat, readlink, realpath } from "node:fs/promises";
-import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { lstat, readlink } from "node:fs/promises";
+import { dirname, isAbsolute, join, parse, relative, sep } from "node:path";
 import { err, IrohaError, ok, type Result } from "@iroha/domain";
 
 /** Matches the SYMLOOP_MAX most platforms enforce for genuine symlink chains. */
 const MAX_SYMLINK_DEPTH = 40;
 
 /**
- * Resolves symlinks like `fs.realpath`, but tolerates a target that does not
- * exist yet (e.g. a file about to be written, or a `git rev-parse --git-path`
- * output for a namespace directory Git has not created). Walks up to the
- * nearest existing ancestor, resolves that, then rejoins the remaining
- * segments verbatim.
+ * Resolves symlinks component by component, tolerating a target that does
+ * not exist yet (e.g. a file about to be written, or a `git rev-parse
+ * --git-path` output for a namespace directory Git has not created).
  *
- * A path component that fails to resolve is *itself* checked for being a
- * dangling symlink (exists, but its target does not). Such a link is still
- * followed via `readlink` rather than treated as a literal missing path —
- * otherwise a symlink pointing outside the repository to a not-yet-created
- * file would resolve as if it were an ordinary in-repo path, silently
- * defeating symlink-escape checks in `toRepoRelativePath`.
+ * Deliberately does *not* use `path.resolve`/`path.normalize` internally:
+ * those lexically collapse `..` segments before consulting the filesystem,
+ * so a path like `link/../secret.txt` — where `link` is a symlink to
+ * `/tmp/out` — would cancel down to the literal parent directory instead of
+ * going up from `/tmp/out`, silently defeating symlink-escape checks in
+ * `toRepoRelativePath` for any caller that walks up out of a symlinked
+ * directory. Each segment is checked against the filesystem in order: a
+ * symlink is dereferenced (recursively, since its target can itself contain
+ * more symlinks or need further resolution) before the *next* segment —
+ * including `..` — is applied, so `..` always walks up from the real
+ * location a symlink pointed to, never from its nominal one.
  */
 export async function safeRealpath(targetPath: string, depth = 0): Promise<string> {
-  const resolved = resolve(targetPath);
-  try {
-    return await realpath(resolved);
-  } catch {
-    const stat = await lstat(resolved).catch(() => undefined);
-    if (stat?.isSymbolicLink()) {
-      if (depth >= MAX_SYMLINK_DEPTH) {
-        throw new Error(`Too many levels of symbolic links resolving ${targetPath}`);
-      }
-      const linkTarget = await readlink(resolved);
-      const absoluteLinkTarget = isAbsolute(linkTarget)
-        ? linkTarget
-        : resolve(dirname(resolved), linkTarget);
-      return safeRealpath(absoluteLinkTarget, depth + 1);
+  if (depth > MAX_SYMLINK_DEPTH) {
+    throw new Error(`Too many levels of symbolic links resolving ${targetPath}`);
+  }
+
+  // Concatenation, not `path.join` (which would collapse ".." here too):
+  // see the class-level docstring above.
+  const absolute = isAbsolute(targetPath) ? targetPath : `${process.cwd()}${sep}${targetPath}`;
+  const { root } = parse(absolute);
+  const segments = absolute
+    .slice(root.length)
+    .split(/[/\\]/)
+    .filter((segment) => segment.length > 0 && segment !== ".");
+
+  let current = root;
+  for (const segment of segments) {
+    if (segment === "..") {
+      current = dirname(current);
+      continue;
     }
 
-    const parent = dirname(resolved);
-    if (parent === resolved) {
-      return resolved;
+    const candidate = join(current, segment);
+    const stat = await lstat(candidate).catch(() => undefined);
+    if (stat === undefined) {
+      // Does not exist yet — keep it (and everything after it) literal.
+      current = candidate;
+      continue;
     }
-    const realParent = await safeRealpath(parent, depth);
-    return resolve(realParent, basename(resolved));
+    if (stat.isSymbolicLink()) {
+      const linkTarget = await readlink(candidate);
+      const absoluteLinkTarget = isAbsolute(linkTarget)
+        ? linkTarget
+        : join(dirname(candidate), linkTarget);
+      current = await safeRealpath(absoluteLinkTarget, depth + 1);
+    } else {
+      current = candidate;
+    }
   }
+  return current;
 }
 
 /**
@@ -55,7 +73,12 @@ export async function toRepoRelativePath(
   root: string,
   targetPath: string,
 ): Promise<Result<string, IrohaError>> {
-  const absoluteTarget = isAbsolute(targetPath) ? targetPath : resolve(root, targetPath);
+  // Plain concatenation, not `path.join`/`path.resolve`: both of those
+  // lexically collapse `..` before `safeRealpath` ever sees it, which is
+  // exactly the bug this function exists to avoid (see `safeRealpath`'s
+  // docstring) — the raw, uncollapsed string must reach `safeRealpath` so
+  // it can walk `..` symlink-aware, one segment at a time.
+  const absoluteTarget = isAbsolute(targetPath) ? targetPath : `${root}${sep}${targetPath}`;
   let realRoot: string;
   let realTarget: string;
   try {
