@@ -1,0 +1,5 @@
+# Normalize all text files to LF regardless of platform checkout settings.
+# Without this, Windows runners (core.autocrlf) convert LF -> CRLF on
+# checkout, which then fails `biome check` (formatter expects LF) —
+# confirmed by an actual windows-2025 CI failure before this file existed.
+* text=auto eol=lf
