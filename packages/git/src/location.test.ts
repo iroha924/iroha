@@ -1,4 +1,4 @@
-import { mkdir, realpath, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -150,5 +150,26 @@ describe("resolveGitPath", () => {
     const result = await resolveGitPath(repoDir, "cycle-a");
 
     expect(result.ok).toBe(false);
+  });
+
+  it("rejects a namespaced path that escapes Git state via a symlink", async () => {
+    // `git rev-parse --git-path <name>` only constructs the syntactic path
+    // (confirmed by reproduction: it still prints ".git/iroha" unchanged
+    // even when that path is a symlink) — it never checks whether a
+    // component is a symlink, so a compromised/replaced ".git/iroha" must
+    // be caught by resolveGitPath itself, not trusted.
+    const outside = await mkdtemp(join(tmpdir(), "iroha-git-path-escape-test-"));
+    try {
+      await symlink(outside, join(repoDir, ".git", "iroha"));
+
+      const result = await resolveGitPath(repoDir, "iroha");
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe("INVALID_INPUT");
+      }
+    } finally {
+      await removeTempDir(outside);
+    }
   });
 });

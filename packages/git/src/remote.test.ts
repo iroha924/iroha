@@ -64,6 +64,15 @@ describe("sanitizeRemoteUrl", () => {
     expect(sanitizeRemoteUrl(multiline)).toBe(null);
   });
 
+  it("suppresses a local path that follows other content on the same line", () => {
+    // Git stores this verbatim as a single config value (confirmed by
+    // reproduction): a naive line-start-only check would miss the local
+    // path entirely since the line starts with a safe-looking https:// URL.
+    const spaceJoined = "https://github.com/org/repo.git /Users/alice/private.git";
+
+    expect(sanitizeRemoteUrl(spaceJoined)).toBe(null);
+  });
+
   it("strips a credential-bearing query string", () => {
     expect(sanitizeRemoteUrl("https://github.com/org/repo.git?access_token=SECRET")).toBe(
       "https://github.com/org/repo.git",

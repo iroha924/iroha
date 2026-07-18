@@ -16,23 +16,25 @@ const WINDOWS_DRIVE_PATH = /^[a-zA-Z]:[\\/]/;
 const UNC_PATH = /^\\\\/;
 const FILE_SCHEME = /^file:\/\//i;
 
-function isLocalAbsolutePathLine(line: string): boolean {
+function isLocalAbsolutePathToken(token: string): boolean {
   return (
-    FILE_SCHEME.test(line) ||
-    line.startsWith("/") ||
-    WINDOWS_DRIVE_PATH.test(line) ||
-    UNC_PATH.test(line)
+    FILE_SCHEME.test(token) ||
+    token.startsWith("/") ||
+    WINDOWS_DRIVE_PATH.test(token) ||
+    UNC_PATH.test(token)
   );
 }
 
-// Checked line by line, not just at the start of the whole value: Git
-// accepts (and can print back) a value containing an embedded newline, and
-// a value like "https://github.com/org/repo.git\nfile:///Users/alice/x.git"
-// has a safe first line but a local-path second line — checking only
-// whether the whole trimmed value starts with a local-path marker would
-// miss it and let that second line's absolute path through unredacted.
+// Checked token by token (split on any whitespace, not just newlines), not
+// just at the start of the whole value: Git accepts (and can print back) a
+// value containing an embedded newline OR a literal space — confirmed by
+// reproduction that `git remote add origin 'https://x/repo.git
+// /Users/alice/private.git'` stores that verbatim as one config value — so
+// a local path can appear anywhere after other, safe-looking content.
+// `String.prototype.split(/\s+/)` already splits on "\n" (it's whitespace),
+// so this single split covers both the newline- and space-joined cases.
 function isLocalAbsolutePath(value: string): boolean {
-  return value.split("\n").some((line) => isLocalAbsolutePathLine(line));
+  return value.split(/\s+/).some((token) => isLocalAbsolutePathToken(token));
 }
 
 /**

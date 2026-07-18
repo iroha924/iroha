@@ -1,4 +1,4 @@
-import { isAbsolute, resolve } from "node:path";
+import { isAbsolute, resolve, sep } from "node:path";
 import { err, IrohaError, ok, type Result } from "@iroha/domain";
 import { safeRealpath } from "./paths.js";
 import { runGit } from "./run-git.js";
@@ -73,7 +73,37 @@ export async function resolveGitLocation(cwd: string): Promise<Result<GitLocatio
   return ok({ root: root.value, commonDir: commonDir.value, gitDir: gitDir.value });
 }
 
-/** Resolves a namespaced path inside the git dir, e.g. `resolveGitPath(cwd, "iroha")`. */
-export function resolveGitPath(cwd: string, name: string): Promise<Result<string, IrohaError>> {
-  return resolveGitRevParsePath(cwd, ["rev-parse", "--git-path", name]);
+/**
+ * Resolves a namespaced path inside the git dir, e.g. `resolveGitPath(cwd, "iroha")`.
+ *
+ * `git rev-parse --git-path <name>` only constructs the syntactic path (e.g.
+ * `.git/iroha`) — it does not check whether any component is a symlink.
+ * Confirmed by reproduction: replacing `.git/iroha` with a symlink to an
+ * external directory makes `--git-path iroha` still print `.git/iroha`
+ * unchanged, and resolving that via `safeRealpath` (as
+ * `resolveGitRevParsePath` does) follows the symlink to the external
+ * target with no error — so callers like `ensureRepositorySalt` would read
+ * and write `local-config.json` entirely outside Git state. design.md §6
+ * requires "symlink escape" to be a covered contract-test case for this
+ * exact resolution, so the result is rejected unless it stays inside the
+ * resolved Git common dir — which covers both the main worktree (where
+ * `--git-dir` equals `--git-common-dir`) and a linked worktree (where
+ * `--git-dir` nests under `<common-dir>/worktrees/<id>`).
+ */
+export async function resolveGitPath(
+  cwd: string,
+  name: string,
+): Promise<Result<string, IrohaError>> {
+  const path = await resolveGitRevParsePath(cwd, ["rev-parse", "--git-path", name]);
+  if (!path.ok) {
+    return path;
+  }
+  const commonDir = await resolveGitRevParsePath(cwd, ["rev-parse", "--git-common-dir"]);
+  if (!commonDir.ok) {
+    return commonDir;
+  }
+  if (path.value !== commonDir.value && !path.value.startsWith(`${commonDir.value}${sep}`)) {
+    return err(new IrohaError("INVALID_INPUT", "Resolved Git path escapes Git state"));
+  }
+  return path;
 }
