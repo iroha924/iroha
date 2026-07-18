@@ -106,6 +106,21 @@ describe("resolveGitLocation", () => {
       expect(JSON.stringify(result.error.details ?? {}).includes(outside)).toBe(false);
     }
   });
+
+  it("preserves the original error code for a non-repository Git failure", async () => {
+    // A nonexistent cwd fails at spawn time (ENOENT, empty stderr) — not
+    // Git's "fatal: not a git repository" — so it must not be mislabeled
+    // REPOSITORY_NOT_FOUND, which would hide a real environment problem
+    // from doctor/init diagnostics.
+    const nonexistentCwd = join(tmpdir(), "iroha-does-not-exist-xyz");
+
+    const result = await resolveGitLocation(nonexistentCwd);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("INTERNAL_ERROR");
+    }
+  });
 });
 
 describe("resolveGitPath", () => {

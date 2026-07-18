@@ -87,4 +87,19 @@ describe("ensureRepositorySalt", () => {
     // prior session that already used the original (unreadable) salt.
     expect(await readFile(configPath, "utf8")).toBe("{ not valid json");
   });
+
+  it("does not embed the absolute irohaDir path in the error", async () => {
+    await mkdir(irohaDir, { recursive: true });
+    await writeFile(join(irohaDir, "local-config.json"), "{ not valid json", "utf8");
+
+    const result = await ensureRepositorySalt(irohaDir, new CryptoRandomSource());
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      // mcp-contract.md §8: filesystem absolute paths are never returned to
+      // the model, and IrohaError.message/details can reach MCP responses.
+      expect(result.error.message.includes(irohaDir)).toBe(false);
+      expect(JSON.stringify(result.error.details ?? {}).includes(irohaDir)).toBe(false);
+    }
+  });
 });

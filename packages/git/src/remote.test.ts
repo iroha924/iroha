@@ -52,6 +52,17 @@ describe("sanitizeRemoteUrl", () => {
       "https://github.com/org/repo.git",
     );
   });
+
+  it("redacts every embedded URL in a multiline value", () => {
+    // Git accepts (and `remote get-url` prints back) a value containing an
+    // embedded newline; a naive single-URL-shaped regex only strips the
+    // first URL's credentials and leaves a second one after the newline.
+    const multiline = "https://user1@one.example/repo.git\nhttps://user2@two.example/other.git";
+
+    expect(sanitizeRemoteUrl(multiline)).toBe(
+      "https://one.example/repo.git\nhttps://two.example/other.git",
+    );
+  });
 });
 
 describe("getSanitizedRemoteUrl", () => {

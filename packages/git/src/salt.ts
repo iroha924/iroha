@@ -82,11 +82,11 @@ export async function ensureRepositorySalt(
     });
     return ok(salt);
   } catch (cause) {
+    // No `irohaDir` in message or details: mcp-contract.md §8 forbids
+    // returning filesystem absolute paths to the model, and this error can
+    // reach an MCP response as-is.
     return err(
-      new IrohaError("INTERNAL_ERROR", `Failed to read or write ${LOCAL_CONFIG_FILE}`, {
-        cause,
-        details: { irohaDir },
-      }),
+      new IrohaError("INTERNAL_ERROR", `Failed to read or write ${LOCAL_CONFIG_FILE}`, { cause }),
     );
   }
 }

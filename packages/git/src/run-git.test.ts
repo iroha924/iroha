@@ -159,4 +159,36 @@ describe("runGit", () => {
       }
     }
   });
+
+  it("ignores inherited GIT_REDIRECT_STDOUT/STDERR", async () => {
+    // Per Git's own docs (`git help git`), GIT_REDIRECT_STDIN/STDOUT/STDERR
+    // are Windows-only: on other platforms this assertion holds regardless
+    // of whether runGit clears them, but on the windows-2025 CI leg an
+    // uncleared GIT_REDIRECT_STDOUT would redirect Git's real stdout away
+    // from the pipe execFile reads, making this fail for real.
+    const redirectDir = await mkdtemp(join(tmpdir(), "iroha-git-redirect-test-"));
+    const redirectFile = join(redirectDir, "stdout.log");
+    const previousStdout = process.env.GIT_REDIRECT_STDOUT;
+    const previousStderr = process.env.GIT_REDIRECT_STDERR;
+    try {
+      process.env.GIT_REDIRECT_STDOUT = redirectFile;
+      process.env.GIT_REDIRECT_STDERR = redirectFile;
+
+      const result = await runGit(["rev-parse", "--is-inside-work-tree"], { cwd: repoDir });
+
+      expect(result).toEqual({ ok: true, value: "true" });
+    } finally {
+      if (previousStdout === undefined) {
+        delete process.env.GIT_REDIRECT_STDOUT;
+      } else {
+        process.env.GIT_REDIRECT_STDOUT = previousStdout;
+      }
+      if (previousStderr === undefined) {
+        delete process.env.GIT_REDIRECT_STDERR;
+      } else {
+        process.env.GIT_REDIRECT_STDERR = previousStderr;
+      }
+      await removeTempDir(redirectDir);
+    }
+  });
 });

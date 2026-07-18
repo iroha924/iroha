@@ -3,6 +3,14 @@ import { err, IrohaError, ok, type Result } from "@iroha/domain";
 import { safeRealpath } from "./paths.js";
 import { runGit } from "./run-git.js";
 
+// Confirmed by manual reproduction: `git rev-parse` prints exactly this
+// message (across --show-toplevel/--git-common-dir/--git-dir/--git-path)
+// when cwd is outside any repository. Only this specific condition should
+// become REPOSITORY_NOT_FOUND — any other runGit failure (Git missing,
+// timeout, permission denied, ...) must propagate as-is so doctor/init can
+// tell an environment problem apart from "not initialized here".
+const NOT_A_REPOSITORY = /^fatal: not a git repository/;
+
 export interface GitLocation {
   /** Working tree root (`git rev-parse --show-toplevel`). */
   root: string;
@@ -25,14 +33,18 @@ async function resolveGitRevParsePath(
 ): Promise<Result<string, IrohaError>> {
   const result = await runGit(args, { cwd });
   if (!result.ok) {
-    // No `cwd`/resolved-path values in message or details: mcp-contract.md
-    // §8 forbids returning filesystem absolute paths to the model, and this
-    // error can reach an MCP response as-is.
-    return err(
-      new IrohaError("REPOSITORY_NOT_FOUND", "Not a Git repository (or any parent)", {
-        cause: result.error,
-      }),
-    );
+    const stderr = (result.error.details as { stderr?: string } | undefined)?.stderr;
+    if (stderr !== undefined && NOT_A_REPOSITORY.test(stderr)) {
+      // No `cwd`/resolved-path values in message or details: mcp-contract.md
+      // §8 forbids returning filesystem absolute paths to the model, and
+      // this error can reach an MCP response as-is.
+      return err(
+        new IrohaError("REPOSITORY_NOT_FOUND", "Not a Git repository (or any parent)", {
+          cause: result.error,
+        }),
+      );
+    }
+    return err(result.error);
   }
   const absolute = isAbsolute(result.value) ? result.value : resolve(cwd, result.value);
   try {

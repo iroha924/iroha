@@ -1,5 +1,5 @@
 import { err, type IrohaError, ok, type Result } from "@iroha/domain";
-import { redactUrlLikeCredentials } from "./credential-redaction.js";
+import { redactUrlLikeCredentialsInText } from "./credential-redaction.js";
 import { runGit } from "./run-git.js";
 
 // `git remote get-url <missing>` fails with exit code 2 and exactly this
@@ -18,9 +18,14 @@ const NO_SUCH_REMOTE = /^error: No such remote '/;
  * Windows drive letters, which would otherwise look like an SCP `host:path`
  * pair) are returned unchanged — SCP syntax has no field for a password, and
  * the leading `user@` there is a fixed transport user, not a secret.
+ *
+ * Uses the text-scanning redactor, not the single-URL one: Git accepts (and
+ * `remote get-url` prints back) a value containing an embedded newline, and
+ * a single-URL-shaped match would only strip the first of two such URLs,
+ * leaving a second one's credentials untouched.
  */
 export function sanitizeRemoteUrl(rawUrl: string): string {
-  return redactUrlLikeCredentials(rawUrl.trim());
+  return redactUrlLikeCredentialsInText(rawUrl.trim());
 }
 
 /**

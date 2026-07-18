@@ -41,6 +41,14 @@ const LOCAL_GIT_ENV_VARS = [
   // subdirectory, breaking the WP-02 subdirectory-launch acceptance path.
   // https://git-scm.com/docs/git#Documentation/git.txt-codeGITCEILINGDIRECTORIEScode
   "GIT_CEILING_DIRECTORIES",
+  // Confirmed via Git's own documentation (`git help git`): Windows-only,
+  // redirects Git's stdin/stdout/stderr handles to the named paths before
+  // execFile's pipes can capture them — bypassing our redaction entirely
+  // and breaking our own stdout-based parsing (e.g. `--show-toplevel`).
+  // windows-2025 is in this package's Tier 1 CI matrix, so this is real.
+  "GIT_REDIRECT_STDIN",
+  "GIT_REDIRECT_STDOUT",
+  "GIT_REDIRECT_STDERR",
 ];
 
 // Confirmed by manual reproduction: `GIT_TRACE=/path git ...` appends the
