@@ -12,6 +12,7 @@ export * from "./ports/random.js";
 export * from "./schemas/canonical.js";
 export * from "./schemas/checkpoint.js";
 export * from "./schemas/normalized-event.js";
+export * from "./schemas/shared.js";
 export * from "./states/candidate.js";
 export * from "./states/session-run.js";
 export * from "./states/turn.js";
