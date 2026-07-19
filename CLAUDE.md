@@ -106,11 +106,11 @@ A work package is complete only when:
 ## Security-sensitive package conventions
 
 Packages doing subprocess execution, credential/secret handling, or path/symlink validation
-(`packages/git` and similar) have dedicated, always-loaded rules:
+(`packages/git` and similar) have dedicated rules:
 
-- `.claude/rules/typescript-conventions.md` — module resolution, `Result<T,E>` error handling, Zod 4 patterns, test/build conventions.
-- `.claude/rules/secure-subprocess-and-credentials.md` — env var allowlisting, never putting raw values in errors, locale-independent stderr parsing.
-- `.claude/rules/path-and-symlink-safety.md` — the `..`-before-symlink-resolution invariant and how to avoid re-breaking it.
+- `.claude/rules/typescript-conventions.md` — always-loaded (no `paths` scope) — module resolution, `Result<T,E>` error handling, Zod 4 patterns, test/build conventions.
+- `.claude/rules/secure-subprocess-and-credentials.md` — path-scoped (`packages/*/src/**/*.ts`), auto-loads when Claude reads a matching file — env var allowlisting, never putting raw values in errors, locale-independent stderr parsing.
+- `.claude/rules/path-and-symlink-safety.md` — path-scoped (`packages/*/src/**/*.ts`), auto-loads when Claude reads a matching file — the `..`-before-symlink-resolution invariant and how to avoid re-breaking it.
 
 Before pushing a fix to one of these packages, run the `self-review` skill
 (`.claude/skills/self-review/`) — it exists specifically to catch a narrow fix that leaves the
