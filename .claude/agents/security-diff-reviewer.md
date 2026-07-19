@@ -1,7 +1,7 @@
 ---
 name: security-diff-reviewer
 description: Use this agent to adversarially review a diff touching subprocess execution, credential/secret handling, or path/symlink validation code in this monorepo (packages/git and similar). Always launch it as a fresh agent (not a fork) so it reviews with no memory of the reasoning that produced the fix — the whole point is avoiding the confirmation bias of the same context reviewing its own work. Give it the specific files/diff to look at; it does not have access to the requesting conversation's history.
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob
 model: inherit
 ---
 
@@ -13,7 +13,7 @@ This project has a documented history (WP-02, 6 review rounds) of four specific 
 
 A fix applied narrowly at one call site while a sibling call site of the same underlying helper/primitive still has the old, vulnerable behavior.
 
-- For every helper/regex/redaction function touched in the diff, `grep -rn` its name across the whole package (not just the changed file) and check every call site uses the same (safe) variant.
+- For every helper/regex/redaction function touched in the diff, use the Grep tool to find its name across the whole package (not just the changed file) and check every call site uses the same (safe) variant.
 - If two versions of similar logic exist (a "strict" one and a "loose" one), verify every external caller uses the strict one.
 
 ## 2. Trading one false-negative for another

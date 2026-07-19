@@ -1,11 +1,12 @@
 ---
 name: self-review
-description: Runs a structured self-review before pushing changes to security-sensitive TypeScript code in this monorepo (packages/git and similar packages doing subprocess execution, credential/secret handling, or path/symlink validation). Catches regressions where a narrow fix for one reported bug leaves the same defect class at a sibling call site, silently trades one false-negative for another, violates an invariant the code itself just declared in the same sitting, or drops platform-specific behavior when replacing an OS-native function with hand-rolled logic. Use before every `git push` touching these packages, not only after a review-bot finding.
+description: Runs a structured self-review before pushing changes to security-sensitive TypeScript code in this monorepo (packages/git and similar packages doing subprocess execution, credential/secret handling, or path/symlink validation). Catches regressions where a narrow fix for one reported bug leaves the same defect class at a sibling call site, silently trades one false-negative for another, violates an invariant the code itself just declared in the same sitting, or drops platform-specific behavior when replacing an OS-native function with hand-rolled logic. Use before every `git push` touching these packages, not only after a review-bot finding. Do not use for general bug fixes outside packages/git, packages/forge*, packages/adapter-* — those aren't in this project's security-sensitive scope.
 paths:
   - "packages/git/src/**/*.ts"
   - "packages/forge*/src/**/*.ts"
   - "packages/adapter-*/src/**/*.ts"
 user-invocable: true
+allowed-tools: Bash(grep *) Bash(pnpm lint) Bash(pnpm typecheck) Bash(pnpm test) Bash(pnpm build) Agent(security-diff-reviewer)
 ---
 
 # Self-review before push
@@ -84,3 +85,8 @@ grep -n "resolve(\|\.join(\|path\.join\|path\.resolve" <変更したファイル
 ## Step 9 — 前提条件を記録する
 
 Step 2〜5で「意図的に対象外とした」項目があれば、コミットメッセージまたはコード内コメントに明記する。次のレビューラウンドで同じ議論を繰り返さないため。
+
+## トラブルシューティング
+
+- **Step 8の検証(lint/typecheck/test/build)が失敗する**: pushを進めない。失敗したコマンドの出力を読み、根本原因を修正してからStep 8をやり直す。テストを通すためだけにプロダクションコードを歪めない(`~/.claude/rules/testing.md`)。
+- **Step 7の`security-diff-reviewer`呼び出しが指摘ゼロで返る**: 「問題なし」と「レビューが空振りした」を区別できないため、渡したファイル内容が実際に変更後の最新版か確認する。変更ファイルを絞りすぎて関連する呼び出し元ファイルを渡し忘れていないかもチェックする。
