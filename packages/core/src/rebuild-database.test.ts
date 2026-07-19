@@ -18,9 +18,10 @@ const MIGRATIONS_DIR = fileURLToPath(new URL("../../../migrations", import.meta.
 const CLOCK = new FixedClock(new Date("2026-01-01T00:00:00.000Z"));
 
 // `replaceDatabaseAtomically`'s own rename retries (packages/storage/src/rebuild.ts)
-// can take several seconds on Windows CI; give these tests headroom above
-// vitest's 5000ms default so a legitimate retry sequence isn't mistaken for a hang.
-const REBUILD_TEST_TIMEOUT_MS = 20000;
+// can take up to ~9s worst case on Windows CI, and this file's own rm() retry
+// below has a similar worst case; give these tests headroom above vitest's
+// 5000ms default so a legitimate retry sequence isn't mistaken for a hang.
+const REBUILD_TEST_TIMEOUT_MS = 30000;
 
 async function fileExists(path: string): Promise<boolean> {
   try {
@@ -148,20 +149,24 @@ describe("rebuildDatabase", () => {
       // rename (`primaryDbPath -> backupPath`) fail with ENOENT — a clean,
       // cross-platform way to force this specific failure path without
       // relying on OS-specific file-locking/permission behavior. Retries on
-      // EBUSY/EPERM: the same Windows native-binding handle-teardown lag as
-      // `test-helpers/tmp-repo.ts`'s `removeTempDir` can apply here too, even
-      // though `initRepository` already closed its connection before
-      // returning (see `windows-ci-compat.md`).
-      for (let attempt = 1; attempt <= 5; attempt++) {
+      // EBUSY/EPERM: confirmed by CI reproduction that deleting a database
+      // file immediately after `initRepository` closed its connection can
+      // stay busy on Windows for longer than the 1.5s budget that is enough
+      // for `test-helpers/tmp-repo.ts`'s `removeTempDir` (which runs later,
+      // in `afterEach`, giving the native binding's teardown more time to
+      // finish first) — see `windows-ci-compat.md` and
+      // `packages/storage/src/rebuild.ts`'s `renameWithRetry`, which needed
+      // the same widening.
+      for (let attempt = 1; attempt <= 20; attempt++) {
         try {
           await rm(init.value.dbPath, { force: true });
           break;
         } catch (cause) {
           const code = (cause as NodeJS.ErrnoException).code;
-          if ((code !== "EBUSY" && code !== "EPERM") || attempt === 5) {
+          if ((code !== "EBUSY" && code !== "EPERM") || attempt === 20) {
             throw cause;
           }
-          await new Promise((resolve) => setTimeout(resolve, attempt * 100));
+          await new Promise((resolve) => setTimeout(resolve, Math.min(attempt * 100, 500)));
         }
       }
 

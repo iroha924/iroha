@@ -26,13 +26,17 @@ const WAL_SUFFIXES = ["-wal", "-shm"] as const;
  * own `closeDatabase()` call returns (the same lag `windows-ci-compat.md`
  * documents for `rm()`), so a `rename()` immediately following a close can
  * transiently fail even though every caller of this function has already
- * closed its connections per its own contract. 8 attempts with a
- * 100ms-per-attempt backoff (3.6s worst case) — the first CI-verified
- * budget (5 attempts, 1.5s worst case) was not always enough on Windows
- * runners.
+ * closed its connections per its own contract. Two smaller budgets (5
+ * attempts/1.5s, then 8 attempts/3.6s) both proved insufficient on Windows
+ * CI when the rename follows immediately after the close in the same call
+ * stack (as opposed to after other work has run, which is what the
+ * originally-verified 5-attempt budget in `@iroha/storage`'s own
+ * `test-helpers/tmp-db.ts` relies on). This budget caps each backoff step at
+ * 500ms and allows up to 20 attempts (~9s worst case) to cover a
+ * multi-second teardown lag without retrying indefinitely.
  */
 async function renameWithRetry(from: string, to: string): Promise<void> {
-  const maxAttempts = 8;
+  const maxAttempts = 20;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       await rename(from, to);
@@ -42,7 +46,7 @@ async function renameWithRetry(from: string, to: string): Promise<void> {
       if ((code !== "EBUSY" && code !== "EPERM") || attempt === maxAttempts) {
         throw cause;
       }
-      await new Promise((resolve) => setTimeout(resolve, attempt * 100));
+      await new Promise((resolve) => setTimeout(resolve, Math.min(attempt * 100, 500)));
     }
   }
 }
