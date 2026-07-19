@@ -307,4 +307,14 @@ describe("redactAbsolutePathsInText", () => {
       "error: pathspec '<path>' did not match any file(s) known to git",
     );
   });
+
+  it("redacts a home-relative path echoed back in Git's own text", () => {
+    // Confirmed by reproduction (see remote.ts's equivalent test): Git
+    // accepts and expands both "~/" and "~user/" as local paths.
+    const text = "error: pathspec '~/private.git' did not match any file(s) known to git";
+
+    expect(redactAbsolutePathsInText(text)).toBe(
+      "error: pathspec '<path>' did not match any file(s) known to git",
+    );
+  });
 });

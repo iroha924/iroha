@@ -174,9 +174,12 @@ export function redactUrlLikeCredentialsInText(text: string): string {
 // its name produces "...in file /tmp/dir with space/gitconfig", and Git can
 // also quote a `file://` pathspec containing one), which an earlier version
 // of this module's single `[^\s'"]*` tail wrongly treated as "the path has
-// ended here".
+// ended here". `~[a-zA-Z0-9_-]*\/` (not just bare `~\/`) matches both `~/`
+// (current user's home) and `~user/` (another user's home) — see
+// `LOCAL_PATH_MARKER` in remote.ts, kept consistent with this module, for
+// the reproduction confirming Git expands both forms for a local remote.
 const ABSOLUTE_PATH_START =
-  /(?:(?<![a-zA-Z0-9:/\\])file:(?:\/+|[a-zA-Z]:[\\/])|(?:^|(?<![a-zA-Z0-9:/\\@_.~!$&()*+,;=-]))(?:~\/|\/|[a-zA-Z]:[\\/]|\\\\))/gi;
+  /(?:(?<![a-zA-Z0-9:/\\])file:(?:\/+|[a-zA-Z]:[\\/])|(?:^|(?<![a-zA-Z0-9:/\\@_.~!$&()*+,;=-]))(?:~[a-zA-Z0-9_-]*\/|\/|[a-zA-Z]:[\\/]|\\\\))/gi;
 
 /**
  * Replaces every filesystem-path-shaped substring in free-form text (e.g.

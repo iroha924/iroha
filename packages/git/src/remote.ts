@@ -58,8 +58,20 @@ import { runGit } from "./run-git.js";
 //   in the excluded set above (RFC 3986 leaves very little out) could in
 //   principle still be exploited as an undetected joiner — accepted as a
 //   residual gap rather than encoding the *entire* pchar grammar here.
+//
+// `~/` (current user's home) and `~user/` (another user's home) are also
+// local-path markers — confirmed by reproduction that Git accepts and
+// stores `~/private.git`/`~someuser/private.git` verbatim as a remote and
+// expands them under the relevant home directory on fetch. An earlier
+// version of this module's bare-path alternatives omitted both forms
+// entirely, so a home-relative remote reached `remote_url_normalized`
+// unchanged. `~user/` (unlike a bare `/`) is safe to recognize with the
+// same narrow boundary as the other bare-path forms: a URL path segment
+// legitimately starting with "~user/" (e.g.
+// "https://example.com/~user/repo.git") is always preceded by a "/" (already
+// excluded), never by the value's own start or whitespace.
 const LOCAL_PATH_MARKER =
-  /(?:(?<![a-zA-Z0-9:/\\])file:(?:\/+|[a-zA-Z]:[\\/])|(?:^|(?<![a-zA-Z0-9:/\\@_.~!$&()*+,;=-]))(?:\/|[a-zA-Z]:[\\/]|\\\\))/i;
+  /(?:(?<![a-zA-Z0-9:/\\])file:(?:\/+|[a-zA-Z]:[\\/])|(?:^|(?<![a-zA-Z0-9:/\\@_.~!$&()*+,;=-]))(?:~[a-zA-Z0-9_-]*\/|\/|[a-zA-Z]:[\\/]|\\\\))/i;
 
 function isLocalAbsolutePath(value: string): boolean {
   return LOCAL_PATH_MARKER.test(value);

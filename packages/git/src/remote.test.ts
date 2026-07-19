@@ -158,6 +158,30 @@ describe("sanitizeRemoteUrl", () => {
     expect(sanitizeRemoteUrl(pipeJoinedBare)).toBe(null);
   });
 
+  it("suppresses a home-relative local path (current user)", () => {
+    // Confirmed by reproduction: Git accepts and stores "~/private.git"
+    // verbatim as a remote and expands it under the home directory on
+    // fetch. An earlier version of the bare-path alternatives omitted "~/"
+    // entirely.
+    expect(sanitizeRemoteUrl("~/private.git")).toBe(null);
+  });
+
+  it("suppresses a home-relative local path (another user)", () => {
+    // Confirmed by reproduction: Git also accepts and stores
+    // "~someuser/private.git" verbatim.
+    expect(sanitizeRemoteUrl("~someuser/private.git")).toBe(null);
+  });
+
+  it("leaves a URL with a ~user path segment unchanged, unlike a home-relative remote", () => {
+    // "~user/" is only a local-path marker at a valid narrow boundary
+    // (value start or whitespace) — inside an ordinary URL path it's always
+    // preceded by "/", which is excluded, so this stays a normal,
+    // credential-redactable URL.
+    expect(sanitizeRemoteUrl("https://example.com/~user/repo.git")).toBe(
+      "https://example.com/~user/repo.git",
+    );
+  });
+
   it("leaves a URL unchanged when a path segment ends in an underscore", () => {
     // Confirmed by reproduction: Git accepts and stores this verbatim, and
     // an underscore right before "/" is completely ordinary in real
