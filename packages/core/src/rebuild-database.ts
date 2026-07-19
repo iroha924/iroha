@@ -21,9 +21,37 @@ import { computeRootFingerprint } from "./init-repository.js";
 import { resolveInitializedRepository } from "./resolve-repository.js";
 import { type SyncCanonicalResult, syncCanonicalToDatabase } from "./sync-canonical.js";
 
+/**
+ * `rm()` with a bounded retry on `EBUSY`/`EPERM`, same class of issue as
+ * `@iroha/storage`'s `renameWithRetry` (confirmed by CI reproduction): the
+ * sibling database this cleans up was just closed by this file's own
+ * `closeDatabase(siblingDb)` call, and the native libSQL binding's
+ * file-handle teardown can still be in flight on Windows. Best-effort: this
+ * runs on failure paths that are already reporting an error, so it gives up
+ * quietly rather than throwing a second, unrelated error.
+ */
+async function removeWithRetry(path: string): Promise<void> {
+  const maxAttempts = 20;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await rm(path, { force: true });
+      return;
+    } catch (cause) {
+      const code = (cause as NodeJS.ErrnoException).code;
+      if (code !== "EBUSY" && code !== "EPERM") {
+        return;
+      }
+      if (attempt === maxAttempts) {
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, Math.min(attempt * 100, 500)));
+    }
+  }
+}
+
 async function removeSiblingDatabase(dbPath: string): Promise<void> {
   for (const suffix of ["", "-wal", "-shm"]) {
-    await rm(`${dbPath}${suffix}`, { force: true }).catch(() => undefined);
+    await removeWithRetry(`${dbPath}${suffix}`);
   }
 }
 
