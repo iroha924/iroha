@@ -111,7 +111,12 @@ describe("rebuildDatabase", () => {
         new CryptoRandomSource(),
         MIGRATIONS_DIR,
       );
-      expect(rebuilt.ok, rebuilt.ok ? undefined : JSON.stringify(rebuilt.error)).toBe(true);
+      expect(
+        rebuilt.ok,
+        rebuilt.ok
+          ? undefined
+          : `${rebuilt.error.code}: ${rebuilt.error.message} (cause: ${String(rebuilt.error.cause)})`,
+      ).toBe(true);
       if (!rebuilt.ok) return;
 
       expect(rebuilt.value.repositoryId).toBe(init.value.repositoryId);

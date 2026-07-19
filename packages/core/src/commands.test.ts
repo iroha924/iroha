@@ -99,7 +99,9 @@ describe("run* command wrappers", () => {
       const rebuildResult = await runSync(repoDir, MIGRATIONS_DIR, { rebuild: true });
       expect(
         rebuildResult.ok,
-        rebuildResult.ok ? undefined : JSON.stringify(rebuildResult.error),
+        rebuildResult.ok
+          ? undefined
+          : `${rebuildResult.error.code}: ${rebuildResult.error.message} (cause: ${String(rebuildResult.error.cause)})`,
       ).toBe(true);
       if (rebuildResult.ok) {
         expect(rebuildResult.value.rebuilt).toBe(true);
