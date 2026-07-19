@@ -184,6 +184,20 @@ describe("redactUrlLikeCredentialsInText", () => {
       "tried https://a.example/x then https://b.example/y",
     );
   });
+
+  it("drops a query value containing a HARD_DELIMITER character entirely, not just its prefix", () => {
+    // Confirmed by reproduction: Git stores and echoes
+    // "?access_token=abc'def" verbatim. An earlier version of this
+    // function bounded the query search with HARD_DELIMITER (the same
+    // delimiter used for the non-query case), which stopped at the "'"
+    // *inside* the secret, leaving "def" to leak back in as unprocessed
+    // trailing text — the query's own content is opaque and can contain
+    // any character, so it can't be bounded the same way a URL's host+path
+    // safely can.
+    const text = "https://example.com/repo.git?access_token=abc'def";
+
+    expect(redactUrlLikeCredentialsInText(text)).toBe("https://example.com/repo.git");
+  });
 });
 
 describe("redactAbsolutePathsInText", () => {

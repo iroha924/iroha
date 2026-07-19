@@ -70,6 +70,22 @@ const SCHEME_AND_USERINFO = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\/(?:[^/?#]*@)?/;
 // independent URL — see the `hasQuery` branch below.
 const QUERY_START = /[?#]/;
 
+// Once a query/fragment is known to be present, its own content is opaque —
+// Git enforces no structure or encoding on it, so it can contain literally
+// anything, including a `HARD_DELIMITER` character. Confirmed by
+// reproduction: "https://x/repo.git?access_token=abc'def" (Git stores and
+// echoes this verbatim) — bounding the query search with `HARD_DELIMITER`
+// (an earlier version of this function did) stopped at the "'" *inside* the
+// secret, leaving "def" to leak back in as unprocessed trailing text, the
+// same failure shape as the nested-URL bug above. Whitespace is the only
+// character that can bound a query/fragment safely: unlike quotes or
+// brackets, a raw (unencoded) space is not plausible content for a
+// credential value, so it still correctly separates a query-bearing URL
+// from a genuinely distinct URL that follows it in the same text (e.g. "...
+// https://a/x?tok=1 then https://tok@b/y" — the query stops at "then", not
+// at the second URL's own userinfo).
+const QUERY_DELIMITER = /\s/;
+
 /**
  * Redacts every `scheme://`-shaped substring found anywhere inside free-form
  * text (e.g. Git's own stderr, which can echo a caller-supplied argument
@@ -111,9 +127,14 @@ export function redactUrlLikeCredentialsInText(text: string): string {
     // regardless of what it contains, so its true extent must be found by
     // scanning past `nextStart` entirely (ignoring any scheme starts
     // nested inside it) rather than being capped there — capping at
-    // `nextStart` here is what let the nested-URL bug above happen.
+    // `nextStart` here is what let the nested-URL bug above happen. Uses
+    // `QUERY_DELIMITER` (whitespace only), not `HARD_DELIMITER` — see
+    // `QUERY_DELIMITER`'s own comment for why the query case needs a
+    // different, narrower delimiter than the non-query case below it.
     const searchSpace = hasQuery ? text.slice(start + prefixLength) : boundedRemainder;
-    const delimiter = HARD_DELIMITER.exec(searchSpace);
+    const delimiter = hasQuery
+      ? QUERY_DELIMITER.exec(searchSpace)
+      : HARD_DELIMITER.exec(searchSpace);
     const end = hasQuery
       ? start + prefixLength + (delimiter ? delimiter.index : searchSpace.length)
       : start + (delimiter ? prefixLength + delimiter.index : span.length);

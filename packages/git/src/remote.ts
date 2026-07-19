@@ -107,18 +107,32 @@ export function sanitizeRemoteUrl(rawUrl: string): string | null {
  * configured, so two teammates with different rewrite config would compute
  * a different `remote_url_normalized` for the identical repository.
  *
- * Uses `--get-all` (returning every configured value, newline-separated),
- * not `--get` (a single value) — confirmed by reproduction: `git remote
- * set-url --add <name> <url>` can configure more than one URL for the same
- * remote (Git fans push out to all of them, but fetch always uses only the
- * first). `--get` returns the *last* configured value in that case, while
- * Git itself (and `git remote get-url`, sans its `insteadOf` problem) uses
- * the *first* as the fetch URL. Taking `--get`'s answer would record
- * metadata for a URL Git never actually fetches from.
+ * Uses `--get-all` (returning every configured value), not `--get` (a
+ * single value) — confirmed by reproduction: `git remote set-url --add
+ * <name> <url>` can configure more than one URL for the same remote (Git
+ * fans push out to all of them, but fetch always uses only the first).
+ * `--get` returns the *last* configured value in that case, while Git
+ * itself (and `git remote get-url`, sans its `insteadOf` problem) uses the
+ * *first* as the fetch URL. Taking `--get`'s answer would record metadata
+ * for a URL Git never actually fetches from.
  *
- * `--get-all` shares `--get`'s exit-code semantics for our purposes: a
- * missing key exits with status 1 and no stderr (git-config(1)); that exit
- * code alone (not stderr text, unlike Git's other subcommands) is what
+ * Uses `--null` (NUL-separated records), not plain output (newline-
+ * separated) — confirmed by reproduction: a *single* configured value can
+ * itself contain an embedded newline (Git accepts and stores it), which
+ * plain `--get-all` output cannot be told apart from the newline separating
+ * two genuinely distinct values. Splitting plain output on "\n" and taking
+ * the first line — an earlier version of this function did — silently
+ * truncated a multiline value to its first line, so a local-path suffix on
+ * a later "line" of what was really one value never reached
+ * `sanitizeRemoteUrl` at all, and the safe-looking truncated prefix was
+ * returned instead of `null`. `--null` NUL-terminates each genuine record
+ * (Git's own value/config-key text essentially cannot itself contain a NUL
+ * byte), so splitting on "\0" and taking the first element reliably yields
+ * the complete first value, embedded newlines and all.
+ *
+ * `--get-all --null` shares `--get`'s exit-code semantics for our purposes:
+ * a missing key exits with status 1 and no stderr (git-config(1)); that
+ * exit code alone (not stderr text, unlike Git's other subcommands) is what
  * distinguishes "no such remote" from other failures here. `--local` makes
  * "not inside a repository" its own distinguishable failure (exit 128,
  * `fatal: --local can only be used inside a git repository`) instead of
@@ -129,9 +143,10 @@ export async function getSanitizedRemoteUrl(
   cwd: string,
   remoteName = "origin",
 ): Promise<Result<string | null, IrohaError>> {
-  const result = await runGit(["config", "--local", "--get-all", `remote.${remoteName}.url`], {
-    cwd,
-  });
+  const result = await runGit(
+    ["config", "--local", "--null", "--get-all", `remote.${remoteName}.url`],
+    { cwd },
+  );
   if (!result.ok) {
     const exitCode = (result.error.details as { exitCode?: number | null } | undefined)?.exitCode;
     if (exitCode === 1) {
@@ -139,6 +154,6 @@ export async function getSanitizedRemoteUrl(
     }
     return err(result.error);
   }
-  const firstFetchUrl = result.value.split("\n")[0] ?? "";
+  const firstFetchUrl = result.value.split("\0")[0] ?? "";
   return ok(sanitizeRemoteUrl(firstFetchUrl));
 }

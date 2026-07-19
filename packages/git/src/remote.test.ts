@@ -270,6 +270,40 @@ describe("getSanitizedRemoteUrl", () => {
     expect(result).toEqual({ ok: true, value: "https://first.example/repo.git" });
   });
 
+  it("suppresses a local path hidden on a later line of one embedded-newline value", () => {
+    // A single config value can itself contain a newline (Git accepts and
+    // stores it) — confirmed by reproduction that plain `--get-all` output
+    // (newline-separated) makes that indistinguishable from two genuinely
+    // separate values, so splitting on "\n" alone would truncate this to
+    // just the first, safe-looking line. This is a synchronous unit check
+    // of sanitizeRemoteUrl itself (getSanitizedRemoteUrl's own --null
+    // parsing is covered by the async test below).
+    const embeddedNewlineValue = "https://github.com/org/repo.git\nfile:///Users/alice/private.git";
+
+    expect(sanitizeRemoteUrl(embeddedNewlineValue)).toBe(null);
+  });
+
+  it("reads a value with an embedded newline as one complete record, not just its first line", async () => {
+    await runGit(
+      [
+        "config",
+        "--local",
+        "--add",
+        "remote.origin.url",
+        "https://github.com/org/repo.git\nfile:///Users/alice/private.git",
+      ],
+      { cwd: repoDir },
+    );
+    // Confirmed by reproduction: plain `git config --get-all` prints this
+    // single value with its embedded newline indistinguishable from a
+    // second, separate value — only `--null` (NUL-separated records)
+    // resolves the ambiguity. The whole value must reach sanitizeRemoteUrl
+    // intact so it can see the local-path suffix and suppress it.
+    const result = await getSanitizedRemoteUrl(repoDir, "origin");
+
+    expect(result).toEqual({ ok: true, value: null });
+  });
+
   it("reads the configured remote URL, not a locally rewritten insteadOf mirror", async () => {
     await runGit(["remote", "add", "origin", "https://github.com/org/repo.git"], {
       cwd: repoDir,
