@@ -168,114 +168,46 @@ export function redactUrlLikeCredentialsInText(text: string): string {
 // to strip — its host+path itself is the local path, which is this
 // function's job, not that one's).
 //
-// Only marks the *start* of each path — how far it extends is resolved
-// separately below, since a path can itself contain a space (confirmed by
-// reproduction: a `GIT_CONFIG_GLOBAL` file under a directory with a space in
-// its name produces "...in file /tmp/dir with space/gitconfig", and Git can
-// also quote a `file://` pathspec containing one), which an earlier version
-// of this module's single `[^\s'"]*` tail wrongly treated as "the path has
-// ended here". `~[a-zA-Z0-9_-]*\/` (not just bare `~\/`) matches both `~/`
-// (current user's home) and `~user/` (another user's home) — see
-// `LOCAL_PATH_MARKER` in remote.ts, kept consistent with this module, for
-// the reproduction confirming Git expands both forms for a local remote.
+// Only marks the *start* of a path. `~[a-zA-Z0-9_-]*\/` (not just bare
+// `~\/`) matches both `~/` (current user's home) and `~user/` (another
+// user's home) — see `LOCAL_PATH_MARKER` in remote.ts, kept consistent with
+// this module, for the reproduction confirming Git expands both forms for a
+// local remote.
 const ABSOLUTE_PATH_START =
-  /(?:(?<![a-zA-Z0-9:/\\])file:(?:\/+|[a-zA-Z]:[\\/])|(?:^|(?<![a-zA-Z0-9:/\\@_.~!$&()*+,;=-]))(?:~[a-zA-Z0-9_-]*\/|\/|[a-zA-Z]:[\\/]|\\\\))/gi;
+  /(?:(?<![a-zA-Z0-9:/\\])file:(?:\/+|[a-zA-Z]:[\\/])|(?:^|(?<![a-zA-Z0-9:/\\@_.~!$&()*+,;=-]))(?:~[a-zA-Z0-9_-]*\/|\/|[a-zA-Z]:[\\/]|\\\\))/i;
 
 /**
- * Finds the quote that closes a Git-quoted region starting at `from`
- * (immediately after the opening `quoteChar`). Confirmed by reproduction
- * that Git does not escape a quote character embedded *within* the quoted
- * value itself (e.g. `checkout /tmp/secret'with'quotes` produces `fatal:
- * ... '/tmp/secret'with'quotes' is outside repository at ...` — two
- * embedded quotes before the real closing one), so the first occurrence of
- * `quoteChar` is not reliably the closing one. A quote immediately followed
- * by whitespace or the end of the text is treated as the genuine close;
- * one immediately followed by more non-whitespace text is treated as still
- * inside the path and skipped, since Git's own path content never abuts
- * another value with no separator at all in any confirmed reproduction.
- */
-function findClosingQuote(text: string, quoteChar: string, from: number): number {
-  let index = text.indexOf(quoteChar, from);
-  while (index !== -1) {
-    const next = index + 1 < text.length ? text[index + 1] : undefined;
-    if (next === undefined || /\s/.test(next)) {
-      return index;
-    }
-    index = text.indexOf(quoteChar, index + 1);
-  }
-  return -1;
-}
-
-/**
- * Finds the first quote character *preceded by whitespace* at or after
- * `from` — the point where an unquoted path plausibly ends and a
- * quoted repeat of it (Git's own "X: 'X' is outside repository at '...'"
- * pattern, confirmed by reproduction) begins. Unlike `findClosingQuote`,
- * this deliberately does NOT stop at just any quote: a quote embedded
- * directly in the unquoted path itself (no reproduction has shown Git
- * inserting whitespace before such a quote) must not be mistaken for that
- * boundary the same way `findClosingQuote`'s own target quote must not be
- * mistaken for one embedded in the *quoted* form of the same path.
- */
-function findBoundaryQuote(text: string, from: number): number {
-  const QUOTE = /['"]/g;
-  QUOTE.lastIndex = from;
-  for (const match of text.slice(from).matchAll(QUOTE)) {
-    const index = from + (match.index ?? 0);
-    const preceding = index > 0 ? text[index - 1] : undefined;
-    if (preceding !== undefined && /\s/.test(preceding)) {
-      return index;
-    }
-  }
-  return -1;
-}
-
-/**
- * Replaces every filesystem-path-shaped substring in free-form text (e.g.
- * Git's own stderr) with a placeholder — mcp-contract.md §8 forbids
- * returning filesystem absolute paths in any DB/API/MCP-reachable text, and
- * Git's diagnostic messages can embed one with no credential-URL shape for
- * `redactUrlLikeCredentialsInText` to catch. Apply this *after* credential
- * redaction, not before: this leaves an already-redacted URL's own `/`s
- * alone (see `ABSOLUTE_PATH_START`), but running it first would let a
- * still-credentialed URL's leading `/` (if boundary-preceded) get replaced
- * wholesale instead of just having its userinfo stripped.
+ * Replaces the rest of `text`, starting from the first filesystem-path-
+ * shaped substring found (e.g. in Git's own stderr), with a placeholder —
+ * mcp-contract.md §8 forbids returning filesystem absolute paths in any
+ * DB/API/MCP-reachable text, and Git's diagnostic messages can embed one
+ * with no credential-URL shape for `redactUrlLikeCredentialsInText` to
+ * catch. Apply this *after* credential redaction, not before: this leaves
+ * an already-redacted URL's own `/`s alone (see `ABSOLUTE_PATH_START`), but
+ * running it first would let a still-credentialed URL's leading `/` (if
+ * boundary-preceded) get replaced wholesale instead of just having its
+ * userinfo stripped.
  *
- * A path's extent depends on whether Git quoted it: a path immediately
- * preceded by `'`/`"` extends through everything up to its `findClosingQuote`
- * — spaces and even embedded quote characters included, since a quote is
- * only trusted as the boundary once it's confirmed not to be embedded path
- * content. An unquoted path has no such boundary of its own, so it extends
- * up to (but not including) `findBoundaryQuote`'s result, trimming any
- * whitespace immediately before it — or to the true end of the text if no
- * such quote exists anywhere later.
+ * Once a path is found, everything from there to the true end of the text
+ * is dropped, unconditionally — not just up to the next quote or
+ * whitespace. Three earlier, progressively more careful attempts each tried
+ * to find *where the path ends* instead: stop at the first whitespace
+ * (defeated by a path that itself contains a space); stop at the next
+ * quote, trusting Git's own quoting (defeated by a path that itself
+ * contains a quote, since Git does not escape it — confirmed by
+ * reproduction: `checkout /tmp/secret'with'quotes` echoes the unescaped
+ * quotes back in both its unquoted and quoted mentions); require the quote
+ * to be adjacent to whitespace before trusting it as the boundary (defeated
+ * by a path containing `'` followed by a space, confirmed by reproduction:
+ * `checkout "/tmp/secret' with quotes"` produces `'/tmp/secret' with
+ * quotes'`, where the embedded `' ` looks identical to a genuine boundary).
+ * Git provides no escaping mechanism at all for path content in these
+ * diagnostic messages, so no finite character-based heuristic can
+ * distinguish "the path has ended" from "the path's own content looks like
+ * it might have ended" in general. The only fix that cannot be defeated by
+ * some future path content is to stop looking for a boundary at all.
  */
 export function redactAbsolutePathsInText(text: string): string {
-  let result = "";
-  let cursor = 0;
-  for (const match of text.matchAll(ABSOLUTE_PATH_START)) {
-    const start = match.index;
-    if (start < cursor) {
-      continue;
-    }
-    result += text.slice(cursor, start);
-
-    const precedingChar = start > 0 ? text[start - 1] : undefined;
-    let end: number;
-    if (precedingChar === "'" || precedingChar === '"') {
-      const closingQuote = findClosingQuote(text, precedingChar, start);
-      end = closingQuote === -1 ? text.length : closingQuote;
-    } else {
-      const boundaryQuote = findBoundaryQuote(text, start);
-      end = boundaryQuote === -1 ? text.length : boundaryQuote;
-      while (end > start && /\s/.test(text[end - 1] ?? "")) {
-        end--;
-      }
-    }
-
-    result += "<path>";
-    cursor = end;
-  }
-  result += text.slice(cursor);
-  return result;
+  const match = ABSOLUTE_PATH_START.exec(text);
+  return match ? `${text.slice(0, match.index)}<path>` : text;
 }

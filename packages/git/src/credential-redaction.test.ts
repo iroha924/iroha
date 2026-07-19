@@ -215,6 +215,16 @@ describe("redactUrlLikeCredentialsInText", () => {
 });
 
 describe("redactAbsolutePathsInText", () => {
+  // This function's design went through several rounds of "find where the
+  // path ends" heuristics (stop at whitespace; stop at the next quote; stop
+  // at a quote adjacent to whitespace), each defeated in turn by a
+  // reproduction showing Git embeds that exact character in the path itself
+  // with no escaping. It now drops everything from the first path marker to
+  // the true end of the text, unconditionally — see the function's own
+  // docstring for the full history. Every test below reflects that: once a
+  // path marker is found, nothing after it survives, regardless of what
+  // that trailing text actually contains.
+
   it("redacts an absolute path Git embeds in its own diagnostic text", () => {
     // Confirmed by reproduction: a malformed GIT_CONFIG_GLOBAL file makes
     // Git print this exact shape, with no credential-URL marker for
@@ -246,12 +256,7 @@ describe("redactAbsolutePathsInText", () => {
     expect(redactAbsolutePathsInText(text)).toBe(text);
   });
 
-  it("redacts a path at the very start of the text, consuming to the end when unquoted and no quote follows", () => {
-    // Consuming to the true end of the text (not stopping at whitespace) is
-    // what makes a space-containing unquoted path (see the dedicated test
-    // below) fully redactable — the cost is over-redacting trailing prose
-    // in a case like this one, favoring never leaking a path over
-    // preserving unrelated surrounding text.
+  it("redacts a path at the very start of the text, dropping everything after it", () => {
     expect(redactAbsolutePathsInText("/etc/passwd: permission denied")).toBe("<path>");
   });
 
@@ -259,38 +264,34 @@ describe("redactAbsolutePathsInText", () => {
     // redactUrlLikeCredentialsInText alone leaves this untouched: a file:
     // URL with no userinfo has no *credential* to strip, but its host+path
     // IS a local filesystem path — this function's job, not that one's.
+    // Everything from "file:" onward is dropped, including the closing
+    // quote and trailing prose Git added around it.
     const text = "error: pathspec 'file:///Users/alice/private.git' did not match";
 
-    expect(redactAbsolutePathsInText(text)).toBe("error: pathspec '<path>' did not match");
+    expect(redactAbsolutePathsInText(text)).toBe("error: pathspec '<path>");
   });
 
   it("redacts a single-slash file: URL", () => {
     expect(redactAbsolutePathsInText("fatal: unable to access 'file:/Users/alice/x.git'")).toBe(
-      "fatal: unable to access '<path>'",
+      "fatal: unable to access '<path>",
     );
   });
 
-  it("redacts every bare absolute path Git quotes when a checkout target is outside the repo", () => {
+  it("drops every mention once the first absolute path is found, quoted repeats included", () => {
     // Confirmed by reproduction: `git checkout /tmp/secret` run inside an
-    // unrelated repo produces exactly this shape, with the same absolute
-    // path echoed three times (once bare, twice quoted) plus the repo's own
-    // absolute root also quoted. Bare paths have no distinctive prefix of
-    // their own — this only works because the quote character remains a
-    // valid boundary for the bare-path alternative.
+    // unrelated repo produces this shape, mentioning the same path three
+    // times (once bare, twice quoted) plus the repo's own absolute root.
+    // All of it is local filesystem information, so dropping everything
+    // from the first mention onward is correct, not just tolerable.
     const text =
       "fatal: /tmp/secret: '/tmp/secret' is outside repository at '/private/var/folders/x/tmp.abc123'";
 
-    expect(redactAbsolutePathsInText(text)).toBe(
-      "fatal: <path> '<path>' is outside repository at '<path>'",
-    );
+    expect(redactAbsolutePathsInText(text)).toBe("fatal: <path>");
   });
 
   it("redacts an unquoted path that itself contains a space", () => {
     // Confirmed by reproduction: a malformed GIT_CONFIG_GLOBAL file under a
     // directory whose name contains a space produces exactly this shape.
-    // An earlier version of this function stopped at the first whitespace,
-    // leaving " space dir/gitconfig" — the rest of the local path — in the
-    // output.
     const text =
       "fatal: bad config line 1 in file /var/folders/x/T/tmp.abc/iroha space dir/gitconfig";
 
@@ -303,9 +304,7 @@ describe("redactAbsolutePathsInText", () => {
     const text =
       "error: pathspec 'file:///Users/alice/private repo.git' did not match any file(s) known to git";
 
-    expect(redactAbsolutePathsInText(text)).toBe(
-      "error: pathspec '<path>' did not match any file(s) known to git",
-    );
+    expect(redactAbsolutePathsInText(text)).toBe("error: pathspec '<path>");
   });
 
   it("redacts a home-relative path echoed back in Git's own text", () => {
@@ -313,18 +312,13 @@ describe("redactAbsolutePathsInText", () => {
     // accepts and expands both "~/" and "~user/" as local paths.
     const text = "error: pathspec '~/private.git' did not match any file(s) known to git";
 
-    expect(redactAbsolutePathsInText(text)).toBe(
-      "error: pathspec '<path>' did not match any file(s) known to git",
-    );
+    expect(redactAbsolutePathsInText(text)).toBe("error: pathspec '<path>");
   });
 
   it("redacts an unquoted path whose own filename contains a quote character", () => {
     // Confirmed by reproduction: a malformed GIT_CONFIG_GLOBAL file under a
     // directory whose name contains an apostrophe produces exactly this
-    // shape. An earlier version of this function's unquoted-path search
-    // stopped at the *first* quote found anywhere later in the text — which
-    // here is the one embedded in the path itself, not a genuine boundary —
-    // leaving "'o dir/gitconfig" (the rest of the local path) in the output.
+    // shape.
     const text = "fatal: bad config line 1 in file /tmp/xxx/iroha'o dir/gitconfig";
 
     expect(redactAbsolutePathsInText(text)).toBe("fatal: bad config line 1 in file <path>");
@@ -334,15 +328,25 @@ describe("redactAbsolutePathsInText", () => {
     // Confirmed by reproduction: `git checkout "/tmp/secret'with'quotes"`
     // run outside any repo produces exactly this shape — Git does not
     // escape the embedded quotes in either its unquoted or quoted mention
-    // of the same path. An earlier version of this function's
-    // closing-quote search stopped at the *first* occurrence of the quote
-    // character after the opening one, landing on an embedded quote
-    // instead of the genuine closing quote, and leaked the remainder.
+    // of the same path.
     const text =
       "fatal: /tmp/secret'with'quotes: '/tmp/secret'with'quotes' is outside repository at '/private/var/folders/x/tmp.abc123'";
 
-    expect(redactAbsolutePathsInText(text)).toBe(
-      "fatal: <path> '<path>' is outside repository at '<path>'",
-    );
+    expect(redactAbsolutePathsInText(text)).toBe("fatal: <path>");
+  });
+
+  it("redacts every mention when the quoted path contains a quote immediately followed by a space", () => {
+    // Confirmed by reproduction: `git checkout "/tmp/secret' with quotes"`
+    // run outside any repo produces `fatal: ... '/tmp/secret' with quotes'
+    // is outside repository at '...'` — the embedded "' " is
+    // indistinguishable, by any character-based rule, from a genuine
+    // quote-then-whitespace closing boundary. This is exactly the
+    // reproduction that ruled out "a quote adjacent to whitespace is
+    // trustworthy" as a heuristic, the last one this function tried before
+    // dropping boundary-searching entirely.
+    const text =
+      "fatal: /tmp/secret' with quotes: '/tmp/secret' with quotes' is outside repository at '/private/var/folders/x/tmp.abc123'";
+
+    expect(redactAbsolutePathsInText(text)).toBe("fatal: <path>");
   });
 });
