@@ -19,6 +19,7 @@ import {
 import { insertEntity, insertRepository } from "./identity.js";
 
 const NOW = "2026-01-01T00:00:00.000Z";
+const LATER = "2026-01-01T01:00:00.000Z";
 
 function repoId(suffix: string): TypedId<"repo"> {
   return `repo_${suffix.padEnd(26, "0")}` as TypedId<"repo">;
@@ -161,6 +162,40 @@ describe("graph-search repositories", () => {
     if (typed.ok) {
       expect(typed.value.length).toBe(1);
       expect(typed.value[0]?.relationType).toBe("SUPERSEDES");
+    }
+  });
+
+  it("returns neighbors ordered by id, so a limit truncates deterministically", async () => {
+    // dashboard-api.md §4: "deterministic sort with ID tie-breaker" —
+    // without an ORDER BY, a `limit` cutoff could keep a different subset
+    // of edges across otherwise-identical calls.
+    const opened = await openMigratedTestDb();
+    tempDir = opened.dir;
+    db = opened.db;
+    const repositoryId = await seedRepository(db, "b2");
+    await seedEntity(db, "dec_00000000000000000000000b2r", repositoryId);
+    for (const suffix of ["c", "a", "b"]) {
+      await seedEntity(db, `dec_00000000000000000000000b2${suffix}`, repositoryId);
+      await insertRelation(db, {
+        id: relId(`b2${suffix}`),
+        repositoryId,
+        fromEntityId: "dec_00000000000000000000000b2r",
+        relationType: "RELATED_TO",
+        toEntityId: `dec_00000000000000000000000b2${suffix}`,
+        sourceKind: "human",
+        createdAt: NOW,
+      });
+    }
+
+    const first = await getNeighbors(db, "dec_00000000000000000000000b2r", { limit: 2 });
+    const second = await getNeighbors(db, "dec_00000000000000000000000b2r", { limit: 2 });
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(true);
+    if (first.ok && second.ok) {
+      expect(first.value.map((r) => r.id)).toEqual(second.value.map((r) => r.id));
+      expect(first.value.map((r) => r.id)).toEqual(
+        [relId("b2a"), relId("b2b"), relId("b2c")].sort().slice(0, 2),
+      );
     }
   });
 
@@ -514,7 +549,7 @@ describe("graph-search repositories", () => {
     }
   });
 
-  it("does not reset an already-enqueued embedding job on a re-enqueue attempt", async () => {
+  it("does not reset an already-pending embedding job on a re-enqueue attempt", async () => {
     const opened = await openMigratedTestDb();
     tempDir = opened.dir;
     db = opened.db;
@@ -540,8 +575,8 @@ describe("graph-search repositories", () => {
       createdAt: NOW,
       updatedAt: NOW,
     });
-    await updateEmbeddingJobStatus(db, id, { status: "completed", updatedAt: NOW });
-
+    // Already pending/in-progress work must not be disturbed by a second
+    // enqueue attempt for the same (search_document_id, provider, model).
     await enqueueEmbeddingJob(db, {
       id: jobId("i2"),
       searchDocumentId: sdoc,
@@ -554,7 +589,67 @@ describe("graph-search repositories", () => {
     const due = await listDueEmbeddingJobs(db, NOW, 10);
     expect(due.ok).toBe(true);
     if (due.ok) {
-      expect(due.value.length).toBe(0);
+      expect(due.value.map((j) => j.id)).toEqual([id]);
+    }
+  });
+
+  it("revives a completed embedding job to pending on re-enqueue (content changed)", async () => {
+    // Regression test: embedding_jobs has no content_hash column, so it
+    // cannot tell a genuinely-finished embedding from one whose
+    // search_documents.content_hash changed after the job completed.
+    // Confirmed by reproduction that a plain `DO NOTHING` conflict clause
+    // leaves the stale completed job untouched, so listDueEmbeddingJobs
+    // never surfaces it again and the vector never refreshes.
+    const opened = await openMigratedTestDb();
+    tempDir = opened.dir;
+    db = opened.db;
+    const repositoryId = await seedRepository(db, "i2");
+    await seedEntity(db, "dec_00000000000000000000000i2", repositoryId);
+    const sdoc = sdocId("i2a");
+    await upsertSearchDocument(db, {
+      id: sdoc,
+      entityId: "dec_00000000000000000000000i2",
+      documentKind: "decision",
+      title: "t",
+      body: "b",
+      authority: 100,
+      contentHash: "sha256:aa",
+      indexedAt: NOW,
+    });
+    const id = jobId("i2a");
+    await enqueueEmbeddingJob(db, {
+      id,
+      searchDocumentId: sdoc,
+      provider: "voyage",
+      model: "voyage-4",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    await updateEmbeddingJobStatus(db, id, {
+      status: "completed",
+      attempts: 1,
+      updatedAt: NOW,
+    });
+
+    // The document's content changed; the caller re-enqueues to request a
+    // fresh embedding.
+    await enqueueEmbeddingJob(db, {
+      id: jobId("i2b"),
+      searchDocumentId: sdoc,
+      provider: "voyage",
+      model: "voyage-4",
+      createdAt: LATER,
+      updatedAt: LATER,
+    });
+
+    const due = await listDueEmbeddingJobs(db, LATER, 10);
+    expect(due.ok).toBe(true);
+    if (due.ok) {
+      // The original job row is revived in place (same id), not
+      // duplicated under the new id passed to the second enqueue call.
+      expect(due.value.map((j) => j.id)).toEqual([id]);
+      expect(due.value[0]?.status).toBe("pending");
+      expect(due.value[0]?.attempts).toBe(0);
     }
   });
 });

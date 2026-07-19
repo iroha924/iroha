@@ -106,7 +106,15 @@ export interface GetNeighborsOptions {
   limit?: number;
 }
 
-/** Matches implementation/database-schema.md §11: `getNeighbors(entityId, relationTypes?, direction?, limit?)`. */
+/**
+ * Matches implementation/database-schema.md §11: `getNeighbors(entityId, relationTypes?, direction?, limit?)`.
+ * Ordered by `id` — dashboard-api.md §4 requires deterministic sorting with
+ * an ID tie-breaker, and without any `ORDER BY`, SQLite is free to return
+ * rows in whatever order the query plan happens to produce; when `limit`
+ * cuts the result short (directly here, or via `getSubgraph`'s `maxEdges`),
+ * an unordered read can silently omit different edges across otherwise
+ * identical calls.
+ */
 export async function getNeighbors(
   db: Executor,
   entityId: string,
@@ -135,7 +143,7 @@ export async function getNeighbors(
   }
   try {
     const result = await db.execute({
-      sql: `SELECT * FROM relations WHERE ${conditions.join(" AND ")}${limitClause}`,
+      sql: `SELECT * FROM relations WHERE ${conditions.join(" AND ")} ORDER BY id${limitClause}`,
       args,
     });
     return ok(result.rows.map(rowToRelation));
@@ -488,11 +496,20 @@ export async function searchByVector(
     // `search_documents` (which has its own `id` column) is joined in —
     // every table in a FROM/JOIN clause shares one naming scope regardless
     // of join order, not just the tables introduced so far.
+    //
+    // `e.content_hash = s.content_hash` excludes a stale embedding whose
+    // search document's content has since changed but has not yet been
+    // re-embedded (embedding generation is queued/async — `embedding_jobs`
+    // exists specifically because this lag is expected). Per CLAUDE.md
+    // ("embedding failure must degrade to lexical search"), a stale vector
+    // hit is dropped rather than ranking the entity on outdated content;
+    // the caller may get fewer than `k` hits until the refresh completes.
     const result = await db.execute({
       sql: `SELECT s.id AS search_document_id, s.entity_id AS entity_id
         FROM vector_top_k('embeddings_1024_vector_idx', vector32(?), ?) AS vtk
         JOIN embeddings_1024 e ON e.row_id = vtk.id
-        JOIN search_documents s ON s.id = e.search_document_id`,
+        JOIN search_documents s ON s.id = e.search_document_id
+        WHERE e.content_hash = s.content_hash`,
       args: [JSON.stringify(queryVector), k],
     });
     return ok(
@@ -547,7 +564,20 @@ function rowToEmbeddingJob(row: Record<string, unknown>): EmbeddingJobRow {
   };
 }
 
-/** Keyed on `(search_document_id, provider, model)`; already-queued/processed work is left untouched. */
+/**
+ * Keyed on `(search_document_id, provider, model)`. Already-queued or
+ * in-progress work (`pending`/`running`) is left untouched — re-enqueuing
+ * that would be redundant. A job in a terminal state (`completed`/`failed`/
+ * `dead`) is revived back to `pending` instead of being left alone:
+ * `embedding_jobs` has no `content_hash` column of its own, so this table
+ * cannot tell a genuinely-finished embedding from one whose
+ * `search_documents.content_hash` has since changed underneath it — the
+ * caller (who does have that context, per implementation/database-schema.md
+ * §12 step 9 "queue missing embeddings") signals "this needs work" simply
+ * by calling this function again, and a `DO NOTHING` on a completed row
+ * would otherwise leave `listDueEmbeddingJobs` never finding it, and the
+ * vector never refreshing.
+ */
 export async function enqueueEmbeddingJob(
   db: Executor,
   input: EnqueueEmbeddingJobInput,
@@ -556,7 +586,13 @@ export async function enqueueEmbeddingJob(
     await db.execute({
       sql: `INSERT INTO embedding_jobs (id, search_document_id, provider, model, status, created_at, updated_at)
         VALUES (?, ?, ?, ?, 'pending', ?, ?)
-        ON CONFLICT (search_document_id, provider, model) DO NOTHING`,
+        ON CONFLICT (search_document_id, provider, model) DO UPDATE SET
+          status = 'pending',
+          attempts = 0,
+          next_attempt_at = NULL,
+          last_error_code = NULL,
+          updated_at = excluded.updated_at
+        WHERE embedding_jobs.status IN ('completed', 'failed', 'dead')`,
       args: [
         input.id,
         input.searchDocumentId,
