@@ -27,7 +27,7 @@ describe("runMigrations", () => {
 
   afterEach(async () => {
     for (const db of dbs) {
-      closeDatabase(db);
+      await closeDatabase(db);
     }
     dbs = [];
     for (const dir of tempDirs) {

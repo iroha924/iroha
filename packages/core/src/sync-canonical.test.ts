@@ -67,7 +67,7 @@ describe("syncCanonicalToDatabase", () => {
 
   afterEach(async () => {
     if (db) {
-      closeDatabase(db);
+      await closeDatabase(db);
       db = undefined;
     }
     if (tempDir) {

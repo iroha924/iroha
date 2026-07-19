@@ -194,7 +194,7 @@ async function checkStorageCapabilities(
       message: "FTS5 unicode61/trigram and vector search are supported",
     };
   } finally {
-    closeDatabase(opened.value);
+    await closeDatabase(opened.value);
   }
 }
 

@@ -27,7 +27,7 @@ import { type SyncCanonicalResult, syncCanonicalToDatabase } from "./sync-canoni
  * sibling path carries a random suffix (`createSiblingDatabasePath`) so a
  * leftover file can never collide with a future rebuild. A transient
  * `EBUSY`/`EPERM` from the native libSQL binding's file-handle teardown
- * (still in flight right after this file's own `closeDatabase(siblingDb)`
+ * (still in flight right after this file's own `await closeDatabase(siblingDb)`
  * call, especially on Windows) is not worth retrying for — this always runs
  * on a failure path that is already reporting a real error, so it silently
  * leaves the orphaned file rather than spending time chasing a guarantee
@@ -85,7 +85,7 @@ export async function rebuildDatabase(
     skipBackup: true,
   });
   if (!migrated.ok) {
-    closeDatabase(siblingDb);
+    await closeDatabase(siblingDb);
     await removeSiblingDatabase(siblingDbPath);
     return migrated;
   }
@@ -98,7 +98,7 @@ export async function rebuildDatabase(
     updatedAt: now,
   });
   if (!insertedRepository.ok) {
-    closeDatabase(siblingDb);
+    await closeDatabase(siblingDb);
     await removeSiblingDatabase(siblingDbPath);
     return insertedRepository;
   }
@@ -111,14 +111,14 @@ export async function rebuildDatabase(
     random,
   );
   if (!syncResult.ok) {
-    closeDatabase(siblingDb);
+    await closeDatabase(siblingDb);
     await removeSiblingDatabase(siblingDbPath);
     return syncResult;
   }
 
   const integrityResult = await checkIntegrity(siblingDb);
   if (!integrityResult.ok) {
-    closeDatabase(siblingDb);
+    await closeDatabase(siblingDb);
     await removeSiblingDatabase(siblingDbPath);
     return integrityResult;
   }
@@ -128,7 +128,7 @@ export async function rebuildDatabase(
     integrity.foreignKeyViolations.length > 0 ||
     integrity.applicationViolations.length > 0;
   if (hasViolations) {
-    closeDatabase(siblingDb);
+    await closeDatabase(siblingDb);
     await removeSiblingDatabase(siblingDbPath);
     return err(
       new IrohaError("INTERNAL_ERROR", "Rebuild failed integrity checks", {
@@ -137,7 +137,7 @@ export async function rebuildDatabase(
     );
   }
 
-  closeDatabase(siblingDb);
+  await closeDatabase(siblingDb);
 
   const replaced = await replaceDatabaseAtomically(primaryDbPath, siblingDbPath, clock);
   if (!replaced.ok) {

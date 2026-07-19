@@ -59,7 +59,7 @@ export async function runInit(
     }
     return ok({ init: initResult.value, sync: syncResult.value });
   } finally {
-    closeDatabase(opened.value);
+    await closeDatabase(opened.value);
   }
 }
 
@@ -113,7 +113,7 @@ export async function runSync(
     }
     return ok({ rebuilt: false, sync: syncResult.value });
   } finally {
-    closeDatabase(opened.value);
+    await closeDatabase(opened.value);
   }
 }
 
@@ -138,6 +138,6 @@ export async function runSearch(
   try {
     return await searchText(opened.value, query, options);
   } finally {
-    closeDatabase(opened.value);
+    await closeDatabase(opened.value);
   }
 }

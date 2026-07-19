@@ -133,7 +133,7 @@ describe("rebuildDatabase", () => {
         if (searchDoc.ok) {
           expect(searchDoc.value).not.toBeNull();
         }
-        closeDatabase(opened.value);
+        await closeDatabase(opened.value);
       }
     },
     REBUILD_TEST_TIMEOUT_MS,

@@ -38,7 +38,7 @@ describe("identity repositories", () => {
 
   afterEach(async () => {
     if (db) {
-      closeDatabase(db);
+      await closeDatabase(db);
       db = undefined;
     }
     if (tempDir) {

@@ -20,7 +20,7 @@ describe("withTransaction", () => {
 
   afterEach(async () => {
     for (const db of dbs) {
-      closeDatabase(db);
+      await closeDatabase(db);
     }
     dbs = [];
     if (tempDir) {

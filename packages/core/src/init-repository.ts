@@ -336,6 +336,6 @@ export async function initRepository(
       candidatesCreated,
     });
   } finally {
-    closeDatabase(db);
+    await closeDatabase(db);
   }
 }

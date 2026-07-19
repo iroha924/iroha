@@ -56,7 +56,7 @@ describe("initRepository", () => {
       if (repoRow.ok) {
         expect(repoRow.value).not.toBeNull();
       }
-      closeDatabase(opened.value);
+      await closeDatabase(opened.value);
     }
   });
 
@@ -118,7 +118,7 @@ describe("initRepository", () => {
         expect(pending.value.length).toBe(1);
         expect(pending.value[0]?.candidateType).toBe("rule");
       }
-      closeDatabase(opened.value);
+      await closeDatabase(opened.value);
     }
   });
 
@@ -146,7 +146,7 @@ describe("initRepository", () => {
       if (repoRow.ok) {
         expect(repoRow.value).not.toBeNull();
       }
-      closeDatabase(opened.value);
+      await closeDatabase(opened.value);
     }
 
     const third = await initRepository(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR);
