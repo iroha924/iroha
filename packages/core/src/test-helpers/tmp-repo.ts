@@ -30,6 +30,27 @@ export async function commitFile(
   }
 }
 
+/**
+ * Windows file-handle teardown lag — see `@iroha/storage`'s
+ * `test-helpers/tmp-db.ts` for the reproduction. Tests in this package open
+ * and close real libSQL connections (via `initRepository`/`runInit`/etc.)
+ * inside the directory this removes, so it needs the same bounded retry.
+ */
 export async function removeTempDir(dir: string): Promise<void> {
-  await rm(dir, { recursive: true, force: true });
+  const maxAttempts = 5;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await rm(dir, { recursive: true, force: true });
+      return;
+    } catch (cause) {
+      const code = (cause as NodeJS.ErrnoException).code;
+      if (code !== "EBUSY" && code !== "EPERM") {
+        throw cause;
+      }
+      if (attempt === maxAttempts) {
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, attempt * 100));
+    }
+  }
 }

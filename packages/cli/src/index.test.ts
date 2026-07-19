@@ -15,6 +15,31 @@ async function createTempGitRepo(): Promise<string> {
   return dir;
 }
 
+/**
+ * Windows file-handle teardown lag — see `@iroha/storage`'s
+ * `test-helpers/tmp-db.ts` for the reproduction. `runCli` opens and closes
+ * real libSQL connections inside `dir`, so removing it needs the same
+ * bounded retry.
+ */
+async function removeTempDir(dir: string): Promise<void> {
+  const maxAttempts = 5;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await rm(dir, { recursive: true, force: true });
+      return;
+    } catch (cause) {
+      const code = (cause as NodeJS.ErrnoException).code;
+      if (code !== "EBUSY" && code !== "EPERM") {
+        throw cause;
+      }
+      if (attempt === maxAttempts) {
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, attempt * 100));
+    }
+  }
+}
+
 function captureStdout(): { text: () => string; restore: () => void } {
   let buffer = "";
   const spy = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
@@ -90,7 +115,7 @@ describe("runCli", () => {
     process.chdir(originalCwd);
     process.exitCode = 0;
     if (repoDir) {
-      await rm(repoDir, { recursive: true, force: true });
+      await removeTempDir(repoDir);
       repoDir = undefined;
     }
   });
