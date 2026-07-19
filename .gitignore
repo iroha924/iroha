@@ -4,3 +4,7 @@ dist/
 coverage/
 *.log
 .DS_Store
+
+# Claude Code session-local runtime state (not team config)
+.claude/scheduled_tasks.lock
+.claude/settings.local.json
