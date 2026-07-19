@@ -148,6 +148,16 @@ describe("sanitizeRemoteUrl", () => {
     expect(sanitizeRemoteUrl(atJoined)).toBe(null);
   });
 
+  it("suppresses a bare local path joined by a pipe with no whitespace (no file: prefix)", () => {
+    // Confirmed by reproduction: Git stores this verbatim. Unlike the
+    // "file:"-joined cases above, this bare path has no distinctive prefix
+    // of its own — it only works because "|" isn't in the RFC 3986 pchar
+    // set this module now protects for the bare-path alternative.
+    const pipeJoinedBare = "https://github.com/org/repo.git|/Users/alice/private.git";
+
+    expect(sanitizeRemoteUrl(pipeJoinedBare)).toBe(null);
+  });
+
   it("leaves a URL unchanged when a path segment ends in an underscore", () => {
     // Confirmed by reproduction: Git accepts and stores this verbatim, and
     // an underscore right before "/" is completely ordinary in real

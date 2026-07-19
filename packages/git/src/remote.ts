@@ -35,22 +35,31 @@ import { runGit } from "./run-git.js";
 //   of "file:" immediately before "C" and refuses to treat it as a marker
 //   start.
 //
-// - The bare-path/standalone-drive-letter/UNC alternatives use a narrower
-//   allowlist: only the start of the value or whitespace. Unlike "file:", a
-//   bare `/` can be preceded by almost any character and still be a
-//   completely ordinary URL path separator — RFC 3986 path segments allow
-//   `-`, `_`, `.`, `~`, and more, unencoded. Confirmed by reproduction:
-//   `https://example.com/foo_/repo.git` — an ordinary, safe URL — was
-//   misclassified as local and suppressed to `null`, because `_` isn't
-//   excluded by the denylist above, so the `/` right after it looked like a
-//   fresh marker start. No character-class boundary can perfectly separate
-//   "a joined second value" from "ordinary URL path content" (both can
-//   contain nearly anything), so this narrows to the one truly unambiguous
-//   case — whitespace is never valid raw URL content — accepting that a
-//   *bare* local path joined by some other, non-`file:`-prefixed character
-//   with no whitespace goes undetected. No finding has shown that shape.
+// - The bare-path/standalone-drive-letter/UNC alternatives use their own,
+//   narrower denylist: not preceded by anything that could be legitimate
+//   raw URL path content per RFC 3986 — unreserved (letters, digits, `-`
+//   `.` `_` `~`) plus the sub-delims Git plausibly stores unencoded (`!` `$`
+//   `&` `(` `)` `*` `+` `,` `;` `=`) plus `:`/`/`/`\`/`@`. A first attempt at
+//   this alternative used a plain allowlist (only the start of the value or
+//   whitespace); that missed `https://x/repo.git|/Users/alice/y` (Git
+//   accepts and stores this verbatim, confirmed by reproduction) since `|`
+//   isn't whitespace, and its own predecessor (the same denylist as `file:`
+//   above) wrongly treated `_`/`-`/`.` as valid boundaries even though
+//   they're common, legitimate URL path characters — misclassifying
+//   `https://example.com/foo_/repo.git` (an ordinary, safe URL) as local.
+//   `'`/`"` are deliberately excluded from the protected set (i.e. they
+//   remain valid boundaries) despite being RFC 3986 sub-delims too: kept
+//   consistent with `redactAbsolutePathsInText` in credential-redaction.ts,
+//   which needs them as boundaries to redact a path Git's own diagnostic
+//   text quotes with them — a concrete, common case that outweighs the
+//   theoretical, rare one of a URL path segment ending in a literal
+//   apostrophe. This is the most complete boundary this module tracks, but
+//   still not a perfect one: any pchar not
+//   in the excluded set above (RFC 3986 leaves very little out) could in
+//   principle still be exploited as an undetected joiner — accepted as a
+//   residual gap rather than encoding the *entire* pchar grammar here.
 const LOCAL_PATH_MARKER =
-  /(?:(?<![a-zA-Z0-9:/\\])file:(?:\/+|[a-zA-Z]:[\\/])|(?:^|\s)(?:\/|[a-zA-Z]:[\\/]|\\\\))/i;
+  /(?:(?<![a-zA-Z0-9:/\\])file:(?:\/+|[a-zA-Z]:[\\/])|(?:^|(?<![a-zA-Z0-9:/\\@_.~!$&()*+,;=-]))(?:\/|[a-zA-Z]:[\\/]|\\\\))/i;
 
 function isLocalAbsolutePath(value: string): boolean {
   return LOCAL_PATH_MARKER.test(value);

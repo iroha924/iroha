@@ -242,4 +242,19 @@ describe("redactAbsolutePathsInText", () => {
       "fatal: unable to access '<path>'",
     );
   });
+
+  it("redacts every bare absolute path Git quotes when a checkout target is outside the repo", () => {
+    // Confirmed by reproduction: `git checkout /tmp/secret` run inside an
+    // unrelated repo produces exactly this shape, with the same absolute
+    // path echoed three times (once bare, twice quoted) plus the repo's own
+    // absolute root also quoted. Bare paths have no distinctive prefix of
+    // their own — this only works because the quote character remains a
+    // valid boundary for the bare-path alternative.
+    const text =
+      "fatal: /tmp/secret: '/tmp/secret' is outside repository at '/private/var/folders/x/tmp.abc123'";
+
+    expect(redactAbsolutePathsInText(text)).toBe(
+      "fatal: <path> '<path>' is outside repository at '<path>'",
+    );
+  });
 });

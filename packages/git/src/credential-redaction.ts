@@ -128,28 +128,39 @@ export function redactUrlLikeCredentialsInText(text: string): string {
 // A filesystem path marker (POSIX absolute, home-relative, Windows
 // drive-letter, UNC, or a `file:` URL wrapping any of those) found anywhere
 // in the text. Same split-boundary design as `LOCAL_PATH_MARKER` in
-// remote.ts (see its own comment for the full rationale): `file:` uses a
-// denylist boundary (not preceded by a letter, digit, `:`, `/`, or `\`),
-// which is exactly what keeps it from firing inside an already-processed
-// "scheme://host/path" URL's own interior (its `/`s are always preceded by
-// one of those four) while still catching "file:" joined to other text by
-// any punctuation. The bare-path/drive-letter/UNC/`~/` alternatives use a
-// narrower allowlist boundary instead — only the start of the text or
-// whitespace — since a bare `/` (unlike "file:") can be preceded by almost
-// any character and still be an ordinary URL path separator (RFC 3986 path
-// segments allow `-`, `_`, `.`, `~`, and more, unencoded); the denylist
-// boundary here previously misfired on e.g.
-// "https://example.invalid/org/my_repo/x.git", replacing "/x.git" with a
-// placeholder because "_" wasn't excluded. Confirmed by reproduction: a
-// malformed `GIT_CONFIG_GLOBAL` file makes Git itself print e.g. "fatal:
-// bad config line 1 in file /tmp/xxx/.gitconfig" — a path Git generated
-// itself, with no credential-URL shape for `redactUrlLikeCredentialsInText`
-// to find; and Git can also echo back a caller's `file://...` argument
-// verbatim (`redactUrlLikeCredentialsInText` leaves it alone, since a
-// `file:` URL with no userinfo has no *credential* to strip — its host+path
-// itself is the local path, which is this function's job, not that one's).
+// remote.ts (see its own comment for the full rationale and history):
+// `file:` uses a denylist boundary (not preceded by a letter, digit, `:`,
+// `/`, or `\`), which is exactly what keeps it from firing inside an
+// already-processed "scheme://host/path" URL's own interior (its `/`s are
+// always preceded by one of those four) while still catching "file:" joined
+// to other text by any punctuation.
+//
+// The bare-path/drive-letter/UNC/`~/` alternatives use their own, narrower
+// denylist instead: not preceded by anything that could be legitimate raw
+// URL path content per RFC 3986 (unreserved, a subset of sub-delims,
+// `:`/`/`/`\`/`@`) — a bare `/` has no distinctive prefix like "file:" does,
+// so it needs stronger protection against colliding with ordinary path
+// content (confirmed by reproduction:
+// "https://example.invalid/org/my_repo/x.git" was having its "/x.git"
+// replaced with a placeholder, since an earlier version of this boundary
+// didn't exclude "_"). `'`/`"` are deliberately excluded from that
+// protected set (i.e. they remain valid boundaries) despite being sub-delims
+// too: Git's own diagnostic text routinely quotes a path with them (e.g.
+// `git checkout /tmp/secret` produces `pathspec '/tmp/secret' did not
+// match`, confirmed by reproduction), and redacting that quoted path is
+// this function's whole job — outweighing the theoretical, rare case of a
+// URL path segment ending in a literal apostrophe.
+//
+// Confirmed by reproduction: a malformed `GIT_CONFIG_GLOBAL` file makes Git
+// itself print e.g. "fatal: bad config line 1 in file /tmp/xxx/.gitconfig"
+// — a path Git generated itself, with no credential-URL shape for
+// `redactUrlLikeCredentialsInText` to find; and Git can also echo back a
+// caller's `file://...` argument verbatim (`redactUrlLikeCredentialsInText`
+// leaves it alone, since a `file:` URL with no userinfo has no *credential*
+// to strip — its host+path itself is the local path, which is this
+// function's job, not that one's).
 const ABSOLUTE_PATH_IN_TEXT =
-  /(?:(?<![a-zA-Z0-9:/\\])file:(?:\/+|[a-zA-Z]:[\\/])|(?:^|(?<=\s))(?:~\/|\/|[a-zA-Z]:[\\/]|\\\\))[^\s'"]*/gi;
+  /(?:(?<![a-zA-Z0-9:/\\])file:(?:\/+|[a-zA-Z]:[\\/])|(?:^|(?<![a-zA-Z0-9:/\\@_.~!$&()*+,;=-]))(?:~\/|\/|[a-zA-Z]:[\\/]|\\\\))[^\s'"]*/gi;
 
 /**
  * Replaces every filesystem-path-shaped substring in free-form text (e.g.
