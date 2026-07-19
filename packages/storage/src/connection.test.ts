@@ -25,7 +25,7 @@ describe("openDatabase", () => {
     if (result.ok) {
       const fileStat = await stat(nestedDbPath);
       expect(fileStat.isFile()).toBe(true);
-      closeDatabase(result.value);
+      await closeDatabase(result.value);
     }
   });
 
@@ -46,7 +46,7 @@ describe("openDatabase", () => {
     if (result.ok) {
       const fileStat = await stat(dbPath);
       expect(fileStat.isFile()).toBe(true);
-      closeDatabase(result.value);
+      await closeDatabase(result.value);
     }
   });
 
@@ -74,7 +74,7 @@ describe("openDatabase", () => {
     const tempStore = await db.execute("PRAGMA temp_store");
     expect(tempStore.rows[0]?.temp_store).toBe(2); // MEMORY
 
-    closeDatabase(db);
+    await closeDatabase(db);
   });
 
   it("returns DB_UNAVAILABLE instead of throwing when the path cannot be opened as a database", async () => {
@@ -125,7 +125,7 @@ describe("closeDatabase", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
-    closeDatabase(result.value);
+    await closeDatabase(result.value);
 
     await expect(result.value.execute("SELECT 1")).rejects.toThrow();
   });

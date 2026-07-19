@@ -125,7 +125,6 @@ The dependency graph must be acyclic. Domain packages must not depend on platfor
 |---|---|---|---|
 | macOS | arm64, x64 | macOS 14 | Node 24, Git 2.40+ |
 | Ubuntu | x64, arm64 | 22.04 LTS | glibc build |
-| Windows | x64 | Windows 11 | native PowerShell path |
 | WSL | x64, arm64 | WSL2 + Ubuntu 22.04 | treated as Linux |
 
 ### Tier 2: best effort
@@ -133,6 +132,11 @@ The dependency graph must be acyclic. Domain packages must not depend on platfor
 - Debian 12+
 - Fedora 40+
 - other glibc-based Linux distributions supported by Node 24 and the libSQL package
+- Windows 11, x64, native PowerShell path — moved out of Tier 1 and dropped
+  from CI (`.github/workflows/ci.yml`'s `verify` matrix); a native libSQL
+  WAL-mode file lock can outlive `db.close()` on Windows for an unbounded
+  time, so single-invocation retry budgets cannot make Windows CI reliably
+  green (implementation/decision-log.md ID-026(14))
 - Windows 10 22H2
 
 ### Not supported in 0.1

@@ -19,11 +19,44 @@ export interface ReplaceDatabaseResult {
 
 const WAL_SUFFIXES = ["-wal", "-shm"] as const;
 
+/**
+ * `rename()` with a bounded retry on `EBUSY`/`EPERM` — confirmed by
+ * reproduction (Windows CI): a native libSQL connection's file-handle
+ * teardown can still be in flight after this package's own
+ * `closeDatabase()` call returns, so a `rename()` immediately following a
+ * close can transiently fail even though every caller of this function has
+ * already closed its connections per its own contract. This is the one
+ * rename in this file that is on the actual product-required path
+ * (database-schema.md §12 step 11, "atomically replace the DB"), so it gets
+ * a real retry — but only a modest one: chasing a longer and longer budget
+ * to make an occasional multi-second Windows CI stall disappear (observed up
+ * to ~9s at least once, plausibly antivirus-related) is not a guarantee this
+ * function needs to provide. If the lock genuinely does not clear within a
+ * few seconds, surfacing a real, retryable error to the caller is the
+ * correct behavior.
+ */
+async function renameWithRetry(from: string, to: string): Promise<void> {
+  const maxAttempts = 10;
+  const delayMs = 300;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await rename(from, to);
+      return;
+    } catch (cause) {
+      const code = (cause as NodeJS.ErrnoException).code;
+      if ((code !== "EBUSY" && code !== "EPERM") || attempt === maxAttempts) {
+        throw cause;
+      }
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+}
+
 /** Renames `<fromBase><suffix>` to `<toBase><suffix>` if it exists; a no-op otherwise. */
 async function renameSidecarIfExists(fromBase: string, toBase: string): Promise<void> {
   for (const suffix of WAL_SUFFIXES) {
     try {
-      await rename(`${fromBase}${suffix}`, `${toBase}${suffix}`);
+      await renameWithRetry(`${fromBase}${suffix}`, `${toBase}${suffix}`);
     } catch (cause) {
       if ((cause as NodeJS.ErrnoException).code !== "ENOENT") {
         throw cause;
@@ -60,7 +93,7 @@ export async function replaceDatabaseAtomically(
   const timestamp = clock.now().toISOString().replace(/[:.]/g, "-");
   const backupPath = `${primaryDbPath}.backup-${timestamp}`;
   try {
-    await rename(primaryDbPath, backupPath);
+    await renameWithRetry(primaryDbPath, backupPath);
     await renameSidecarIfExists(primaryDbPath, backupPath);
   } catch (cause) {
     // Best-effort recovery, mirroring the catch block below: if the main
@@ -76,7 +109,7 @@ export async function replaceDatabaseAtomically(
     );
   }
   try {
-    await rename(siblingDbPath, primaryDbPath);
+    await renameWithRetry(siblingDbPath, primaryDbPath);
     await renameSidecarIfExists(siblingDbPath, primaryDbPath);
   } catch (cause) {
     // Best-effort recovery: restore the original database (and its

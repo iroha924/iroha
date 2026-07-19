@@ -50,7 +50,7 @@ describe("FTS unicode61/trigram smoke search", () => {
 
   afterEach(async () => {
     if (db) {
-      closeDatabase(db);
+      await closeDatabase(db);
       db = undefined;
     }
     if (tempDir) {
