@@ -34,7 +34,18 @@ import { runGit } from "./run-git.js";
 // another letter). Every other character — any punctuation, ASCII or not,
 // known today or not — is a valid boundary, so no future joiner character
 // can reopen this same gap.
-const LOCAL_PATH_MARKER = /(?<![a-zA-Z0-9:/\\])(?:file:\/+|\/|[a-zA-Z]:[\\/]|\\\\)/i;
+//
+// `file:` itself needs two sub-forms, not just `\/+`: Git also accepts (and
+// stores verbatim) `file:C:/Users/...` and `file:C:\Users\...` — a Windows
+// drive-letter path directly after the single colon, no slash at all
+// between "file:" and "C:". Confirmed by reproduction. The plain `\/+`
+// branch alone doesn't match that shape, and the standalone
+// `[a-zA-Z]:[\\/]` branch can't reach it either, since its own boundary
+// check sees the `:` at the end of "file:" immediately before "C" and
+// (correctly, for that branch's own purpose) refuses to treat it as a
+// marker start.
+const LOCAL_PATH_MARKER =
+  /(?<![a-zA-Z0-9:/\\])(?:file:(?:\/+|[a-zA-Z]:[\\/])|\/|[a-zA-Z]:[\\/]|\\\\)/i;
 
 function isLocalAbsolutePath(value: string): boolean {
   return LOCAL_PATH_MARKER.test(value);

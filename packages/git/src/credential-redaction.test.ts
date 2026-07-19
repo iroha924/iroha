@@ -153,6 +153,37 @@ describe("redactUrlLikeCredentialsInText", () => {
       "error: pathspec 'https://example.invalid/org/repo.git' did not match",
     );
   });
+
+  it("drops a secret entirely rather than re-emitting it as a nested URL", () => {
+    // Confirmed by reproduction of the underlying shape: a scheme:// URL
+    // embedded in another URL's query value. redactUrlLikeCredentials
+    // already drops the whole query (it can't tell a "secret" apart from
+    // an ordinary query value), so the fix here is that the loop must not
+    // treat the nested scheme as an independent second candidate and
+    // append its (unredacted, since it has no userinfo of its own) text
+    // back into the result — which is exactly how the secret leaked back
+    // in before this fix.
+    const text = "https://github.com/org/repo.git?access_token=https://example.com/SECRET";
+
+    expect(redactUrlLikeCredentialsInText(text)).toBe("https://github.com/org/repo.git");
+  });
+
+  it("drops a nested URL from a fragment the same way as from a query", () => {
+    const text = "https://github.com/org/repo.git#token=https://example.com/SECRET";
+
+    expect(redactUrlLikeCredentialsInText(text)).toBe("https://github.com/org/repo.git");
+  });
+
+  it("still redacts a genuinely separate URL that follows one with its own query", () => {
+    // The nested-URL fix must not accidentally swallow a real second URL
+    // that happens to come after a first URL's query, once a real
+    // HARD_DELIMITER boundary (here, whitespace) actually separates them.
+    const text = "tried https://a.example/x?tok=1 then https://tok@b.example/y";
+
+    expect(redactUrlLikeCredentialsInText(text)).toBe(
+      "tried https://a.example/x then https://b.example/y",
+    );
+  });
 });
 
 describe("redactAbsolutePathsInText", () => {
@@ -184,6 +215,21 @@ describe("redactAbsolutePathsInText", () => {
     // is eliminating the path text, not reformatting the surrounding prose.
     expect(redactAbsolutePathsInText("/etc/passwd: permission denied")).toBe(
       "<path> permission denied",
+    );
+  });
+
+  it("redacts a file:// URL Git echoes back verbatim, not just bare paths", () => {
+    // redactUrlLikeCredentialsInText alone leaves this untouched: a file:
+    // URL with no userinfo has no *credential* to strip, but its host+path
+    // IS a local filesystem path — this function's job, not that one's.
+    const text = "error: pathspec 'file:///Users/alice/private.git' did not match";
+
+    expect(redactAbsolutePathsInText(text)).toBe("error: pathspec '<path>' did not match");
+  });
+
+  it("redacts a single-slash file: URL", () => {
+    expect(redactAbsolutePathsInText("fatal: unable to access 'file:/Users/alice/x.git'")).toBe(
+      "fatal: unable to access '<path>'",
     );
   });
 });

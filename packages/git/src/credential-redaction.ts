@@ -62,6 +62,14 @@ const SCHEME_START = /[a-zA-Z][a-zA-Z0-9+.-]*:\/\//g;
 // through unredacted, the same failure shape as the earlier `,` bug.
 const SCHEME_AND_USERINFO = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\/(?:[^/?#]*@)?/;
 
+// Marks the start of a query or fragment — the point after which
+// `redactUrlLikeCredentials`'s own `[^?#]*` "rest" group stops and
+// therefore drops everything. Used to detect when a `SCHEME_START` match
+// found later in the text is actually *nested inside* the current
+// candidate's own query/fragment value, rather than being a second,
+// independent URL — see the `hasQuery` branch below.
+const QUERY_START = /[?#]/;
+
 /**
  * Redacts every `scheme://`-shaped substring found anywhere inside free-form
  * text (e.g. Git's own stderr, which can echo a caller-supplied argument
@@ -78,14 +86,37 @@ export function redactUrlLikeCredentialsInText(text: string): string {
   let result = "";
   let cursor = 0;
   for (const [i, start] of starts.entries()) {
+    if (start < cursor) {
+      // A `SCHEME_START` match that falls inside a query/fragment already
+      // consumed by the previous candidate (see the `hasQuery` branch
+      // below) — not an independent URL of its own. Confirmed by
+      // reproduction: without this, a value like
+      // "https://x/repo.git?token=https://evil/SECRET" redacted the outer
+      // URL's query away correctly, then treated the *nested* scheme as a
+      // second, unrelated candidate and appended it back into the output
+      // unredacted — the secret leaked back in through the side channel
+      // this loop used to detect "a second URL joined with no delimiter".
+      continue;
+    }
     result += text.slice(cursor, start);
 
     const nextStart = starts[i + 1] ?? text.length;
     const span = text.slice(start, nextStart);
     const prefixMatch = SCHEME_AND_USERINFO.exec(span);
     const prefixLength = prefixMatch ? prefixMatch[0].length : 0;
-    const delimiter = HARD_DELIMITER.exec(span.slice(prefixLength));
-    const end = start + (delimiter ? prefixLength + delimiter.index : span.length);
+    const boundedRemainder = span.slice(prefixLength);
+    const hasQuery = QUERY_START.test(boundedRemainder);
+
+    // A query/fragment is being dropped by `redactUrlLikeCredentials`
+    // regardless of what it contains, so its true extent must be found by
+    // scanning past `nextStart` entirely (ignoring any scheme starts
+    // nested inside it) rather than being capped there — capping at
+    // `nextStart` here is what let the nested-URL bug above happen.
+    const searchSpace = hasQuery ? text.slice(start + prefixLength) : boundedRemainder;
+    const delimiter = HARD_DELIMITER.exec(searchSpace);
+    const end = hasQuery
+      ? start + prefixLength + (delimiter ? delimiter.index : searchSpace.length)
+      : start + (delimiter ? prefixLength + delimiter.index : span.length);
 
     result += redactUrlLikeCredentials(text.slice(start, end));
     cursor = end;
@@ -95,15 +126,23 @@ export function redactUrlLikeCredentialsInText(text: string): string {
 }
 
 // A filesystem path marker (POSIX absolute, home-relative, Windows
-// drive-letter, or UNC) immediately preceded by the start of the text,
-// whitespace, or a quote — never by `:` or `/`, so this never fires inside
-// an already-processed "scheme://host/path" URL's own interior (its `/`s
-// are always preceded by `:` or another `/`, neither of which is a
-// boundary here). Confirmed by reproduction: a malformed `GIT_CONFIG_GLOBAL`
-// file makes Git itself print e.g. "fatal: bad config line 1 in file
-// /tmp/xxx/.gitconfig" — an absolute path Git generated, not something a
-// caller's argument echoed back, so no scheme marker exists to scan for.
-const ABSOLUTE_PATH_IN_TEXT = /(^|[\s'"])(?:\/|~\/|[a-zA-Z]:[\\/]|\\\\)[^\s'"]*/g;
+// drive-letter, UNC, or a `file:` URL wrapping any of those) found anywhere
+// in the text. Same denylist-boundary design as `LOCAL_PATH_MARKER` in
+// remote.ts (see its own comment for the full rationale and the false
+// positives an allowlist of boundary characters can't close for good): the
+// marker must not be immediately preceded by a letter, digit, `:`, `/`, or
+// `\`, which is exactly what keeps this from firing inside an
+// already-processed "scheme://host/path" URL's own interior (its `/`s are
+// always preceded by one of those four). Confirmed by reproduction: a
+// malformed `GIT_CONFIG_GLOBAL` file makes Git itself print e.g. "fatal:
+// bad config line 1 in file /tmp/xxx/.gitconfig" — a path Git generated
+// itself, with no credential-URL shape for `redactUrlLikeCredentialsInText`
+// to find; and Git can also echo back a caller's `file://...` argument
+// verbatim (`redactUrlLikeCredentialsInText` leaves it alone, since a
+// `file:` URL with no userinfo has no *credential* to strip — its host+path
+// itself is the local path, which is this function's job, not that one's).
+const ABSOLUTE_PATH_IN_TEXT =
+  /(?<![a-zA-Z0-9:/\\])(?:file:(?:\/+|[a-zA-Z]:[\\/])|~\/|\/|[a-zA-Z]:[\\/]|\\\\)[^\s'"]*/gi;
 
 /**
  * Replaces every filesystem-path-shaped substring in free-form text (e.g.
@@ -117,5 +156,5 @@ const ABSOLUTE_PATH_IN_TEXT = /(^|[\s'"])(?:\/|~\/|[a-zA-Z]:[\\/]|\\\\)[^\s'"]*/
  * wholesale instead of just having its userinfo stripped.
  */
 export function redactAbsolutePathsInText(text: string): string {
-  return text.replace(ABSOLUTE_PATH_IN_TEXT, (_match, boundary: string) => `${boundary}<path>`);
+  return text.replace(ABSOLUTE_PATH_IN_TEXT, "<path>");
 }

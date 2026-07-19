@@ -60,6 +60,17 @@ describe("sanitizeRemoteUrl", () => {
     expect(sanitizeRemoteUrl("file:/Users/alice/private.git")).toBe(null);
   });
 
+  it("suppresses a file: remote wrapping a Windows drive path with no slash after the colon", () => {
+    // Confirmed by reproduction: Git accepts and stores "file:C:/..." (and
+    // the backslash form) verbatim, with no "/" at all between "file:" and
+    // the drive letter.
+    expect(sanitizeRemoteUrl("file:C:/Users/alice/private.git")).toBe(null);
+  });
+
+  it("suppresses a file: remote wrapping a Windows drive path (backslash form)", () => {
+    expect(sanitizeRemoteUrl("file:C:\\Users\\alice\\private.git")).toBe(null);
+  });
+
   it("leaves a relative file: remote unchanged, unlike an absolute one", () => {
     // No leading slash after "file:" means no absolute filesystem path is
     // being exposed — consistent with this module's existing scope of only
