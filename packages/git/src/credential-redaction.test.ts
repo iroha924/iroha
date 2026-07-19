@@ -96,16 +96,37 @@ describe("redactUrlLikeCredentialsInText", () => {
     expect(redactUrlLikeCredentialsInText(text)).toBe(text);
   });
 
-  it("redacts two URLs joined by a comma, with no whitespace between them", () => {
-    // Git accepts (and can print back) a value like this; without a comma
-    // boundary the whole thing matches as one URL, and the second URL's
-    // credential is treated as part of the first URL's path/query and
-    // survives redaction.
+  it("redacts two URLs joined by a comma, with no credential before the comma", () => {
+    // Git accepts (and can print back) a value like this. Superseded
+    // expectation: an earlier version of this function preserved the first
+    // URL's host+path unchanged here, since nothing before the comma looked
+    // like a credential. That relied on `nextStart` always landing exactly
+    // at the second URL's own scheme start — but the fix for a credential
+    // containing an embedded "scheme://" substring (see SCHEME_URL's
+    // comment) required `nextStart` to keep extending past a scheme start
+    // that has no "@" before it, on the theory that it's more likely
+    // embedded in the current candidate's userinfo than a genuinely
+    // independent URL. That same rule fires here — the first URL has no
+    // "@" of its own before the comma — and there is no way to tell "an
+    // embedded scheme with no @ yet" apart from "a separate, credential-free
+    // URL" from the text alone. Losing the first URL's separate visibility
+    // is the accepted cost, same trade already made for the `hasQuery` case
+    // below.
     const text = "https://safe.example/x,https://tok@evil.example/y";
 
-    expect(redactUrlLikeCredentialsInText(text)).toBe(
-      "https://safe.example/x,https://evil.example/y",
-    );
+    expect(redactUrlLikeCredentialsInText(text)).toBe("https://evil.example/y");
+  });
+
+  it("redacts a credential whose password itself contains an unescaped scheme", () => {
+    // Confirmed by reproduction: `git remote add origin
+    // "https://user:phttps://ss@example.com/repo.git"` stores and echoes
+    // that value verbatim (`git remote get-url`/`git config --get`), since
+    // Git enforces no validation on `remote.<name>.url`. An earlier version
+    // of this function found no "@" before the "/" inside the embedded
+    // "https://" and left "user:p" in the output unredacted.
+    const text = "https://user:phttps://ss@example.com/repo.git";
+
+    expect(redactUrlLikeCredentialsInText(text)).toBe("https://example.com/repo.git");
   });
 
   it("redacts a credentialed URL whose password itself contains a comma", () => {

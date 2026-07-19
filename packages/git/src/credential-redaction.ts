@@ -1,18 +1,27 @@
-// The userinfo group is `[^/?#]*@` (greedy, `@` allowed inside), not
-// `[^@/]*@` (`@` excluded) — a password containing a literal unescaped `@`
+// The userinfo group is `[^?#]*@` (greedy, `@` allowed inside), not
+// `[^@?#]*@` (`@` excluded) — a password containing a literal unescaped `@`
 // (e.g. `alice:p@ss@host`) has more than one `@` before the host, and only
 // the greedy form backtracks to match through the *last* one, the actual
 // userinfo/host boundary. The excluded-`@` form would stop at the first `@`
 // and leave the password's tail sitting in the "host" position, unredacted.
 //
-// `?`/`#` are excluded too (not just `/`): without that, a URL with no path
-// segment before its query/fragment (e.g.
-// "https://example.com?access_token=a@b") lets the greedy match cross the
-// "?" and backtrack onto the "@" inside the query value, mis-parsing
-// "example.com?access_token=a" as userinfo and "b" as the host — corrupting
-// the redacted URL and leaving part of the credential in the output.
-// Confirmed by reproduction.
-const SCHEME_URL = /^([a-zA-Z][a-zA-Z0-9+.-]*):\/\/(?:[^/?#]*@)?([^?#]*)/;
+// `?`/`#` are excluded (userinfo can't legally contain a literal query/
+// fragment marker) but `/` is deliberately NOT excluded, even though a real
+// host+path always contains one: Git enforces no validation on
+// `remote.<name>.url`, so a credential can itself contain an unescaped
+// `://`-shaped substring — confirmed by reproduction, `git remote add origin
+// "https://user:phttps://ss@example.com/repo.git"` stores and echoes that
+// value verbatim via both `git remote get-url` and `git config --get`. An
+// earlier version of this class excluded `/`, on the theory that userinfo
+// never legitimately contains one; that version stopped scanning at the `/`
+// inside the embedded "https://", found no `@` before it, and let the
+// credential's own prefix ("user:p") leak into the output unredacted. Since
+// `/` is not excluded, a URL with no path segment before its query/fragment
+// (e.g. "https://example.com?access_token=a@b") could still let the greedy
+// match cross the "?" and backtrack onto the "@" inside the query value —
+// `?`/`#` stay excluded specifically to prevent that. Confirmed by
+// reproduction.
+const SCHEME_URL = /^([a-zA-Z][a-zA-Z0-9+.-]*):\/\/(?:[^?#]*@)?([^?#]*)/;
 
 /**
  * Strips everything a `scheme://` URL can use to carry a secret: the
@@ -43,11 +52,9 @@ export function redactUrlLikeCredentials(value: string): string {
 const HARD_DELIMITER = /[\s'"<>()[\]{}]/;
 
 // Marks where each candidate URL starts. Boundaries between adjacent
-// candidates are resolved by whichever comes first: the next scheme start,
-// or a HARD_DELIMITER — so two URLs joined with no whitespace between them
-// (confirmed by reproduction: "https://a/x,https://tok@b/y") still get a
-// boundary at the second `https://`, even though `,` is no longer a hard
-// delimiter.
+// candidates are resolved by whichever comes first: the next scheme start
+// that isn't itself inside the current candidate's userinfo (see the
+// `nextStart`-extension loop below), or a HARD_DELIMITER.
 const SCHEME_START = /[a-zA-Z][a-zA-Z0-9+.-]*:\/\//g;
 
 // Matches only "scheme://[userinfo@]" — the same backtracking userinfo
@@ -60,7 +67,7 @@ const SCHEME_START = /[a-zA-Z][a-zA-Z0-9+.-]*:\/\//g;
 // reached. Confirmed by reproduction: "https://user:p)ss@host/path" cut down
 // to "https://user:p" (no "@" left in it), passing the whole credential
 // through unredacted, the same failure shape as the earlier `,` bug.
-const SCHEME_AND_USERINFO = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\/(?:[^/?#]*@)?/;
+const SCHEME_AND_USERINFO = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\/(?:[^?#]*@)?/;
 
 // Marks the start of a query or fragment — the point after which
 // `redactUrlLikeCredentials`'s own `[^?#]*` "rest" group stops and
@@ -100,7 +107,45 @@ export function redactUrlLikeCredentialsInText(text: string): string {
     }
     result += text.slice(cursor, start);
 
-    const nextStart = starts[i + 1] ?? text.length;
+    // `nextStart` bounds how far the userinfo search below is allowed to
+    // look for the credential's "@" — normally the very next SCHEME_START
+    // match, so a second, independent URL's own scheme keeps the first
+    // candidate's userinfo search from running into it. But when a
+    // credential itself contains an unescaped "scheme://"-shaped substring
+    // (SCHEME_URL's comment explains why `/` can't be excluded from the
+    // userinfo class to rule this out), that embedded text is *also* a
+    // SCHEME_START match, and bounding the search there — as an earlier
+    // version of this function did — cuts the search off before the real
+    // "@" is ever reached, leaking the credential's prefix. Confirmed by
+    // reproduction: "https://user:phttps://ss@example.com/repo.git" left
+    // "user:p" unredacted in the output.
+    //
+    // The fix: keep extending `nextStart` past a candidate SCHEME_START
+    // match as long as no "@" appears before it — a match with no "@"
+    // anywhere ahead of it inside the current span cannot be the boundary
+    // of a genuine userinfo, so it's more likely embedded in one. This
+    // still stops at the *first* SCHEME_START match that does have an "@"
+    // before it, so a second, credential-free URL directly followed by a
+    // credentialed one (e.g. "https://a@one.example/x then
+    // https://b@two.example/y") is not swallowed into the first candidate.
+    //
+    // Accepted cost: a genuinely independent, credential-free URL joined by
+    // punctuation alone with no "@" of its own before the next real
+    // candidate (e.g. two URLs joined by a comma, where the first has no
+    // credential) is indistinguishable from an embedded scheme by this
+    // rule, and gets folded into the same span — its host+path is lost
+    // rather than preserved separately. There is no reliable way to tell
+    // the two cases apart from the text alone, and losing an unrelated
+    // URL's visibility is the same trade already made for the `hasQuery`
+    // case below: never risk leaking part of a credential to preserve
+    // display fidelity for an ambiguous case.
+    let candidateIndex = i + 1;
+    let nextStart = starts[candidateIndex] ?? text.length;
+    while (candidateIndex < starts.length && !text.slice(start, nextStart).includes("@")) {
+      candidateIndex += 1;
+      nextStart = starts[candidateIndex] ?? text.length;
+    }
+
     const span = text.slice(start, nextStart);
     const prefixMatch = SCHEME_AND_USERINFO.exec(span);
     const prefixLength = prefixMatch ? prefixMatch[0].length : 0;
