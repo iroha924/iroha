@@ -211,6 +211,26 @@ export async function runMigrations(
   const applied = appliedResult.value;
   const maxKnownVersion = files.length > 0 ? Math.max(...files.map((file) => file.version)) : 0;
 
+  // Confirmed by review: `maxKnownVersion` alone only reflects what this
+  // build's own migrations directory contains — it says nothing about
+  // whether `schema_migrations` already records a version this build has
+  // never heard of (e.g. a downgraded build with fewer migration files,
+  // opened against a database a newer build already migrated further,
+  // where `schema_migrations` already has the higher-version bookkeeping
+  // row regardless of what `PRAGMA user_version` currently reads). Reject
+  // that unconditionally, before the no-pending fast path below (which
+  // only compares against `maxKnownVersion`) could otherwise miss it.
+  const maxAppliedVersion = applied.size > 0 ? Math.max(...applied.keys()) : 0;
+  if (maxAppliedVersion > maxKnownVersion) {
+    return err(
+      new IrohaError(
+        "SCHEMA_MISMATCH",
+        "schema_migrations records a migration version this build's migration files do not include",
+        { details: { maxAppliedVersion, maxKnownVersion } },
+      ),
+    );
+  }
+
   // Drift recovery: a migration file's own transaction (its DDL plus
   // `PRAGMA user_version`) can commit while the separate `schema_migrations`
   // bookkeeping `INSERT` a few lines below never runs — a crash between the

@@ -254,6 +254,48 @@ describe("runMigrations", () => {
       expect(result.error.code).toBe("SCHEMA_MISMATCH");
     }
   });
+
+  it("fails with SCHEMA_MISMATCH when schema_migrations records a version this build's files do not include, even if PRAGMA user_version has not caught up", async () => {
+    // Regression test: confirmed by review that comparing only
+    // `PRAGMA user_version` against `maxKnownVersion` misses this case —
+    // `schema_migrations` already has an "orphaned" bookkeeping row for a
+    // version this (downgraded) build's migrations directory does not
+    // include at all, while `PRAGMA user_version` itself is still behind.
+    const migrationsDir = await copyMigrationsDir();
+    tempDirs.push(migrationsDir);
+    const { dir, dbPath } = await createTempDbPath();
+    tempDirs.push(dir);
+    const opened = await openDatabase(dbPath);
+    if (!opened.ok) throw new Error("failed to open database");
+    dbs.push(opened.value);
+
+    const first = await runMigrations(opened.value, migrationsDir, dbPath, CLOCK);
+    expect(first.ok).toBe(true);
+    const userVersionAfterFirst = await opened.value.execute("PRAGMA user_version");
+    expect(userVersionAfterFirst.rows[0]?.user_version).toBe(1);
+
+    // Simulate schema_migrations already recording version 2 (e.g. a
+    // concurrent/other process's bookkeeping insert) without PRAGMA
+    // user_version having advanced to 2 yet.
+    await opened.value.execute({
+      sql: "INSERT INTO schema_migrations (version, name, checksum, applied_at) VALUES (?, ?, ?, ?)",
+      args: [
+        2,
+        "orphaned",
+        "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        CLOCK.now().toISOString(),
+      ],
+    });
+
+    // This build's migrations directory only has version 1 — it does not
+    // even know version 2 exists.
+    const result = await runMigrations(opened.value, migrationsDir, dbPath, CLOCK);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("SCHEMA_MISMATCH");
+    }
+  });
 });
 
 describe("loadMigrations", () => {
