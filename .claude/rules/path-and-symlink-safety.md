@@ -42,6 +42,8 @@ WP-02(`packages/git/src/paths.ts`)で同じ欠陥クラスを4回作り込んだ
 
 **事実**(OWASP Path Traversal公式ページ確認済み): canonicalize-then-prefix-check(このリポジトリの方式)は有効な防御だが、OWASPは「そもそもユーザー入力をファイルパスに使わない」「strict allow-listで検証する」をより強い選択肢として上位に置く。可能な場面ではそちらを優先する。
 
+具体例: `packages/canonical/src/write-canonical-document.ts` の `computeCanonicalPath` は、呼び出し元が渡すパスを検証するのではなく、既に Zod の厳格な ULID パターンを通過した `id`/`type`/`created_at` からパスを直接導出する。呼び出し元とドキュメントのパスが食い違うバグクラスは、チェックを追加するのではなく発生し得ない設計にすることで排除している。信頼できる識別子から決定的にパスを導出できる場面では、この方式(受け取ったパスを検証する側に回らない)を優先する。
+
 ## 関連
 
 - 資格情報・subprocess関連は [[secure-subprocess-and-credentials]]

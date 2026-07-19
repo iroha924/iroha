@@ -12,6 +12,7 @@
 - `@iroha/domain` の `Result<T, E>` 型(`ok`/`err`/`isOk`/`isErr`)を使う。例外を投げるのはパッケージ境界を越えない内部実装の詳細のみ(例: `safeRealpath` のsymlinkループ検知)。境界を越えるすべての公開関数は `Result` を返す
 - `IrohaError` の `code` は `packages/domain/src/errors/error-code.ts` の `ERROR_CODES` から選ぶ。新しいcodeが必要な場合は `implementation/mcp-contract.md` §4 との整合を先に確認する
 - エラーの `message`/`details`/`cause` に**生の絶対パス・生の引数値・資格情報を含めない**。詳細は [[secure-subprocess-and-credentials]]
+- **`JSON.stringify(irohaError)` は `message`/`cause`/`stack` を含まない** — `IrohaError` は `Error` を継承しており、`message`/`cause` は `Error` コンストラクタが `enumerable: false` で設定するため、`JSON.stringify` は `code`/`retryable`/`details`(直接代入されたフィールドのみ)しか出力しない。テストの失敗時アサーションメッセージで `Result.error` の中身を確認したい場合は `` `${error.code}: ${error.message} (cause: ${String(error.cause)})` `` のように明示的に文字列化する
 
 ## Zod 4 (packages/domain, packages/config 等)
 
@@ -19,6 +20,11 @@
 - 判別共用体は `z.discriminatedUnion()` を使う
 - 日時は `z.iso.datetime()`。デフォルトの `offset: false` はリテラル大文字 `"Z"` 終端を要求する点に注意(オフセット付きISO文字列を許可するなら明示的に `offset: true`)
 - `.refine()`/`.superRefine()` は Zod 4 で同じクラスを返す(Zod 3の `ZodEffects` ラップとは異なる)。型の穴が生まれないか `noUncheckedIndexedAccess` 込みで確認する
+- パース→シリアライズのラウンドトリップを検証する場合は文字列/JSON比較ではなく `node:util` の `isDeepStrictEqual` で構造的に比較する。Zodが再構築したオブジェクトは、意味的に同一でも元のキー挿入順序を保持するとは限らない
+
+## 構造化テキストのパース
+
+- Markdown・YAML等の構造化フォーマットを検証する場合、正規表現の手書きパーサーで済ませない。`mdast-util-from-markdown` のような実パーサーを使う — 素朴な `#` プレフィックス正規表現は、fenced code block内の見出し風の行を誤検知するが、実際のCommonMark ASTパーサーは正しく無視する
 
 ## テスト
 
