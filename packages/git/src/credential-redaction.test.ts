@@ -232,14 +232,13 @@ describe("redactAbsolutePathsInText", () => {
     expect(redactAbsolutePathsInText(text)).toBe(text);
   });
 
-  it("redacts a path at the very start of the text", () => {
-    // The whole run of non-whitespace/quote characters is consumed as part
-    // of the path match, including a trailing punctuation character like
-    // ":" — a minor cosmetic loss, not a correctness issue, given the goal
-    // is eliminating the path text, not reformatting the surrounding prose.
-    expect(redactAbsolutePathsInText("/etc/passwd: permission denied")).toBe(
-      "<path> permission denied",
-    );
+  it("redacts a path at the very start of the text, consuming to the end when unquoted and no quote follows", () => {
+    // Consuming to the true end of the text (not stopping at whitespace) is
+    // what makes a space-containing unquoted path (see the dedicated test
+    // below) fully redactable — the cost is over-redacting trailing prose
+    // in a case like this one, favoring never leaking a path over
+    // preserving unrelated surrounding text.
+    expect(redactAbsolutePathsInText("/etc/passwd: permission denied")).toBe("<path>");
   });
 
   it("redacts a file:// URL Git echoes back verbatim, not just bare paths", () => {
@@ -269,6 +268,29 @@ describe("redactAbsolutePathsInText", () => {
 
     expect(redactAbsolutePathsInText(text)).toBe(
       "fatal: <path> '<path>' is outside repository at '<path>'",
+    );
+  });
+
+  it("redacts an unquoted path that itself contains a space", () => {
+    // Confirmed by reproduction: a malformed GIT_CONFIG_GLOBAL file under a
+    // directory whose name contains a space produces exactly this shape.
+    // An earlier version of this function stopped at the first whitespace,
+    // leaving " space dir/gitconfig" — the rest of the local path — in the
+    // output.
+    const text =
+      "fatal: bad config line 1 in file /var/folders/x/T/tmp.abc/iroha space dir/gitconfig";
+
+    expect(redactAbsolutePathsInText(text)).toBe("fatal: bad config line 1 in file <path>");
+  });
+
+  it("redacts a quoted file: path that itself contains a space", () => {
+    // Confirmed by reproduction: `git checkout "file:///Users/alice/private repo.git"`
+    // (an unmatched pathspec) produces exactly this shape.
+    const text =
+      "error: pathspec 'file:///Users/alice/private repo.git' did not match any file(s) known to git";
+
+    expect(redactAbsolutePathsInText(text)).toBe(
+      "error: pathspec '<path>' did not match any file(s) known to git",
     );
   });
 });

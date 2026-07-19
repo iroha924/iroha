@@ -180,8 +180,16 @@ export function redactUrlLikeCredentialsInText(text: string): string {
 // leaves it alone, since a `file:` URL with no userinfo has no *credential*
 // to strip — its host+path itself is the local path, which is this
 // function's job, not that one's).
-const ABSOLUTE_PATH_IN_TEXT =
-  /(?:(?<![a-zA-Z0-9:/\\])file:(?:\/+|[a-zA-Z]:[\\/])|(?:^|(?<![a-zA-Z0-9:/\\@_.~!$&()*+,;=-]))(?:~\/|\/|[a-zA-Z]:[\\/]|\\\\))[^\s'"]*/gi;
+//
+// Only marks the *start* of each path — how far it extends is resolved
+// separately below, since a path can itself contain a space (confirmed by
+// reproduction: a `GIT_CONFIG_GLOBAL` file under a directory with a space in
+// its name produces "...in file /tmp/dir with space/gitconfig", and Git can
+// also quote a `file://` pathspec containing one), which an earlier version
+// of this module's single `[^\s'"]*` tail wrongly treated as "the path has
+// ended here".
+const ABSOLUTE_PATH_START =
+  /(?:(?<![a-zA-Z0-9:/\\])file:(?:\/+|[a-zA-Z]:[\\/])|(?:^|(?<![a-zA-Z0-9:/\\@_.~!$&()*+,;=-]))(?:~\/|\/|[a-zA-Z]:[\\/]|\\\\))/gi;
 
 /**
  * Replaces every filesystem-path-shaped substring in free-form text (e.g.
@@ -190,10 +198,49 @@ const ABSOLUTE_PATH_IN_TEXT =
  * Git's diagnostic messages can embed one with no credential-URL shape for
  * `redactUrlLikeCredentialsInText` to catch. Apply this *after* credential
  * redaction, not before: this leaves an already-redacted URL's own `/`s
- * alone (see `ABSOLUTE_PATH_IN_TEXT`), but running it first would let a
+ * alone (see `ABSOLUTE_PATH_START`), but running it first would let a
  * still-credentialed URL's leading `/` (if boundary-preceded) get replaced
  * wholesale instead of just having its userinfo stripped.
+ *
+ * A path's extent depends on whether Git quoted it: a path immediately
+ * preceded by `'`/`"` extends through everything up to the *matching*
+ * closing quote, spaces included — the quote is an unambiguous boundary, so
+ * there's no risk in trusting it fully. An unquoted path has no such
+ * boundary, so it extends up to (but not including) the next quote
+ * character found anywhere later in the text, trimming any whitespace
+ * immediately before that quote (confirmed by reproduction that Git can
+ * mention the same unquoted path immediately before a quoted repeat of it,
+ * e.g. "fatal: /tmp/secret: '/tmp/secret' is outside repository at
+ * '...'" — trimming keeps the ": " separator between them intact rather
+ * than swallowing it into the first match) — or to the true end of the text
+ * if no quote follows at all.
  */
 export function redactAbsolutePathsInText(text: string): string {
-  return text.replace(ABSOLUTE_PATH_IN_TEXT, "<path>");
+  let result = "";
+  let cursor = 0;
+  for (const match of text.matchAll(ABSOLUTE_PATH_START)) {
+    const start = match.index;
+    if (start < cursor) {
+      continue;
+    }
+    result += text.slice(cursor, start);
+
+    const precedingChar = start > 0 ? text[start - 1] : undefined;
+    let end: number;
+    if (precedingChar === "'" || precedingChar === '"') {
+      const closingQuote = text.indexOf(precedingChar, start);
+      end = closingQuote === -1 ? text.length : closingQuote;
+    } else {
+      const nextQuote = /['"]/.exec(text.slice(start));
+      end = nextQuote ? start + nextQuote.index : text.length;
+      while (end > start && /\s/.test(text[end - 1] ?? "")) {
+        end--;
+      }
+    }
+
+    result += "<path>";
+    cursor = end;
+  }
+  result += text.slice(cursor);
+  return result;
 }
