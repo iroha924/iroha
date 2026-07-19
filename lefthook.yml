@@ -12,9 +12,24 @@ pre-commit:
       run: pnpm typecheck
 
     - name: secret-scan
-      run: >-
-        ! git diff --cached -U0 |
-        grep -nEI "(-----BEGIN (RSA|EC|OPENSSH|DSA|PGP) PRIVATE KEY-----|AKIA[0-9A-Z]{16}|gh[ps]_[A-Za-z0-9]{36}|xox[baprs]-[A-Za-z0-9-]{10,48}|sk-[A-Za-z0-9]{20,})"
+      # Two layers: a zero-dependency pattern grep (always runs) plus the
+      # same `gitleaks` engine CI's `secrets-scan` job uses in --staged mode
+      # (fast, scoped to the staged diff) when the binary is installed
+      # locally. The grep alone missed a real CI failure — a generic
+      # key-shaped test fixture string tripped gitleaks' entropy-based
+      # `generic-api-key` rule, which the hardcoded pattern list has no
+      # equivalent for — confirmed by reproducing that exact finding with
+      # `gitleaks git . --staged` locally. Falls back to a warning (not a
+      # block) when gitleaks isn't installed, since CI's own job remains the
+      # authoritative gate either way.
+      run: |
+        set -e
+        ! git diff --cached -U0 | grep -nEI "(-----BEGIN (RSA|EC|OPENSSH|DSA|PGP) PRIVATE KEY-----|AKIA[0-9A-Z]{16}|gh[ps]_[A-Za-z0-9]{36}|xox[baprs]-[A-Za-z0-9-]{10,48}|sk-[A-Za-z0-9]{20,})"
+        if command -v gitleaks >/dev/null 2>&1; then
+          gitleaks git . --staged --no-banner --redact
+        else
+          echo "gitleaks not installed locally (CI's secrets-scan job still checks this) — install via 'brew install gitleaks' to catch it before push" >&2
+        fi
 
     - name: merge-conflict-markers
       run: >-
