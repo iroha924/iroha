@@ -150,22 +150,56 @@ export function sanitizeRemoteUrl(rawUrl: string): string | null {
  * `fatal: --local can only be used inside a git repository`) instead of
  * being silently indistinguishable from "no such remote" (both would
  * otherwise be exit 1 with empty stderr) — confirmed by manual reproduction.
+ *
+ * Falls back to `--worktree` scope only when `--local` finds nothing (exit
+ * 1): confirmed by reproduction that with `extensions.worktreeConfig`
+ * enabled, a linked worktree's `remote.<name>.url` set via `git config
+ * --worktree` lives in a separate file `--local` never reads, so `--local`
+ * alone reports "no remote" even though one is configured for that
+ * worktree. `--worktree` is safe to query unconditionally as a fallback:
+ * confirmed by reproduction that when the extension is *not* enabled,
+ * `--worktree` transparently reads the same file as `--local` (no separate
+ * file exists yet), so this fallback is a harmless no-op in the common
+ * case. Not queried when `--local` already found a value: confirmed by
+ * reproduction that Git's own subcommands disagree with each other about
+ * which scope wins when *both* are set for `remote.*.url` (`git config
+ * --get` picks `--worktree`, but `git remote get-url` picks `--local`), so
+ * there is no single answer to defer to here; `--local` winning matches
+ * what `remote get-url` — the thing this function exists to approximate
+ * without its `insteadOf` problem — actually uses.
  */
 export async function getSanitizedRemoteUrl(
   cwd: string,
   remoteName = "origin",
 ): Promise<Result<string | null, IrohaError>> {
-  const result = await runGit(
+  const localResult = await runGit(
     ["config", "--local", "--null", "--get-all", `remote.${remoteName}.url`],
     { cwd },
   );
-  if (!result.ok) {
-    const exitCode = (result.error.details as { exitCode?: number | null } | undefined)?.exitCode;
-    if (exitCode === 1) {
+  if (localResult.ok) {
+    const firstFetchUrl = localResult.value.split("\0")[0] ?? "";
+    return ok(sanitizeRemoteUrl(firstFetchUrl));
+  }
+
+  const localExitCode = (localResult.error.details as { exitCode?: number | null } | undefined)
+    ?.exitCode;
+  if (localExitCode !== 1) {
+    return err(localResult.error);
+  }
+
+  const worktreeResult = await runGit(
+    ["config", "--worktree", "--null", "--get-all", `remote.${remoteName}.url`],
+    { cwd },
+  );
+  if (!worktreeResult.ok) {
+    const worktreeExitCode = (
+      worktreeResult.error.details as { exitCode?: number | null } | undefined
+    )?.exitCode;
+    if (worktreeExitCode === 1) {
       return ok(null);
     }
-    return err(result.error);
+    return err(worktreeResult.error);
   }
-  const firstFetchUrl = result.value.split("\0")[0] ?? "";
-  return ok(sanitizeRemoteUrl(firstFetchUrl));
+  const firstWorktreeUrl = worktreeResult.value.split("\0")[0] ?? "";
+  return ok(sanitizeRemoteUrl(firstWorktreeUrl));
 }

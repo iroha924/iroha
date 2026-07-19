@@ -347,4 +347,31 @@ describe("getSanitizedRemoteUrl", () => {
 
     expect(result).toEqual({ ok: true, value: "https://github.com/org/repo.git" });
   });
+
+  it("falls back to --worktree scope when a linked worktree's remote lives only there", async () => {
+    await runGit(["config", "extensions.worktreeConfig", "true"], { cwd: repoDir });
+    await runGit(["commit", "--allow-empty", "-m", "init"], { cwd: repoDir });
+    const worktreeDir = `${repoDir}-linked`;
+    const addWorktree = await runGit(["worktree", "add", worktreeDir, "-b", "feature"], {
+      cwd: repoDir,
+    });
+    expect(addWorktree.ok).toBe(true);
+
+    try {
+      // Confirmed by reproduction: with extensions.worktreeConfig enabled,
+      // a value set via `git config --worktree` lives in a file `--local`
+      // alone never reads, so a naive `--local`-only lookup reports "no
+      // remote" for this worktree even though one is configured.
+      await runGit(
+        ["config", "--worktree", "remote.origin.url", "https://worktree-only.example/repo.git"],
+        { cwd: worktreeDir },
+      );
+
+      const result = await getSanitizedRemoteUrl(worktreeDir, "origin");
+
+      expect(result).toEqual({ ok: true, value: "https://worktree-only.example/repo.git" });
+    } finally {
+      await removeTempDir(worktreeDir);
+    }
+  });
 });
