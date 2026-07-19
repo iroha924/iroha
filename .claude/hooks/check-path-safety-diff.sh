@@ -12,7 +12,15 @@ set -euo pipefail
 
 UPSTREAM=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)
 if [ -z "$UPSTREAM" ]; then
-  exit 0
+  # No upstream yet — most commonly the first push of a new branch (e.g.
+  # `git push -u origin HEAD`), which runs before the push sets up tracking.
+  # Falling back to the merge-base with main still scans every commit this
+  # branch is about to publish, instead of silently skipping the exact push
+  # where a large, unreviewed diff is most likely to ship.
+  UPSTREAM=$(git rev-parse --verify origin/main 2>/dev/null || git rev-parse --verify main 2>/dev/null || true)
+  if [ -z "$UPSTREAM" ]; then
+    exit 0
+  fi
 fi
 
 DIFF=$(git diff "$UPSTREAM...HEAD" -- 'packages/*/src/*paths*.ts' 'packages/*/src/*credential*.ts' 2>/dev/null || true)
