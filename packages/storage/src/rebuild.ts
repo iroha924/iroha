@@ -26,10 +26,13 @@ const WAL_SUFFIXES = ["-wal", "-shm"] as const;
  * own `closeDatabase()` call returns (the same lag `windows-ci-compat.md`
  * documents for `rm()`), so a `rename()` immediately following a close can
  * transiently fail even though every caller of this function has already
- * closed its connections per its own contract.
+ * closed its connections per its own contract. 8 attempts with a
+ * 100ms-per-attempt backoff (3.6s worst case) — the first CI-verified
+ * budget (5 attempts, 1.5s worst case) was not always enough on Windows
+ * runners.
  */
 async function renameWithRetry(from: string, to: string): Promise<void> {
-  const maxAttempts = 5;
+  const maxAttempts = 8;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       await rename(from, to);
