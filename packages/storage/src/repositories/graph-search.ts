@@ -567,16 +567,23 @@ function rowToEmbeddingJob(row: Record<string, unknown>): EmbeddingJobRow {
 /**
  * Keyed on `(search_document_id, provider, model)`. Already-queued or
  * in-progress work (`pending`/`running`) is left untouched — re-enqueuing
- * that would be redundant. A job in a terminal state (`completed`/`failed`/
- * `dead`) is revived back to `pending` instead of being left alone:
- * `embedding_jobs` has no `content_hash` column of its own, so this table
- * cannot tell a genuinely-finished embedding from one whose
+ * that would be redundant. Only a `completed` job is revived back to
+ * `pending`: `embedding_jobs` has no `content_hash` column of its own, so
+ * this table cannot tell a genuinely-finished embedding from one whose
  * `search_documents.content_hash` has since changed underneath it — the
  * caller (who does have that context, per implementation/database-schema.md
  * §12 step 9 "queue missing embeddings") signals "this needs work" simply
  * by calling this function again, and a `DO NOTHING` on a completed row
  * would otherwise leave `listDueEmbeddingJobs` never finding it, and the
  * vector never refreshing.
+ *
+ * `failed`/`dead` are deliberately left alone here — confirmed by review
+ * that reviving them unconditionally on every enqueue call would discard
+ * their backoff (`next_attempt_at`) and retry-budget (`attempts`) state,
+ * causing an immediate hot retry against a provider that just failed or
+ * was already given up on, rather than waiting for `listDueEmbeddingJobs`'s
+ * own schedule (or an explicit dead-letter retry, which is out of this
+ * function's scope).
  */
 export async function enqueueEmbeddingJob(
   db: Executor,
@@ -592,7 +599,7 @@ export async function enqueueEmbeddingJob(
           next_attempt_at = NULL,
           last_error_code = NULL,
           updated_at = excluded.updated_at
-        WHERE embedding_jobs.status IN ('completed', 'failed', 'dead')`,
+        WHERE embedding_jobs.status = 'completed'`,
       args: [
         input.id,
         input.searchDocumentId,

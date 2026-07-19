@@ -652,4 +652,73 @@ describe("graph-search repositories", () => {
       expect(due.value[0]?.attempts).toBe(0);
     }
   });
+
+  it("does not reset a failed embedding job's backoff state on re-enqueue", async () => {
+    // Regression test: reviving `failed`/`dead` jobs unconditionally on
+    // every enqueue call would discard their backoff (next_attempt_at) and
+    // retry-budget (attempts) state, causing an immediate hot retry
+    // against a provider that just failed — confirmed by review. A routine
+    // "queue missing embeddings" pass that re-enqueues the same document
+    // must not bypass the scheduled backoff.
+    const opened = await openMigratedTestDb();
+    tempDir = opened.dir;
+    db = opened.db;
+    const repositoryId = await seedRepository(db, "i3");
+    await seedEntity(db, "dec_00000000000000000000000i3", repositoryId);
+    const sdoc = sdocId("i3a");
+    await upsertSearchDocument(db, {
+      id: sdoc,
+      entityId: "dec_00000000000000000000000i3",
+      documentKind: "decision",
+      title: "t",
+      body: "b",
+      authority: 100,
+      contentHash: "sha256:aa",
+      indexedAt: NOW,
+    });
+    const id = jobId("i3a");
+    await enqueueEmbeddingJob(db, {
+      id,
+      searchDocumentId: sdoc,
+      provider: "voyage",
+      model: "voyage-4",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    const farFuture = "2026-01-02T00:00:00.000Z";
+    await updateEmbeddingJobStatus(db, id, {
+      status: "failed",
+      attempts: 2,
+      nextAttemptAt: farFuture,
+      lastErrorCode: "RATE_LIMITED",
+      updatedAt: NOW,
+    });
+
+    // A rebuild pass re-enqueues, still seeing the embedding as missing.
+    await enqueueEmbeddingJob(db, {
+      id: jobId("i3b"),
+      searchDocumentId: sdoc,
+      provider: "voyage",
+      model: "voyage-4",
+      createdAt: LATER,
+      updatedAt: LATER,
+    });
+
+    // Not due yet at LATER — the backoff must still be in effect.
+    const dueAtLater = await listDueEmbeddingJobs(db, LATER, 10);
+    expect(dueAtLater.ok).toBe(true);
+    if (dueAtLater.ok) {
+      expect(dueAtLater.value.length).toBe(0);
+    }
+    // Due once the original backoff actually elapses, with its retry
+    // state intact.
+    const dueAtFarFuture = await listDueEmbeddingJobs(db, farFuture, 10);
+    expect(dueAtFarFuture.ok).toBe(true);
+    if (dueAtFarFuture.ok) {
+      expect(dueAtFarFuture.value.map((j) => j.id)).toEqual([id]);
+      expect(dueAtFarFuture.value[0]?.status).toBe("failed");
+      expect(dueAtFarFuture.value[0]?.attempts).toBe(2);
+      expect(dueAtFarFuture.value[0]?.lastErrorCode).toBe("RATE_LIMITED");
+    }
+  });
 });
