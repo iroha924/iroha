@@ -136,16 +136,16 @@ describe("rebuildDatabase", () => {
     // `test-helpers/tmp-repo.ts`'s `removeTempDir` can apply here too, even
     // though `initRepository` already closed its connection before
     // returning (see `windows-ci-compat.md`).
-    for (let attempt = 1; attempt <= 5; attempt++) {
+    for (let attempt = 1; attempt <= 10; attempt++) {
       try {
         await rm(init.value.dbPath, { force: true });
         break;
       } catch (cause) {
         const code = (cause as NodeJS.ErrnoException).code;
-        if ((code !== "EBUSY" && code !== "EPERM") || attempt === 5) {
+        if ((code !== "EBUSY" && code !== "EPERM") || attempt === 10) {
           throw cause;
         }
-        await new Promise((resolve) => setTimeout(resolve, attempt * 100));
+        await new Promise((resolve) => setTimeout(resolve, attempt * 200));
       }
     }
 

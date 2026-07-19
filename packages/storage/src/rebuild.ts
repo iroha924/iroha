@@ -19,11 +19,36 @@ export interface ReplaceDatabaseResult {
 
 const WAL_SUFFIXES = ["-wal", "-shm"] as const;
 
+/**
+ * `rename()` with a bounded retry on `EBUSY`/`EPERM` — confirmed by
+ * reproduction (Windows CI): a native libSQL connection's file-handle
+ * teardown can still be in flight for a short window after this package's
+ * own `closeDatabase()` call returns (the same lag `windows-ci-compat.md`
+ * documents for `rm()`), so a `rename()` immediately following a close can
+ * transiently fail even though every caller of this function has already
+ * closed its connections per its own contract.
+ */
+async function renameWithRetry(from: string, to: string): Promise<void> {
+  const maxAttempts = 5;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await rename(from, to);
+      return;
+    } catch (cause) {
+      const code = (cause as NodeJS.ErrnoException).code;
+      if ((code !== "EBUSY" && code !== "EPERM") || attempt === maxAttempts) {
+        throw cause;
+      }
+      await new Promise((resolve) => setTimeout(resolve, attempt * 100));
+    }
+  }
+}
+
 /** Renames `<fromBase><suffix>` to `<toBase><suffix>` if it exists; a no-op otherwise. */
 async function renameSidecarIfExists(fromBase: string, toBase: string): Promise<void> {
   for (const suffix of WAL_SUFFIXES) {
     try {
-      await rename(`${fromBase}${suffix}`, `${toBase}${suffix}`);
+      await renameWithRetry(`${fromBase}${suffix}`, `${toBase}${suffix}`);
     } catch (cause) {
       if ((cause as NodeJS.ErrnoException).code !== "ENOENT") {
         throw cause;
@@ -60,7 +85,7 @@ export async function replaceDatabaseAtomically(
   const timestamp = clock.now().toISOString().replace(/[:.]/g, "-");
   const backupPath = `${primaryDbPath}.backup-${timestamp}`;
   try {
-    await rename(primaryDbPath, backupPath);
+    await renameWithRetry(primaryDbPath, backupPath);
     await renameSidecarIfExists(primaryDbPath, backupPath);
   } catch (cause) {
     // Best-effort recovery, mirroring the catch block below: if the main
@@ -76,7 +101,7 @@ export async function replaceDatabaseAtomically(
     );
   }
   try {
-    await rename(siblingDbPath, primaryDbPath);
+    await renameWithRetry(siblingDbPath, primaryDbPath);
     await renameSidecarIfExists(siblingDbPath, primaryDbPath);
   } catch (cause) {
     // Best-effort recovery: restore the original database (and its
