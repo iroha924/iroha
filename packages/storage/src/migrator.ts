@@ -106,12 +106,35 @@ async function getAppliedMigrations(
   }
 }
 
+/** Copies `<path><suffix>` to `<destination><suffix>` if the source exists; a no-op otherwise. */
+async function copySidecarIfExists(
+  path: string,
+  destination: string,
+  suffix: string,
+): Promise<void> {
+  try {
+    await copyFile(`${path}${suffix}`, `${destination}${suffix}`);
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw cause;
+    }
+  }
+}
+
 /**
  * Flushes WAL content into the main database file (implementation/
  * database-schema.md §3 keeps journal_mode=WAL on), then copies it next to
  * itself with a timestamp suffix. A missing source file (a brand-new,
  * not-yet-migrated database) has nothing to preserve, so that is treated as
  * a no-op rather than an error.
+ *
+ * `PRAGMA wal_checkpoint(TRUNCATE)` does not throw when it cannot fully
+ * checkpoint — confirmed by reproduction that a concurrent reader blocking
+ * the checkpoint makes it return a result row (`{busy: 1, log, checkpointed}`)
+ * instead. Rather than inspecting that row to decide whether it's safe to
+ * copy only the main file, this always also copies the `-wal`/`-shm`
+ * sidecar files (when present) alongside the backup, so the backup is
+ * self-consistent regardless of whether the checkpoint fully completed.
  */
 async function backupDatabaseFile(
   db: Database,
@@ -131,8 +154,11 @@ async function backupDatabaseFile(
   }
 
   const timestamp = clock.now().toISOString().replace(/[:.]/g, "-");
+  const backupPath = `${dbPath}.backup-${timestamp}`;
   try {
-    await copyFile(dbPath, `${dbPath}.backup-${timestamp}`);
+    await copyFile(dbPath, backupPath);
+    await copySidecarIfExists(dbPath, backupPath, "-wal");
+    await copySidecarIfExists(dbPath, backupPath, "-shm");
     return ok(true);
   } catch (cause) {
     return err(
@@ -183,6 +209,36 @@ export async function runMigrations(
     return appliedResult;
   }
   const applied = appliedResult.value;
+
+  // Drift recovery: a migration file's own transaction (its DDL plus
+  // `PRAGMA user_version`) can commit while the separate `schema_migrations`
+  // bookkeeping `INSERT` a few lines below never runs — a crash between the
+  // two leaves `PRAGMA user_version` ahead of what `applied` records. A
+  // naive retry would then treat that file as pending and re-execute its
+  // DDL, which fails ("table already exists") instead of recovering. Any
+  // file whose version is already reflected in `user_version` but missing
+  // from `applied` is backfilled here (using that file's own checksum, not
+  // re-run) rather than treated as pending.
+  const userVersionBeforeResult = await db.execute("PRAGMA user_version");
+  const userVersionBefore = Number(userVersionBeforeResult.rows[0]?.user_version ?? 0);
+  for (const file of files) {
+    if (file.version <= userVersionBefore && !applied.has(file.version)) {
+      try {
+        await db.execute({
+          sql: "INSERT INTO schema_migrations (version, name, checksum, applied_at) VALUES (?, ?, ?, ?)",
+          args: [file.version, file.name, file.checksum, clock.now().toISOString()],
+        });
+      } catch (cause) {
+        return err(
+          mapLibsqlError(
+            cause,
+            `Failed to backfill schema_migrations for already-applied migration ${file.filename}`,
+          ),
+        );
+      }
+      applied.set(file.version, { version: file.version, checksum: file.checksum });
+    }
+  }
 
   for (const file of files) {
     const existing = applied.get(file.version);

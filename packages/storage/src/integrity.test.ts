@@ -110,6 +110,38 @@ describe("checkIntegrity", () => {
     }
   });
 
+  it("detects an approved knowledge item whose canonical_path is set but the canonical_documents row is missing", async () => {
+    const opened = await openMigratedTestDb();
+    tempDir = opened.dir;
+    db = opened.db;
+    await insertRepository(db, "repo_hhhhhhhhhhhhhhhhhhhhhhhhhh");
+    await insertEntity(db, "dec_0000000000000000000000009", "repo_hhhhhhhhhhhhhhhhhhhhhhhhhh");
+    // `canonical_path` is a free-text column with no foreign key into
+    // canonical_documents — populating it does not guarantee the row
+    // actually exists there.
+    await db.execute({
+      sql: `INSERT INTO knowledge_items (id, knowledge_type, body, scope_json, enforcement, approved_at, canonical_path)
+        VALUES (?, 'decision', 'body', '{}', 'advisory', ?, ?)`,
+      args: [
+        "dec_0000000000000000000000009",
+        NOW,
+        "knowledge/decisions/dec_0000000000000000000000009.md",
+      ],
+    });
+
+    const result = await checkIntegrity(db);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.applicationViolations).toEqual([
+        {
+          type: "approved_knowledge_missing_canonical_document",
+          knowledgeItemId: "dec_0000000000000000000000009",
+        },
+      ]);
+    }
+  });
+
   it("detects a search FTS index row not backed by search_documents", async () => {
     const opened = await openMigratedTestDb();
     tempDir = opened.dir;

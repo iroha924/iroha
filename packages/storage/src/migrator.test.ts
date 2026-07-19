@@ -181,6 +181,41 @@ describe("runMigrations", () => {
     const entries = await readdir(dir);
     expect(entries.some((entry) => entry.includes(".backup-"))).toBe(false);
   });
+
+  it("backfills schema_migrations instead of re-running SQL when user_version is ahead (crash recovery)", async () => {
+    const migrationsDir = await copyMigrationsDir();
+    tempDirs.push(migrationsDir);
+    const { dir, dbPath } = await createTempDbPath();
+    tempDirs.push(dir);
+    const opened = await openDatabase(dbPath);
+    if (!opened.ok) throw new Error("failed to open database");
+    dbs.push(opened.value);
+
+    // Simulate a process that committed migration 001's own transaction
+    // (its DDL + `PRAGMA user_version = 1`) but crashed before the separate
+    // `schema_migrations` bookkeeping INSERT that `runMigrations` normally
+    // issues right after — confirmed by code review that a naive retry
+    // would otherwise re-run this SQL and fail with "table already exists".
+    const migrationsLoaded = await loadMigrations(migrationsDir);
+    if (!migrationsLoaded.ok) throw new Error("failed to load migrations");
+    const initial = migrationsLoaded.value.find((f) => f.version === 1);
+    if (initial === undefined) throw new Error("expected migration version 1");
+    await opened.value.executeMultiple(initial.sql);
+
+    const beforeRows = await opened.value.execute("SELECT * FROM schema_migrations");
+    expect(beforeRows.rows.length).toBe(0);
+
+    const result = await runMigrations(opened.value, migrationsDir, dbPath, CLOCK);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      // Nothing was newly *executed* this call — version 1 was backfilled,
+      // not (re-)applied.
+      expect(result.value).toEqual([]);
+    }
+    const afterRows = await opened.value.execute("SELECT version, checksum FROM schema_migrations");
+    expect(afterRows.rows).toEqual([{ version: 1, checksum: initial.checksum }]);
+  });
 });
 
 describe("loadMigrations", () => {

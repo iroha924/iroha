@@ -79,8 +79,17 @@ async function runApplicationChecks(
   const violations: ApplicationIntegrityViolation[] = [];
 
   try {
+    // Checks for the actual `canonical_documents` row (joined by entity id,
+    // the real relationship — `canonical_documents` has no foreign key on
+    // `knowledge_items.canonical_path`, which is a free-text column), not
+    // merely whether `canonical_path` is populated: a knowledge item can
+    // have a non-null `canonical_path` while its `canonical_documents` row
+    // is missing entirely, which the earlier `canonical_path IS NULL`
+    // check did not catch.
     const missingCanonical = await db.execute(
-      "SELECT id FROM knowledge_items WHERE approved_at IS NOT NULL AND canonical_path IS NULL",
+      `SELECT k.id AS id FROM knowledge_items k
+       WHERE k.approved_at IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM canonical_documents c WHERE c.entity_id = k.id)`,
     );
     for (const row of missingCanonical.rows) {
       violations.push({

@@ -136,6 +136,41 @@ describe("development repositories", () => {
     }
   });
 
+  it("upserts a local work item idempotently when given a stable external id", async () => {
+    // Regression test: SQLite's UNIQUE constraint treats NULL as distinct
+    // from every other NULL, so an omitted external_id would never trigger
+    // ON CONFLICT — confirmed by reproduction. `externalId` is required for
+    // this exact reason; a caller creating a local (non-synced) work item
+    // must still supply some stable natural key for idempotent re-upserts.
+    const opened = await openMigratedTestDb();
+    tempDir = opened.dir;
+    db = opened.db;
+    const repositoryId = await seedRepository(db, "b2");
+    const id = issId("b2");
+    await seedEntity(db, id, repositoryId, "issue");
+
+    await upsertWorkItem(db, {
+      id,
+      repositoryId,
+      provider: "local",
+      externalId: "local-1",
+      state: "open",
+    });
+    await upsertWorkItem(db, {
+      id,
+      repositoryId,
+      provider: "local",
+      externalId: "local-1",
+      state: "closed",
+    });
+
+    const byExternal = await getWorkItemByExternalId(db, repositoryId, "local", "local-1");
+    expect(byExternal.ok).toBe(true);
+    if (byExternal.ok) {
+      expect(byExternal.value?.state).toBe("closed");
+    }
+  });
+
   it("upserts a commit and reads it back by id and by sha", async () => {
     const opened = await openMigratedTestDb();
     tempDir = opened.dir;

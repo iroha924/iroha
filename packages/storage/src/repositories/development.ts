@@ -27,7 +27,19 @@ export interface UpsertWorkItemInput {
   id: TypedId<"iss">;
   repositoryId: TypedId<"repo">;
   provider: WorkItemProvider;
-  externalId?: string;
+  /**
+   * Required, not optional: SQLite's `UNIQUE (repository_id, provider,
+   * external_id)` treats `NULL` as distinct from every other `NULL`
+   * (standard SQL semantics), so `ON CONFLICT` never fires for a `NULL`
+   * value — confirmed by reproduction that two upserts with the same
+   * `(repositoryId, provider)` and no `externalId` create two separate
+   * rows instead of the second updating the first, breaking this
+   * function's idempotent-upsert contract. `provider: 'local'` work items
+   * still need *some* caller-chosen stable natural key here (e.g. a local
+   * sequence number or slug) — this package does not define what that key
+   * is, since no spec document assigns one.
+   */
+  externalId: string;
   number?: number;
   url?: string;
   state: WorkItemState;
@@ -78,7 +90,7 @@ export async function upsertWorkItem(
         input.id,
         input.repositoryId,
         input.provider,
-        input.externalId ?? null,
+        input.externalId,
         input.number ?? null,
         input.url ?? null,
         input.state,
