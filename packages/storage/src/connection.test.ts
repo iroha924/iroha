@@ -29,6 +29,27 @@ describe("openDatabase", () => {
     }
   });
 
+  it("opens a database whose path contains a URL metacharacter (#)", async () => {
+    // Confirmed by reproduction: a raw `file:${path}` string throws
+    // `URL_INVALID: URL fragments are not supported` when `path` contains
+    // `#` — legal in a POSIX (and Windows) directory name, but meaningful
+    // to a URL parser.
+    const { dir } = await createTempDbPath();
+    tempDir = dir;
+    const weirdDir = join(dir, "repo#with-hash");
+    await mkdir(weirdDir, { recursive: true });
+    const dbPath = join(weirdDir, "index.db");
+
+    const result = await openDatabase(dbPath);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const fileStat = await stat(dbPath);
+      expect(fileStat.isFile()).toBe(true);
+      closeDatabase(result.value);
+    }
+  });
+
   it("applies the required connection PRAGMAs", async () => {
     const { dir, dbPath } = await createTempDbPath();
     tempDir = dir;

@@ -314,6 +314,41 @@ describe("graph-search repositories", () => {
     }
   });
 
+  it("keeps a DUPLICATES edge directly between two explicit roots", async () => {
+    // Every root is pre-marked visited to stop re-expansion, but a direct
+    // DUPLICATES edge between two roots the caller explicitly asked about
+    // is not a "cycle already visited" — confirmed by reproduction that
+    // treating every root as already-visited for the DUPLICATES check
+    // silently drops this edge.
+    const opened = await openMigratedTestDb();
+    tempDir = opened.dir;
+    db = opened.db;
+    const repositoryId = await seedRepository(db, "f2");
+    for (const suffix of ["a", "b"]) {
+      await seedEntity(db, `dec_0000000000000000000000f2${suffix}`, repositoryId);
+    }
+    await insertRelation(db, {
+      id: relId("f2a"),
+      repositoryId,
+      fromEntityId: "dec_0000000000000000000000f2a",
+      relationType: "DUPLICATES",
+      toEntityId: "dec_0000000000000000000000f2b",
+      sourceKind: "human",
+      createdAt: NOW,
+    });
+
+    const subgraph = await getSubgraph(
+      db,
+      ["dec_0000000000000000000000f2a", "dec_0000000000000000000000f2b"],
+      2,
+      200,
+    );
+    expect(subgraph.ok).toBe(true);
+    if (subgraph.ok) {
+      expect(subgraph.value.map((r) => r.id)).toEqual([relId("f2a")]);
+    }
+  });
+
   it("upserts a search document, re-indexing in place on a second call", async () => {
     const opened = await openMigratedTestDb();
     tempDir = opened.dir;

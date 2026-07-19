@@ -235,7 +235,14 @@ export async function getCandidateById(
   }
 }
 
-/** Matches the `idx_candidates_queue` index — backs the dashboard review queue. */
+/**
+ * Matches the `idx_candidates_queue` index — backs the dashboard review
+ * queue. dashboard-api.md §4 requires "deterministic sort with ID
+ * tie-breaker" for every paginated/sorted API response; several candidates
+ * can share the same `created_at` (e.g. one Checkpoint producing multiple
+ * proposals at once), so `id` breaks ties to keep ordering — and therefore
+ * cursor pagination — stable across reloads.
+ */
 export async function listCandidatesByStatus(
   db: Executor,
   repositoryId: TypedId<"repo">,
@@ -246,8 +253,8 @@ export async function listCandidatesByStatus(
     const result = await db.execute({
       sql:
         limit === undefined
-          ? "SELECT * FROM candidates WHERE repository_id = ? AND status = ? ORDER BY created_at DESC"
-          : "SELECT * FROM candidates WHERE repository_id = ? AND status = ? ORDER BY created_at DESC LIMIT ?",
+          ? "SELECT * FROM candidates WHERE repository_id = ? AND status = ? ORDER BY created_at DESC, id DESC"
+          : "SELECT * FROM candidates WHERE repository_id = ? AND status = ? ORDER BY created_at DESC, id DESC LIMIT ?",
       args: limit === undefined ? [repositoryId, status] : [repositoryId, status, limit],
     });
     return ok(result.rows.map(rowToCandidate));

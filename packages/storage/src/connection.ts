@@ -1,5 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
+import { pathToFileURL } from "node:url";
 import { err, IrohaError, ok, type Result } from "@iroha/domain";
 import { type Client, createClient } from "@libsql/client";
 import { mapLibsqlError } from "./errors.js";
@@ -65,7 +66,13 @@ export async function openDatabase(path: string): Promise<Result<Database, Iroha
 
   let client: Client;
   try {
-    client = createClient({ url: `file:${path}` });
+    // Confirmed by reproduction: a raw `file:${path}` string breaks when
+    // `path` contains URL metacharacters legal in POSIX (and Windows, for
+    // `#`) directory names — `#` throws `URL_INVALID: URL fragments are
+    // not supported` outright, and `?` would similarly be parsed as a
+    // query string, either failing to open or opening the wrong path.
+    // `pathToFileURL` percent-encodes the path into a valid `file:` URL.
+    client = createClient({ url: pathToFileURL(path).href });
   } catch (cause) {
     return err(mapOpenFailure(cause, "Failed to open database"));
   }

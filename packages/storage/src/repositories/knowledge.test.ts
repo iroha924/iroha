@@ -175,6 +175,43 @@ describe("knowledge repositories", () => {
     }
   });
 
+  it("orders same-timestamp candidates deterministically by id, not arbitrarily", async () => {
+    // dashboard-api.md §4: "deterministic sort with ID tie-breaker" —
+    // several candidates can share created_at, e.g. one Checkpoint
+    // producing multiple proposals at once.
+    const opened = await openMigratedTestDb();
+    tempDir = opened.dir;
+    db = opened.db;
+    const repositoryId = await seedRepository(db, "c2");
+    const idA = candId("c2a");
+    const idB = candId("c2b");
+    await insertCandidate(db, {
+      id: idB,
+      repositoryId,
+      candidateType: "decision",
+      payloadJson: "{}",
+      revisionToken: "rev-1",
+      createdAt: NOW,
+    });
+    await insertCandidate(db, {
+      id: idA,
+      repositoryId,
+      candidateType: "decision",
+      payloadJson: "{}",
+      revisionToken: "rev-1",
+      createdAt: NOW,
+    });
+
+    const queue1 = await listCandidatesByStatus(db, repositoryId, "pending");
+    const queue2 = await listCandidatesByStatus(db, repositoryId, "pending");
+    expect(queue1.ok).toBe(true);
+    expect(queue2.ok).toBe(true);
+    if (queue1.ok && queue2.ok) {
+      expect(queue1.value.map((c) => c.id)).toEqual(queue2.value.map((c) => c.id));
+      expect(queue1.value.map((c) => c.id)).toEqual([idB, idA]);
+    }
+  });
+
   it("approves a candidate through the domain transition validator, rotating its revision token", async () => {
     const opened = await openMigratedTestDb();
     tempDir = opened.dir;

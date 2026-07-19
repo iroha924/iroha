@@ -205,6 +205,13 @@ export async function getPath(
  * between already-visited nodes are still collected (e.g. a `RELATED_TO`
  * edge discovered from two different directions is legitimate exploration
  * data, not a cycle to hide).
+ *
+ * A direct `DUPLICATES` edge between two of the caller's own `rootIds` is
+ * not a cycle either, even though every root is pre-marked visited below
+ * (to stop re-expansion) — confirmed by reproduction that without this
+ * carve-out, calling with multiple explicit roots connected by
+ * `DUPLICATES` silently drops that edge, hiding a relationship the caller
+ * asked about directly rather than one merely discovered via traversal.
  */
 export async function getSubgraph(
   db: Executor,
@@ -212,6 +219,7 @@ export async function getSubgraph(
   maxDepth = 2,
   maxEdges = 200,
 ): Promise<Result<RelationRow[], IrohaError>> {
+  const rootIdSet = new Set(rootIds);
   const visitedEntities = new Set<string>(rootIds);
   const collectedRelations = new Map<string, RelationRow>();
   let frontier = [...rootIds];
@@ -236,7 +244,12 @@ export async function getSubgraph(
         }
         const neighborId =
           relation.fromEntityId === entityId ? relation.toEntityId : relation.fromEntityId;
-        if (relation.relationType === "DUPLICATES" && visitedEntities.has(neighborId)) {
+        const isRootToRootEdge = rootIdSet.has(entityId) && rootIdSet.has(neighborId);
+        if (
+          relation.relationType === "DUPLICATES" &&
+          visitedEntities.has(neighborId) &&
+          !isRootToRootEdge
+        ) {
           continue;
         }
         collectedRelations.set(relation.id, relation);
