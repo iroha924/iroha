@@ -202,6 +202,16 @@ describe("redactAbsolutePathsInText", () => {
     expect(redactAbsolutePathsInText(text)).toBe(text);
   });
 
+  it("leaves a URL with an underscore-ending path segment untouched", () => {
+    // Confirmed by reproduction that Git accepts and echoes such URLs
+    // verbatim (see the equivalent remote.ts regression test) — "_" right
+    // before "/" is ordinary in real repo/path names, not a local-path
+    // marker boundary.
+    const text = "error: pathspec 'https://example.invalid/org/my_repo/x.git' did not match";
+
+    expect(redactAbsolutePathsInText(text)).toBe(text);
+  });
+
   it("leaves text with no absolute path unchanged", () => {
     const text = "fatal: not a git repository (or any of the parent directories): .git";
 

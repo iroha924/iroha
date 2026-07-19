@@ -14,38 +14,43 @@ import { runGit } from "./run-git.js";
 // new one.
 // A local-path marker (`file:` scheme, bare POSIX absolute path, Windows
 // drive letter, or UNC path) found anywhere in the value, not just at the
-// very start. Confirmed by reproduction across many rounds that Git stores
-// two values joined by no helpful separator of their own — newline, space,
-// comma, semicolon, `(`, `<`, `|`, and presumably others not yet tried —
-// verbatim as a single config value. An earlier version of this check
-// required the marker to be preceded by one of an *enumerated* set of
-// separator characters; every round found one more punctuation character
-// Git tolerates that the enumeration didn't yet cover, because "which
-// punctuation might join two values" has no finite, principled answer.
+// very start — Git stores two values joined by an arbitrary character
+// (newline, space, comma, semicolon, `(`, `<`, `|`, `@`, ...) verbatim as a
+// single config value, confirmed by reproduction across many such
+// characters, so no fixed allowlist of "boundary punctuation" is complete.
 //
-// This version inverts the check: instead of an allowlist of what a
-// boundary IS, it excludes only what a boundary can NEVER be — the marker
-// must not be immediately preceded by a letter, digit, `:`, `/`, or `\`.
-// That's exactly (and only) what's needed to avoid the two concrete
-// false-positive shapes a marker-anywhere scan risks: a bare `/` matching
-// inside an ordinary URL's own path (always preceded by a letter/digit, or
-// by the `:`/`/` right after "scheme:"), and `[a-zA-Z]:` matching the "s:"
-// that sits right before "://" in "https://"/"ssh://" (always preceded by
-// another letter). Every other character — any punctuation, ASCII or not,
-// known today or not — is a valid boundary, so no future joiner character
-// can reopen this same gap.
+// Two different boundary rules apply, deliberately not the same one:
 //
-// `file:` itself needs two sub-forms, not just `\/+`: Git also accepts (and
-// stores verbatim) `file:C:/Users/...` and `file:C:\Users\...` — a Windows
-// drive-letter path directly after the single colon, no slash at all
-// between "file:" and "C:". Confirmed by reproduction. The plain `\/+`
-// branch alone doesn't match that shape, and the standalone
-// `[a-zA-Z]:[\\/]` branch can't reach it either, since its own boundary
-// check sees the `:` at the end of "file:" immediately before "C" and
-// (correctly, for that branch's own purpose) refuses to treat it as a
-// marker start.
+// - `file:` uses a denylist: the marker must not be immediately preceded
+//   by a letter, digit, `:`, `/`, or `\`. That's exactly what's needed to
+//   stop `[a-zA-Z]:` from matching the "s:" right before "://" in
+//   "https://"/"ssh://" (always preceded by another letter) while still
+//   accepting every joiner character above as a valid boundary — "file:" is
+//   a distinctive enough prefix that this is safe. It needs two sub-forms,
+//   not just `\/+`: Git also accepts `file:C:/Users/...` and
+//   `file:C:\Users\...` (a drive-letter path directly after the single
+//   colon, no slash at all between "file:" and "C:", confirmed by
+//   reproduction) — the standalone `[a-zA-Z]:[\\/]` alternative below can't
+//   reach that shape, since its own boundary check sees the `:` at the end
+//   of "file:" immediately before "C" and refuses to treat it as a marker
+//   start.
+//
+// - The bare-path/standalone-drive-letter/UNC alternatives use a narrower
+//   allowlist: only the start of the value or whitespace. Unlike "file:", a
+//   bare `/` can be preceded by almost any character and still be a
+//   completely ordinary URL path separator — RFC 3986 path segments allow
+//   `-`, `_`, `.`, `~`, and more, unencoded. Confirmed by reproduction:
+//   `https://example.com/foo_/repo.git` — an ordinary, safe URL — was
+//   misclassified as local and suppressed to `null`, because `_` isn't
+//   excluded by the denylist above, so the `/` right after it looked like a
+//   fresh marker start. No character-class boundary can perfectly separate
+//   "a joined second value" from "ordinary URL path content" (both can
+//   contain nearly anything), so this narrows to the one truly unambiguous
+//   case — whitespace is never valid raw URL content — accepting that a
+//   *bare* local path joined by some other, non-`file:`-prefixed character
+//   with no whitespace goes undetected. No finding has shown that shape.
 const LOCAL_PATH_MARKER =
-  /(?<![a-zA-Z0-9:/\\])(?:file:(?:\/+|[a-zA-Z]:[\\/])|\/|[a-zA-Z]:[\\/]|\\\\)/i;
+  /(?:(?<![a-zA-Z0-9:/\\])file:(?:\/+|[a-zA-Z]:[\\/])|(?:^|\s)(?:\/|[a-zA-Z]:[\\/]|\\\\))/i;
 
 function isLocalAbsolutePath(value: string): boolean {
   return LOCAL_PATH_MARKER.test(value);

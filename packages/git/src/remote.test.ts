@@ -148,6 +148,21 @@ describe("sanitizeRemoteUrl", () => {
     expect(sanitizeRemoteUrl(atJoined)).toBe(null);
   });
 
+  it("leaves a URL unchanged when a path segment ends in an underscore", () => {
+    // Confirmed by reproduction: Git accepts and stores this verbatim, and
+    // an underscore right before "/" is completely ordinary in real
+    // repo/path names. A denylist boundary (not alphanumeric/:/\\) used to
+    // wrongly treat "_" as a valid marker-start boundary here, matching the
+    // "/" that follows it as if it were a fresh bare-path marker.
+    expect(sanitizeRemoteUrl("https://example.com/foo_/repo.git")).toBe(
+      "https://example.com/foo_/repo.git",
+    );
+  });
+
+  it("leaves an SCP-like remote with an underscore path segment unchanged", () => {
+    expect(sanitizeRemoteUrl("git@github.com:foo_/repo.git")).toBe("git@github.com:foo_/repo.git");
+  });
+
   it("strips a credential-bearing query string", () => {
     expect(sanitizeRemoteUrl("https://github.com/org/repo.git?access_token=SECRET")).toBe(
       "https://github.com/org/repo.git",
