@@ -1,4 +1,4 @@
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -372,6 +372,50 @@ describe("getSanitizedRemoteUrl", () => {
       expect(result).toEqual({ ok: true, value: "https://worktree-only.example/repo.git" });
     } finally {
       await removeTempDir(worktreeDir);
+    }
+  });
+
+  it("returns null instead of erroring when a linked worktree has multiple trees and worktreeConfig is not enabled", async () => {
+    // Confirmed by reproduction: without extensions.worktreeConfig enabled,
+    // `git config --worktree` fails outright (exit 128) once there is more
+    // than one worktree — a regression an earlier version of the --worktree
+    // fallback above introduced, since it only treated exit 1 as "no
+    // remote" and propagated this exit-128 case as a hard error instead.
+    await runGit(["commit", "--allow-empty", "-m", "init"], { cwd: repoDir });
+    const worktreeDir = `${repoDir}-linked`;
+    const addWorktree = await runGit(["worktree", "add", worktreeDir, "-b", "feature"], {
+      cwd: repoDir,
+    });
+    expect(addWorktree.ok).toBe(true);
+
+    try {
+      const result = await getSanitizedRemoteUrl(worktreeDir, "origin");
+
+      expect(result).toEqual({ ok: true, value: null });
+    } finally {
+      await removeTempDir(worktreeDir);
+    }
+  });
+
+  it("reads a remote defined via an include directive", async () => {
+    // Confirmed by reproduction: `git remote get-url` resolves a
+    // remote.<name>.url defined in an included file, but a plain
+    // `--local --get-all` lookup (no --includes) does not.
+    const includeDir = await mkdtemp(join(tmpdir(), "iroha-remote-include-test-"));
+    try {
+      const includeFile = join(includeDir, "remote.conf");
+      await writeFile(
+        includeFile,
+        '[remote "origin"]\n\turl = https://included-file.example/repo.git\n',
+        "utf8",
+      );
+      await runGit(["config", "--local", "include.path", includeFile], { cwd: repoDir });
+
+      const result = await getSanitizedRemoteUrl(repoDir, "origin");
+
+      expect(result).toEqual({ ok: true, value: "https://included-file.example/repo.git" });
+    } finally {
+      await removeTempDir(includeDir);
     }
   });
 });

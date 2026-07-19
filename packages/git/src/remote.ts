@@ -151,16 +151,34 @@ export function sanitizeRemoteUrl(rawUrl: string): string | null {
  * being silently indistinguishable from "no such remote" (both would
  * otherwise be exit 1 with empty stderr) — confirmed by manual reproduction.
  *
+ * Adds `--includes` to both lookups below: confirmed by reproduction that a
+ * `.git/config` using `include.path`/`includeIf` to pull in
+ * `remote.<name>.url` from another file is invisible to a plain `--local`
+ * lookup (exit 1, "no such remote") even though `git remote get-url`
+ * resolves it fine — `--includes` is what makes this lookup follow those
+ * directives the same way Git's own effective-config resolution does.
+ * Confirmed this doesn't change any exit-code behavior this function
+ * depends on (missing key still exit 1, outside-repo `--local` still exit
+ * 128 with the same message, `--worktree`'s own error below is unaffected).
+ *
  * Falls back to `--worktree` scope only when `--local` finds nothing (exit
  * 1): confirmed by reproduction that with `extensions.worktreeConfig`
  * enabled, a linked worktree's `remote.<name>.url` set via `git config
  * --worktree` lives in a separate file `--local` never reads, so `--local`
  * alone reports "no remote" even though one is configured for that
  * worktree. `--worktree` is safe to query unconditionally as a fallback:
- * confirmed by reproduction that when the extension is *not* enabled,
- * `--worktree` transparently reads the same file as `--local` (no separate
- * file exists yet), so this fallback is a harmless no-op in the common
- * case. Not queried when `--local` already found a value: confirmed by
+ * confirmed by reproduction that when the extension is *not* enabled and
+ * there is only one worktree, `--worktree` transparently reads the same
+ * file as `--local` (no separate file exists yet), so this fallback is a
+ * harmless no-op in the common case. When there are *multiple* worktrees
+ * and the extension is not enabled, `--worktree` instead fails outright
+ * with exit 128 (`fatal: --worktree cannot be used with multiple working
+ * trees unless the config extension worktreeConfig is enabled`, confirmed
+ * by reproduction) — that specific, distinguishable failure is treated the
+ * same as "no worktree-scope value" rather than propagated as an error,
+ * since it means exactly that: this Git version/config combination has no
+ * worktree-scoped config to offer, not that something is actually broken.
+ * Not queried when `--local` already found a value: confirmed by
  * reproduction that Git's own subcommands disagree with each other about
  * which scope wins when *both* are set for `remote.*.url` (`git config
  * --get` picks `--worktree`, but `git remote get-url` picks `--local`), so
@@ -168,12 +186,14 @@ export function sanitizeRemoteUrl(rawUrl: string): string | null {
  * what `remote get-url` — the thing this function exists to approximate
  * without its `insteadOf` problem — actually uses.
  */
+const WORKTREE_CONFIG_NOT_ENABLED = /^fatal: --worktree cannot be used with multiple working trees/;
+
 export async function getSanitizedRemoteUrl(
   cwd: string,
   remoteName = "origin",
 ): Promise<Result<string | null, IrohaError>> {
   const localResult = await runGit(
-    ["config", "--local", "--null", "--get-all", `remote.${remoteName}.url`],
+    ["config", "--local", "--includes", "--null", "--get-all", `remote.${remoteName}.url`],
     { cwd },
   );
   if (localResult.ok) {
@@ -188,14 +208,21 @@ export async function getSanitizedRemoteUrl(
   }
 
   const worktreeResult = await runGit(
-    ["config", "--worktree", "--null", "--get-all", `remote.${remoteName}.url`],
+    ["config", "--worktree", "--includes", "--null", "--get-all", `remote.${remoteName}.url`],
     { cwd },
   );
   if (!worktreeResult.ok) {
-    const worktreeExitCode = (
-      worktreeResult.error.details as { exitCode?: number | null } | undefined
-    )?.exitCode;
-    if (worktreeExitCode === 1) {
+    const worktreeDetails = worktreeResult.error.details as
+      | { exitCode?: number | null; stderr?: string }
+      | undefined;
+    if (worktreeDetails?.exitCode === 1) {
+      return ok(null);
+    }
+    if (
+      worktreeDetails?.exitCode === 128 &&
+      worktreeDetails.stderr !== undefined &&
+      WORKTREE_CONFIG_NOT_ENABLED.test(worktreeDetails.stderr)
+    ) {
       return ok(null);
     }
     return err(worktreeResult.error);
