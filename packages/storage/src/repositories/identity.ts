@@ -308,6 +308,54 @@ export async function insertEntity(
   }
 }
 
+/**
+ * Idempotent counterpart to `insertEntity`: canonical sync (WP-05) re-derives
+ * the same entity id from a document's ULID on every run, so re-syncing an
+ * unchanged or edited file must not fail on the primary-key conflict
+ * `insertEntity` raises. `created_at` is deliberately excluded from the
+ * `DO UPDATE SET` list — it must keep recording when the entity was first
+ * seen, not the most recent sync time.
+ */
+export async function upsertEntity(
+  db: Executor,
+  input: InsertEntityInput,
+): Promise<Result<void, IrohaError>> {
+  try {
+    await db.execute({
+      sql: `INSERT INTO entities
+        (id, repository_id, entity_type, title, summary, status, authority, source_kind, source_ref, content_hash, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (id) DO UPDATE SET
+          entity_type = excluded.entity_type,
+          title = excluded.title,
+          summary = excluded.summary,
+          status = excluded.status,
+          authority = excluded.authority,
+          source_kind = excluded.source_kind,
+          source_ref = excluded.source_ref,
+          content_hash = excluded.content_hash,
+          updated_at = excluded.updated_at`,
+      args: [
+        input.id,
+        input.repositoryId,
+        input.entityType,
+        input.title,
+        input.summary ?? null,
+        input.status,
+        input.authority,
+        input.sourceKind,
+        input.sourceRef ?? null,
+        input.contentHash ?? null,
+        input.createdAt,
+        input.updatedAt,
+      ],
+    });
+    return ok(undefined);
+  } catch (cause) {
+    return err(mapLibsqlError(cause, "Failed to upsert entity"));
+  }
+}
+
 export async function getEntityById(
   db: Executor,
   id: string,
@@ -508,5 +556,29 @@ export async function getCanonicalDocumentByPath(
     return ok(row === undefined ? null : rowToCanonicalDocument(row));
   } catch (cause) {
     return err(mapLibsqlError(cause, "Failed to read canonical document"));
+  }
+}
+
+/**
+ * `canonical_documents` has no `repository_id` column of its own (only
+ * `entities` does), so listing "every canonical document this repository
+ * currently has" requires the join. Sync (WP-05) uses this to build the
+ * `path -> hash` baseline `@iroha/canonical`'s `diffCanonicalFiles` compares
+ * a fresh directory scan against.
+ */
+export async function listCanonicalDocumentsByRepository(
+  db: Executor,
+  repositoryId: TypedId<"repo">,
+): Promise<Result<CanonicalDocumentRow[], IrohaError>> {
+  try {
+    const result = await db.execute({
+      sql: `SELECT cd.* FROM canonical_documents cd
+        JOIN entities e ON e.id = cd.entity_id
+        WHERE e.repository_id = ?`,
+      args: [repositoryId],
+    });
+    return ok(result.rows.map(rowToCanonicalDocument));
+  } catch (cause) {
+    return err(mapLibsqlError(cause, "Failed to list canonical documents"));
   }
 }

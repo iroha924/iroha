@@ -13,18 +13,27 @@
   "files": [
     "dist"
   ],
+  "bin": {
+    "iroha": "./dist/bin.mjs"
+  },
   "scripts": {
-    "build": "tsdown src/index.ts --dts",
+    "build": "tsdown src/index.ts src/bin.ts --dts",
     "lint": "biome check src",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@iroha/core": "workspace:*",
-    "@iroha/api": "workspace:*"
+    "@iroha/domain": "workspace:*",
+    "@iroha/search": "workspace:*",
+    "@iroha/storage": "workspace:*",
+    "gunshi": "catalog:"
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",
+    "@iroha/canonical": "workspace:*",
+    "@iroha/git": "workspace:*",
+    "@types/node": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"

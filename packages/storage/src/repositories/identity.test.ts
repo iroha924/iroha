@@ -13,11 +13,13 @@ import {
   insertActor,
   insertEntity,
   insertRepository,
+  listCanonicalDocumentsByRepository,
   listEntitiesByRepository,
   updateEntityAuthority,
   updateEntityStatus,
   updateRepositoryRemote,
   upsertCanonicalDocument,
+  upsertEntity,
 } from "./identity.js";
 
 const NOW = "2026-01-01T00:00:00.000Z";
@@ -335,6 +337,126 @@ describe("identity repositories", () => {
     expect(byPath.ok).toBe(true);
     if (byPath.ok) {
       expect(byPath.value?.entityId).toBe(entityId);
+    }
+  });
+
+  it("upserts an entity, updating mutable fields but preserving the original created_at", async () => {
+    const opened = await openMigratedTestDb();
+    tempDir = opened.dir;
+    db = opened.db;
+    const repositoryId = repoId("h");
+    await insertRepository(db, {
+      id: repositoryId,
+      rootFingerprint: "fp-h",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    const entityId = "dec_0000000000000000000000014";
+
+    const first = await upsertEntity(db, {
+      id: entityId,
+      repositoryId,
+      entityType: "decision",
+      title: "First title",
+      status: "approved",
+      authority: 100,
+      sourceKind: "canonical",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    expect(first.ok).toBe(true);
+
+    const second = await upsertEntity(db, {
+      id: entityId,
+      repositoryId,
+      entityType: "decision",
+      title: "Revised title",
+      status: "approved",
+      authority: 100,
+      sourceKind: "canonical",
+      createdAt: LATER,
+      updatedAt: LATER,
+    });
+    expect(second.ok).toBe(true);
+
+    const read = await getEntityById(db, entityId);
+    expect(read.ok).toBe(true);
+    if (read.ok) {
+      expect(read.value?.title).toBe("Revised title");
+      expect(read.value?.updatedAt).toBe(LATER);
+      expect(read.value?.createdAt).toBe(NOW);
+    }
+  });
+
+  it("lists canonical documents scoped to a repository via the entities join", async () => {
+    const opened = await openMigratedTestDb();
+    tempDir = opened.dir;
+    db = opened.db;
+    const repositoryId = repoId("i");
+    const otherRepositoryId = repoId("j");
+    await insertRepository(db, {
+      id: repositoryId,
+      rootFingerprint: "fp-i",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    await insertRepository(db, {
+      id: otherRepositoryId,
+      rootFingerprint: "fp-j",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+
+    const entityId = "dec_0000000000000000000000015";
+    await insertEntity(db, {
+      id: entityId,
+      repositoryId,
+      entityType: "decision",
+      title: "In scope",
+      status: "approved",
+      authority: 100,
+      sourceKind: "canonical",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    await upsertCanonicalDocument(db, {
+      entityId,
+      canonicalPath: "knowledge/decisions/dec_0000000000000000000000015.md",
+      revision: 1,
+      frontmatterJson: "{}",
+      body: "in scope",
+      fileHash: "sha256:cc",
+      approvedAt: NOW,
+      importedAt: NOW,
+    });
+
+    const otherEntityId = "dec_0000000000000000000000016";
+    await insertEntity(db, {
+      id: otherEntityId,
+      repositoryId: otherRepositoryId,
+      entityType: "decision",
+      title: "Out of scope",
+      status: "approved",
+      authority: 100,
+      sourceKind: "canonical",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    await upsertCanonicalDocument(db, {
+      entityId: otherEntityId,
+      canonicalPath: "knowledge/decisions/dec_0000000000000000000000016.md",
+      revision: 1,
+      frontmatterJson: "{}",
+      body: "out of scope",
+      fileHash: "sha256:dd",
+      approvedAt: NOW,
+      importedAt: NOW,
+    });
+
+    const result = await listCanonicalDocumentsByRepository(db, repositoryId);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.map((doc) => doc.entityId)).toEqual([entityId]);
     }
   });
 });

@@ -1,0 +1,141 @@
+import { rm } from "node:fs/promises";
+import {
+  type Clock,
+  err,
+  IrohaError,
+  ok,
+  type RandomSource,
+  type Result,
+  type TypedId,
+} from "@iroha/domain";
+import {
+  checkIntegrity,
+  closeDatabase,
+  createSiblingDatabasePath,
+  insertRepository,
+  openDatabase,
+  replaceDatabaseAtomically,
+  runMigrations,
+} from "@iroha/storage";
+import { computeRootFingerprint } from "./init-repository.js";
+import { resolveInitializedRepository } from "./resolve-repository.js";
+import { type SyncCanonicalResult, syncCanonicalToDatabase } from "./sync-canonical.js";
+
+async function removeSiblingDatabase(dbPath: string): Promise<void> {
+  for (const suffix of ["", "-wal", "-shm"]) {
+    await rm(`${dbPath}${suffix}`, { force: true }).catch(() => undefined);
+  }
+}
+
+export interface RebuildDatabaseResult {
+  repositoryId: TypedId<"repo">;
+  dbPath: string;
+  backupPath: string;
+  sync: SyncCanonicalResult;
+}
+
+/**
+ * `iroha sync --rebuild` (database-schema.md §12, requirements.md Scenario
+ * E): builds a fresh sibling database from `.iroha/` alone — Git history
+ * and Forge metadata import (§12 steps 1/5) are out of WP-05's scope, and
+ * embedding reuse (§12 steps 8-9) needs WP-08's embedding provider — then
+ * validates it with `checkIntegrity` (§12 step 10) before ever touching the
+ * live database. A canonical parse/schema error, or any integrity
+ * violation, discards the sibling and leaves the primary database
+ * untouched (§12: "fail the rebuild without replacing the current DB").
+ */
+export async function rebuildDatabase(
+  cwd: string,
+  clock: Clock,
+  random: RandomSource,
+  migrationsDir: string,
+): Promise<Result<RebuildDatabaseResult, IrohaError>> {
+  const resolvedResult = await resolveInitializedRepository(cwd);
+  if (!resolvedResult.ok) {
+    return resolvedResult;
+  }
+  const {
+    gitLocation,
+    irohaCanonicalDir,
+    repositoryId,
+    dbPath: primaryDbPath,
+  } = resolvedResult.value;
+
+  const siblingDbPath = createSiblingDatabasePath(primaryDbPath, random);
+
+  const openResult = await openDatabase(siblingDbPath);
+  if (!openResult.ok) {
+    return openResult;
+  }
+  const siblingDb = openResult.value;
+
+  const migrated = await runMigrations(siblingDb, migrationsDir, siblingDbPath, clock, {
+    skipBackup: true,
+  });
+  if (!migrated.ok) {
+    closeDatabase(siblingDb);
+    await removeSiblingDatabase(siblingDbPath);
+    return migrated;
+  }
+
+  const now = clock.now().toISOString();
+  const insertedRepository = await insertRepository(siblingDb, {
+    id: repositoryId,
+    rootFingerprint: computeRootFingerprint(gitLocation.commonDir),
+    createdAt: now,
+    updatedAt: now,
+  });
+  if (!insertedRepository.ok) {
+    closeDatabase(siblingDb);
+    await removeSiblingDatabase(siblingDbPath);
+    return insertedRepository;
+  }
+
+  const syncResult = await syncCanonicalToDatabase(
+    siblingDb,
+    repositoryId,
+    irohaCanonicalDir,
+    clock,
+    random,
+  );
+  if (!syncResult.ok) {
+    closeDatabase(siblingDb);
+    await removeSiblingDatabase(siblingDbPath);
+    return syncResult;
+  }
+
+  const integrityResult = await checkIntegrity(siblingDb);
+  if (!integrityResult.ok) {
+    closeDatabase(siblingDb);
+    await removeSiblingDatabase(siblingDbPath);
+    return integrityResult;
+  }
+  const integrity = integrityResult.value;
+  const hasViolations =
+    !integrity.sqliteIntegrityOk ||
+    integrity.foreignKeyViolations.length > 0 ||
+    integrity.applicationViolations.length > 0;
+  if (hasViolations) {
+    closeDatabase(siblingDb);
+    await removeSiblingDatabase(siblingDbPath);
+    return err(
+      new IrohaError("INTERNAL_ERROR", "Rebuild failed integrity checks", {
+        details: { integrity },
+      }),
+    );
+  }
+
+  closeDatabase(siblingDb);
+
+  const replaced = await replaceDatabaseAtomically(primaryDbPath, siblingDbPath, clock);
+  if (!replaced.ok) {
+    return replaced;
+  }
+
+  return ok({
+    repositoryId,
+    dbPath: primaryDbPath,
+    backupPath: replaced.value.backupPath,
+    sync: syncResult.value,
+  });
+}
