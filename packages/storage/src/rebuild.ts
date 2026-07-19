@@ -17,6 +17,21 @@ export interface ReplaceDatabaseResult {
   backupPath: string;
 }
 
+const WAL_SUFFIXES = ["-wal", "-shm"] as const;
+
+/** Renames `<fromBase><suffix>` to `<toBase><suffix>` if it exists; a no-op otherwise. */
+async function renameSidecarIfExists(fromBase: string, toBase: string): Promise<void> {
+  for (const suffix of WAL_SUFFIXES) {
+    try {
+      await rename(`${fromBase}${suffix}`, `${toBase}${suffix}`);
+    } catch (cause) {
+      if ((cause as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw cause;
+      }
+    }
+  }
+}
+
 /**
  * implementation/database-schema.md §12 steps 11–12: atomically swaps the
  * rebuilt sibling database into place and retains the previous database as
@@ -31,7 +46,11 @@ export interface ReplaceDatabaseResult {
  * its place, so neither `rename()` call ever needs to overwrite an existing
  * destination (Node's `fs.rename` does support overwriting on both POSIX
  * and Windows, but avoiding it removes that platform-behavior dependency
- * entirely).
+ * entirely). Also moves each side's `-wal`/`-shm` sidecar files if present,
+ * so a sibling not fully checkpointed by its caller doesn't silently lose
+ * data left only in its `-wal` file — confirmed by reproduction that
+ * `PRAGMA wal_checkpoint(TRUNCATE)` plus closing the connection does not by
+ * itself delete these files, only truncate their content.
  */
 export async function replaceDatabaseAtomically(
   primaryDbPath: string,
@@ -42,6 +61,7 @@ export async function replaceDatabaseAtomically(
   const backupPath = `${primaryDbPath}.backup-${timestamp}`;
   try {
     await rename(primaryDbPath, backupPath);
+    await renameSidecarIfExists(primaryDbPath, backupPath);
   } catch (cause) {
     return err(
       new IrohaError("INTERNAL_ERROR", "Failed to move aside the current database", { cause }),
@@ -49,10 +69,13 @@ export async function replaceDatabaseAtomically(
   }
   try {
     await rename(siblingDbPath, primaryDbPath);
+    await renameSidecarIfExists(siblingDbPath, primaryDbPath);
   } catch (cause) {
-    // Best-effort recovery: restore the original database so a failed
-    // rebuild does not leave the repository without any database at all.
+    // Best-effort recovery: restore the original database (and its
+    // sidecars) so a failed rebuild does not leave the repository without
+    // any database at all.
     await rename(backupPath, primaryDbPath).catch(() => undefined);
+    await renameSidecarIfExists(backupPath, primaryDbPath).catch(() => undefined);
     return err(
       new IrohaError("INTERNAL_ERROR", "Failed to move the rebuilt database into place", { cause }),
     );

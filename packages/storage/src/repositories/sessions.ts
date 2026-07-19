@@ -1,7 +1,7 @@
 import {
   type CheckpointState,
   err,
-  type IrohaError,
+  IrohaError,
   ok,
   type Result,
   type SessionRunStatus,
@@ -276,6 +276,11 @@ export interface CloseSessionRunInput {
  * Validates the transition against the domain state machine (states/
  * session-run.ts) before writing, so an illegal transition fails with a
  * clear `INVALID_INPUT` instead of the DB's own `CHECK` constraint error.
+ * The `UPDATE` also re-checks `status = input.from` and reports `CONFLICT`
+ * on `rowsAffected === 0` — confirmed by reproduction that without this
+ * guard, two concurrent callers racing from the same `from` status (e.g.
+ * one closing a Run `completed`, another `interrupted`) both succeed with
+ * no error, and the second write silently discards the first.
  */
 export async function closeSessionRun(
   db: Executor,
@@ -291,10 +296,17 @@ export async function closeSessionRun(
     return invariant;
   }
   try {
-    await db.execute({
-      sql: "UPDATE session_runs SET status = ?, ended_at = ?, end_reason = ?, head_sha_end = ? WHERE id = ?",
-      args: [input.to, input.endedAt, input.endReason, input.headShaEnd ?? null, id],
+    const result = await db.execute({
+      sql: "UPDATE session_runs SET status = ?, ended_at = ?, end_reason = ?, head_sha_end = ? WHERE id = ? AND status = ?",
+      args: [input.to, input.endedAt, input.endReason, input.headShaEnd ?? null, id, input.from],
     });
+    if (result.rowsAffected === 0) {
+      return err(
+        new IrohaError("CONFLICT", "Session run was modified concurrently or no longer exists", {
+          details: { id },
+        }),
+      );
+    }
     return ok(undefined);
   } catch (cause) {
     return err(mapLibsqlError(cause, "Failed to close session run"));
@@ -404,6 +416,10 @@ export interface CloseTurnInput {
   stoppedAt: string;
 }
 
+/**
+ * The `UPDATE` re-checks `status = input.from` and reports `CONFLICT` on
+ * `rowsAffected === 0` — same reasoning as `closeSessionRun`'s guard.
+ */
 export async function closeTurn(
   db: Executor,
   id: TypedId<"trn">,
@@ -414,10 +430,17 @@ export async function closeTurn(
     return transition;
   }
   try {
-    await db.execute({
-      sql: "UPDATE turns SET status = ?, stopped_at = ? WHERE id = ?",
-      args: [input.to, input.stoppedAt, id],
+    const result = await db.execute({
+      sql: "UPDATE turns SET status = ?, stopped_at = ? WHERE id = ? AND status = ?",
+      args: [input.to, input.stoppedAt, id, input.from],
     });
+    if (result.rowsAffected === 0) {
+      return err(
+        new IrohaError("CONFLICT", "Turn was modified concurrently or no longer exists", {
+          details: { id },
+        }),
+      );
+    }
     return ok(undefined);
   } catch (cause) {
     return err(mapLibsqlError(cause, "Failed to close turn"));

@@ -176,6 +176,51 @@ describe("session repositories", () => {
     }
   });
 
+  it("fails with CONFLICT when closeSessionRun races against a status that already changed", async () => {
+    const opened = await openMigratedTestDb();
+    tempDir = opened.dir;
+    db = opened.db;
+    const { sessionId } = await seedRepositoryAndSession(db, "c2", "c2");
+    const id = runId("c2");
+    await insertSessionRun(db, {
+      id,
+      sessionId,
+      startSource: "startup",
+      cwdFingerprint: "cwd-c2",
+      startedAt: NOW,
+    });
+
+    // First caller closes the run "completed" ...
+    const first = await closeSessionRun(db, id, {
+      from: "active",
+      to: "completed",
+      endedAt: LATER,
+      endReason: "normal",
+    });
+    expect(first.ok).toBe(true);
+
+    // ... a second, racing caller still believes the row was "active" and
+    // tries to close it "interrupted" instead: without a status re-check in
+    // the UPDATE's WHERE clause, this would silently overwrite the first
+    // caller's write with no error (confirmed by reproduction).
+    const second = await closeSessionRun(db, id, {
+      from: "active",
+      to: "interrupted",
+      endedAt: LATER,
+      endReason: "interrupted",
+    });
+
+    expect(second.ok).toBe(false);
+    if (!second.ok) {
+      expect(second.error.code).toBe("CONFLICT");
+    }
+    const read = await getSessionRunById(db, id);
+    expect(read.ok).toBe(true);
+    if (read.ok) {
+      expect(read.value?.status).toBe("completed");
+    }
+  });
+
   it("rejects an illegal session run transition before touching the database", async () => {
     const opened = await openMigratedTestDb();
     tempDir = opened.dir;
@@ -250,6 +295,38 @@ describe("session repositories", () => {
       expect(read.value?.status).toBe("completed");
       expect(read.value?.checkpointState).toBe("pending");
       expect(read.value?.stoppedAt).toBe(LATER);
+    }
+  });
+
+  it("fails with CONFLICT when closeTurn races against a status that already changed", async () => {
+    const opened = await openMigratedTestDb();
+    tempDir = opened.dir;
+    db = opened.db;
+    const { sessionId } = await seedRepositoryAndSession(db, "e2", "e2");
+    const runIdValue = runId("e2");
+    await insertSessionRun(db, {
+      id: runIdValue,
+      sessionId,
+      startSource: "startup",
+      cwdFingerprint: "cwd-e2",
+      startedAt: NOW,
+    });
+    const id = trnId("e2");
+    await insertTurn(db, { id, runId: runIdValue, startedAt: NOW });
+
+    const first = await closeTurn(db, id, { from: "active", to: "completed", stoppedAt: LATER });
+    expect(first.ok).toBe(true);
+
+    const second = await closeTurn(db, id, { from: "active", to: "failed", stoppedAt: LATER });
+
+    expect(second.ok).toBe(false);
+    if (!second.ok) {
+      expect(second.error.code).toBe("CONFLICT");
+    }
+    const read = await getTurnById(db, id);
+    expect(read.ok).toBe(true);
+    if (read.ok) {
+      expect(read.value?.status).toBe("completed");
     }
   });
 

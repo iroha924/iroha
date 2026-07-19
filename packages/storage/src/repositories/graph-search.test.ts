@@ -370,6 +370,19 @@ describe("graph-search repositories", () => {
     }
   });
 
+  it("rejects a query vector that is not exactly 1024 components", async () => {
+    const opened = await openMigratedTestDb();
+    tempDir = opened.dir;
+    db = opened.db;
+
+    const result = await searchByVector(db, [0.1, 0.2], 5);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("INVALID_INPUT");
+    }
+  });
+
   it("enqueues an embedding job, lists it as due, and updates its status", async () => {
     const opened = await openMigratedTestDb();
     tempDir = opened.dir;

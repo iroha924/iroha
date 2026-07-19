@@ -1,3 +1,4 @@
+import type { RandomSource } from "@iroha/domain";
 import type { Database } from "./connection.js";
 
 export interface StorageCapabilities {
@@ -13,8 +14,13 @@ async function dropIfExists(db: Database, table: string): Promise<void> {
   await db.execute(`DROP TABLE IF EXISTS ${table}`).catch(() => undefined);
 }
 
-async function probeFts(db: Database, tokenizer: string, suffix: string): Promise<boolean> {
-  const table = `${PROBE_PREFIX}_fts_${suffix}`;
+async function probeFts(
+  db: Database,
+  tokenizer: string,
+  suffix: string,
+  uniqueId: string,
+): Promise<boolean> {
+  const table = `${PROBE_PREFIX}_fts_${suffix}_${uniqueId}`;
   await dropIfExists(db, table);
   try {
     await db.execute(`CREATE VIRTUAL TABLE ${table} USING fts5(body, tokenize = "${tokenizer}")`);
@@ -26,9 +32,9 @@ async function probeFts(db: Database, tokenizer: string, suffix: string): Promis
   }
 }
 
-async function probeVector(db: Database): Promise<boolean> {
-  const table = `${PROBE_PREFIX}_vector`;
-  const index = `${PROBE_PREFIX}_vector_idx`;
+async function probeVector(db: Database, uniqueId: string): Promise<boolean> {
+  const table = `${PROBE_PREFIX}_vector_${uniqueId}`;
+  const index = `${PROBE_PREFIX}_vector_idx_${uniqueId}`;
   await dropIfExists(db, table);
   try {
     await db.execute(
@@ -61,11 +67,27 @@ async function probeVector(db: Database): Promise<boolean> {
  * scratch tables rather than assuming the real schema is already migrated —
  * this lets `doctor` distinguish "libSQL build lacks the feature" from
  * "database not yet migrated".
+ *
+ * `random` gives each call's scratch tables a unique name suffix (same
+ * pattern as `rebuild.ts`'s `createSiblingDatabasePath`) — confirmed by
+ * reproduction that two overlapping `probeCapabilities` calls against the
+ * same DB file with a fixed table name collide (`CREATE VIRTUAL TABLE ...
+ * already exists`), and the losing call's unconditional `catch { return
+ * false }` then misreports a fully-supported libSQL build as unsupported.
  */
-export async function probeCapabilities(db: Database): Promise<StorageCapabilities> {
+export async function probeCapabilities(
+  db: Database,
+  random: RandomSource,
+): Promise<StorageCapabilities> {
+  const uniqueId = Buffer.from(random.bytes(8)).toString("hex");
   return {
-    ftsUnicode61: await probeFts(db, "unicode61 remove_diacritics 2 tokenchars '-_'", "unicode61"),
-    ftsTrigram: await probeFts(db, "trigram case_sensitive 0", "trigram"),
-    vector: await probeVector(db),
+    ftsUnicode61: await probeFts(
+      db,
+      "unicode61 remove_diacritics 2 tokenchars '-_'",
+      "unicode61",
+      uniqueId,
+    ),
+    ftsTrigram: await probeFts(db, "trigram case_sensitive 0", "trigram", uniqueId),
+    vector: await probeVector(db, uniqueId),
   };
 }

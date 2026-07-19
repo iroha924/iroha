@@ -450,6 +450,15 @@ export async function searchByVector(
   queryVector: readonly number[],
   k: number,
 ): Promise<Result<VectorSearchHit[], IrohaError>> {
+  if (queryVector.length !== EMBEDDING_DIMENSION) {
+    return err(
+      new IrohaError(
+        "INVALID_INPUT",
+        `Query vector must have exactly ${EMBEDDING_DIMENSION} components`,
+        { details: { length: queryVector.length } },
+      ),
+    );
+  }
   try {
     // `vtk` alias is required: confirmed by reproduction that an
     // unqualified `id` here is "ambiguous column name: id" once

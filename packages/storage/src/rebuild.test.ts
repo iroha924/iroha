@@ -71,4 +71,28 @@ describe("replaceDatabaseAtomically", () => {
     const entries = await readdir(dir);
     expect(entries.some((entry) => entry.includes(".backup-"))).toBe(false);
   });
+
+  it("moves each side's -wal/-shm sidecar files along with the swap", async () => {
+    const { dir, dbPath } = await createTempDbPath();
+    tempDir = dir;
+    await writeFile(dbPath, "old-content", "utf8");
+    await writeFile(`${dbPath}-wal`, "old-wal", "utf8");
+    await writeFile(`${dbPath}-shm`, "old-shm", "utf8");
+    const siblingPath = join(dir, "index.rebuild-abc.db");
+    await writeFile(siblingPath, "new-content", "utf8");
+    await writeFile(`${siblingPath}-wal`, "new-wal", "utf8");
+    // No -shm for the sibling, to also confirm a missing sidecar is a no-op.
+
+    const result = await replaceDatabaseAtomically(dbPath, siblingPath, CLOCK);
+
+    expect(result.ok).toBe(true);
+    expect(await readFile(`${dbPath}-wal`, "utf8")).toBe("new-wal");
+    if (result.ok) {
+      expect(await readFile(`${result.value.backupPath}-wal`, "utf8")).toBe("old-wal");
+      expect(await readFile(`${result.value.backupPath}-shm`, "utf8")).toBe("old-shm");
+    }
+    // The sibling never had a `-shm` file, so no stray `-shm` should exist
+    // at the promoted primary path either.
+    await expect(readFile(`${dbPath}-shm`, "utf8")).rejects.toThrow();
+  });
 });

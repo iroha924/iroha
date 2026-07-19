@@ -59,6 +59,28 @@ describe("withTransaction", () => {
     expect(rows.rows.length).toBe(0);
   });
 
+  it("surfaces fn's original error even when fn already closed the transaction itself", async () => {
+    const { dir, db } = await openTestDb();
+    tempDir = dir;
+    dbs.push(db);
+
+    // Confirmed by reproduction: a second `rollback()` on an
+    // already-closed transaction throws `TRANSACTION_CLOSED`. `fn` rolling
+    // back before returning its error simulates that condition for
+    // withTransaction's own subsequent rollback call.
+    const result = await withTransaction(db, "write", async (tx) => {
+      await tx.execute({ sql: "INSERT INTO t (id, label) VALUES (?, ?)", args: [1, "a"] });
+      await tx.rollback();
+      return { ok: false, error: new IrohaError("CONFLICT", "original conflict") } as const;
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("CONFLICT");
+      expect(result.error.message).toBe("original conflict");
+    }
+  });
+
   it("rolls back changes made by fn when fn throws", async () => {
     const { dir, db } = await openTestDb();
     tempDir = dir;

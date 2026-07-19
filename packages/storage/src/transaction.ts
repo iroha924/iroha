@@ -85,7 +85,10 @@ export async function withTransaction<T>(
     try {
       const result = await fn(tx);
       if (!result.ok) {
-        await tx.rollback();
+        // Defensive, matching the `catch` block below: if rollback itself
+        // throws (e.g. this driver double-rollbacking), that must not
+        // replace `fn`'s own `result.error` with an unrelated mapped error.
+        await tx.rollback().catch(() => undefined);
         if (result.error.code === "DB_BUSY" && shouldRetryBusy()) {
           await sleep(jitteredDelayMs(attempt));
           attempt += 1;
