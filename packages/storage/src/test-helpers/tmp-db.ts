@@ -15,8 +15,16 @@ export async function createTempDbPath(prefix = "iroha-storage-test-"): Promise<
   return { dir, dbPath: join(dir, "index.db") };
 }
 
+/**
+ * Confirmed by CI reproduction (windows-2025): `db.close()` returns
+ * synchronously, but the native libsql binding's own file-handle teardown
+ * can still be in flight, so an immediately-following `rm()` sees `EBUSY`
+ * ("resource busy or locked") on Windows even though POSIX allows deleting
+ * an open file. `maxRetries`/`retryDelay` are Node's own documented option
+ * for exactly this class of transient Windows delete failure.
+ */
 export async function removeTempDir(dir: string): Promise<void> {
-  await rm(dir, { recursive: true, force: true });
+  await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }
 
 const REAL_MIGRATIONS_DIR = fileURLToPath(new URL("../../../../migrations", import.meta.url));

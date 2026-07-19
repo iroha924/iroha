@@ -10,19 +10,26 @@ const CLOCK = new FixedClock(new Date("2026-01-01T00:00:00.000Z"));
 describe("createSiblingDatabasePath", () => {
   it("returns a random path next to the primary database", () => {
     const random = new FixedRandomSource(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]));
+    // Built with `join` (not a hardcoded `/`-separated literal) so the
+    // expectation matches whatever separator `path.dirname`/`path.join`
+    // produce on the host platform — confirmed by reproduction that a
+    // hardcoded POSIX literal fails on Windows, where `join` emits `\`.
+    const dir = join("repo", ".git", "iroha");
+    const primaryDbPath = join(dir, "index.db");
 
-    const path = createSiblingDatabasePath("/repo/.git/iroha/index.db", random);
+    const path = createSiblingDatabasePath(primaryDbPath, random);
 
-    expect(path).toBe("/repo/.git/iroha/index.rebuild-0102030405060708.db");
+    expect(path).toBe(join(dir, "index.rebuild-0102030405060708.db"));
   });
 
   it("produces different paths for different random sources", () => {
+    const primaryDbPath = join("repo", ".git", "iroha", "index.db");
     const a = createSiblingDatabasePath(
-      "/repo/.git/iroha/index.db",
+      primaryDbPath,
       new FixedRandomSource(new Uint8Array(8).fill(1)),
     );
     const b = createSiblingDatabasePath(
-      "/repo/.git/iroha/index.db",
+      primaryDbPath,
       new FixedRandomSource(new Uint8Array(8).fill(2)),
     );
 
