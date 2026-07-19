@@ -174,15 +174,19 @@ describe("redactUrlLikeCredentialsInText", () => {
     expect(redactUrlLikeCredentialsInText(text)).toBe("https://github.com/org/repo.git");
   });
 
-  it("still redacts a genuinely separate URL that follows one with its own query", () => {
-    // The nested-URL fix must not accidentally swallow a real second URL
-    // that happens to come after a first URL's query, once a real
-    // HARD_DELIMITER boundary (here, whitespace) actually separates them.
+  it("swallows a genuinely separate URL that follows one with its own query", () => {
+    // Superseded expectation: an earlier version of this function bounded a
+    // query by whitespace, correctly preserving a second, unrelated URL
+    // that came after one with a query. Confirmed by reproduction that a
+    // query value can itself contain a raw, unencoded space (see the
+    // dedicated test below) — so whitespace cannot safely bound a query
+    // either, and there is no character-based way to tell "the query ended
+    // and unrelated text follows" apart from "the query itself contains a
+    // space". Losing the second URL here is the accepted cost of never
+    // leaking part of an opaque query value.
     const text = "tried https://a.example/x?tok=1 then https://tok@b.example/y";
 
-    expect(redactUrlLikeCredentialsInText(text)).toBe(
-      "tried https://a.example/x then https://b.example/y",
-    );
+    expect(redactUrlLikeCredentialsInText(text)).toBe("tried https://a.example/x");
   });
 
   it("drops a query value containing a HARD_DELIMITER character entirely, not just its prefix", () => {
@@ -195,6 +199,16 @@ describe("redactUrlLikeCredentialsInText", () => {
     // any character, so it can't be bounded the same way a URL's host+path
     // safely can.
     const text = "https://example.com/repo.git?access_token=abc'def";
+
+    expect(redactUrlLikeCredentialsInText(text)).toBe("https://example.com/repo.git");
+  });
+
+  it("drops a query value containing a raw space entirely, not just its prefix", () => {
+    // Confirmed by reproduction: Git stores and echoes
+    // "?access_token=abc def" verbatim — no percent-encoding enforced.
+    // Whitespace was the last delimiter this function tried using to bound
+    // a query; this is the reproduction that ruled it out too.
+    const text = "https://example.com/repo.git?access_token=abc def";
 
     expect(redactUrlLikeCredentialsInText(text)).toBe("https://example.com/repo.git");
   });
