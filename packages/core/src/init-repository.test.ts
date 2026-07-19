@@ -76,46 +76,84 @@ describe("initRepository", () => {
     expect(second.value.candidatesCreated).toBe(0);
   });
 
-  it("scans AGENTS.md/CLAUDE.md into rule candidates, deduplicating unchanged content", async () => {
+  it("does not scan docs into candidates unless options.scan is set (canonical-schema.md §14: --scan only)", async () => {
     repoDir = await createTempGitRepo();
     await writeFile(join(repoDir, "AGENTS.md"), "# Agents\n\nFollow these rules.", "utf8");
 
-    const first = await initRepository(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR);
-    expect(first.ok).toBe(true);
-    if (!first.ok) return;
-    expect(first.value.docsScanned).toEqual(["AGENTS.md"]);
-    expect(first.value.candidatesCreated).toBe(1);
-
-    const rerun = await initRepository(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR);
-    expect(rerun.ok).toBe(true);
-    if (!rerun.ok) return;
-    expect(rerun.value.candidatesCreated).toBe(0);
-
-    await writeFile(join(repoDir, "AGENTS.md"), "# Agents\n\nUpdated rules.", "utf8");
-    const afterEdit = await initRepository(
+    const withoutScan = await initRepository(
       repoDir,
       CLOCK,
       new CryptoRandomSource(),
       MIGRATIONS_DIR,
     );
-    expect(afterEdit.ok).toBe(true);
-    if (!afterEdit.ok) return;
-    expect(afterEdit.value.candidatesCreated).toBe(1);
+    expect(withoutScan.ok).toBe(true);
+    if (!withoutScan.ok) return;
+    expect(withoutScan.value.docsScanned).toEqual([]);
+    expect(withoutScan.value.candidatesCreated).toBe(0);
 
-    const opened = await openDatabase(first.value.dbPath);
+    const withScan = await initRepository(
+      repoDir,
+      CLOCK,
+      new CryptoRandomSource(),
+      MIGRATIONS_DIR,
+      {
+        scan: true,
+      },
+    );
+    expect(withScan.ok).toBe(true);
+    if (!withScan.ok) return;
+    expect(withScan.value.docsScanned).toEqual(["AGENTS.md"]);
+    expect(withScan.value.candidatesCreated).toBe(1);
+
+    const opened = await openDatabase(withScan.value.dbPath);
     expect(opened.ok).toBe(true);
     if (opened.ok) {
       const pending = await listCandidatesByStatus(
         opened.value,
-        first.value.repositoryId,
+        withScan.value.repositoryId,
         "pending",
       );
       expect(pending.ok).toBe(true);
       if (pending.ok) {
-        expect(pending.value.length).toBe(2);
-        expect(pending.value.every((c) => c.candidateType === "rule")).toBe(true);
+        expect(pending.value.length).toBe(1);
+        expect(pending.value[0]?.candidateType).toBe("rule");
       }
       closeDatabase(opened.value);
+    }
+  });
+
+  it("converges to the same repository_id when two processes race the very first init", async () => {
+    repoDir = await createTempGitRepo();
+
+    const [first, second] = await Promise.all([
+      initRepository(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR),
+      initRepository(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR),
+    ]);
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(true);
+    if (!first.ok || !second.ok) return;
+
+    expect(second.value.repositoryId).toBe(first.value.repositoryId);
+
+    const configContent = await readFile(join(repoDir, ".iroha", "config.yaml"), "utf8");
+    expect(configContent).toContain(first.value.repositoryId);
+
+    const opened = await openDatabase(first.value.dbPath);
+    expect(opened.ok).toBe(true);
+    if (opened.ok) {
+      const repoRow = await getRepositoryById(opened.value, first.value.repositoryId);
+      expect(repoRow.ok).toBe(true);
+      if (repoRow.ok) {
+        expect(repoRow.value).not.toBeNull();
+      }
+      closeDatabase(opened.value);
+    }
+
+    const third = await initRepository(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR);
+    expect(third.ok).toBe(true);
+    if (third.ok) {
+      expect(third.value.repositoryId).toBe(first.value.repositoryId);
+      expect(third.value.freshInit).toBe(false);
     }
   });
 

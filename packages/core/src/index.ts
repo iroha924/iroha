@@ -3,6 +3,8 @@
  */
 export const packageName = "@iroha/core";
 
+export * from "./commands.js";
+export * from "./docs-scan.js";
 export * from "./doctor.js";
 export * from "./init-repository.js";
 export * from "./rebuild-database.js";

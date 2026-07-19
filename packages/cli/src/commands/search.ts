@@ -1,10 +1,15 @@
-import { resolveInitializedRepository } from "@iroha/core";
-import { type SearchTextHit, searchText } from "@iroha/search";
-import { closeDatabase, openDatabase } from "@iroha/storage";
+import { runSearch } from "@iroha/core";
 import { define } from "gunshi";
 import { printError, printSuccess } from "../output.js";
 
-function formatSearch(data: { hits: SearchTextHit[] }): string {
+interface DisplayHit {
+  entityId: string;
+  title: string;
+  authority: number;
+  score: number;
+}
+
+function formatSearch(data: { hits: DisplayHit[] }): string {
   if (data.hits.length === 0) {
     return "No results.";
   }
@@ -26,24 +31,12 @@ export const searchCommand = define({
   },
   run: async (ctx) => {
     const json = ctx.values.json ?? false;
-    const cwd = process.cwd();
 
-    const resolvedResult = await resolveInitializedRepository(cwd);
-    if (!resolvedResult.ok) {
-      printError(json, resolvedResult.error);
+    const result = await runSearch(process.cwd(), ctx.values.query);
+    if (!result.ok) {
+      printError(json, result.error);
       return;
     }
-    const opened = await openDatabase(resolvedResult.value.dbPath);
-    if (!opened.ok) {
-      printError(json, opened.error);
-      return;
-    }
-    const searchResult = await searchText(opened.value, ctx.values.query);
-    closeDatabase(opened.value);
-    if (!searchResult.ok) {
-      printError(json, searchResult.error);
-      return;
-    }
-    printSuccess(json, { hits: searchResult.value }, formatSearch);
+    printSuccess(json, { hits: result.value }, formatSearch);
   },
 });

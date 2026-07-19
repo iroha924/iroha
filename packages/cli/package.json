@@ -24,14 +24,12 @@
   },
   "dependencies": {
     "@iroha/core": "workspace:*",
-    "@iroha/domain": "workspace:*",
-    "@iroha/search": "workspace:*",
-    "@iroha/storage": "workspace:*",
     "gunshi": "catalog:"
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",
     "@iroha/canonical": "workspace:*",
+    "@iroha/domain": "workspace:*",
     "@iroha/git": "workspace:*",
     "@types/node": "catalog:",
     "tsdown": "catalog:",

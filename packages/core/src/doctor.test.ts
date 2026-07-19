@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,7 +31,7 @@ describe("runDoctor", () => {
   it("reports node/git checks and a warning for an uninitialized repository", async () => {
     repoDir = await createTempGitRepo();
 
-    const result = await runDoctor(repoDir, new CryptoRandomSource());
+    const result = await runDoctor(repoDir);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -48,7 +48,7 @@ describe("runDoctor", () => {
     const init = await initRepository(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR);
     expect(init.ok).toBe(true);
 
-    const result = await runDoctor(repoDir, new CryptoRandomSource());
+    const result = await runDoctor(repoDir);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -62,7 +62,7 @@ describe("runDoctor", () => {
   it("reports an error when run outside any Git repository", async () => {
     bareDir = await mkdtemp(join(tmpdir(), "iroha-doctor-no-git-"));
 
-    const result = await runDoctor(bareDir, new CryptoRandomSource());
+    const result = await runDoctor(bareDir);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -86,7 +86,7 @@ describe("runDoctor", () => {
     config.search.embedding.enabled = true;
     await writeFile(configPath, stringify(config), "utf8");
 
-    const result = await runDoctor(repoDir, new CryptoRandomSource());
+    const result = await runDoctor(repoDir);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -94,5 +94,25 @@ describe("runDoctor", () => {
     expect(byName.get("embedding-provider")?.message).toContain("key set");
     const serialized = JSON.stringify(result.value);
     expect(serialized).not.toContain(secretValue);
+  });
+
+  it("reports a config error (not a silent 'nothing to check') when config.yaml cannot be read for a reason other than being absent", async () => {
+    repoDir = await createTempGitRepo();
+    const init = await initRepository(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR);
+    expect(init.ok).toBe(true);
+    if (!init.ok) return;
+
+    // A directory in place of the file reproduces a non-ENOENT readFile
+    // failure (EISDIR) without relying on OS-specific permission bits.
+    const configPath = join(init.value.irohaCanonicalDir, "config.yaml");
+    await rm(configPath, { force: true });
+    await mkdir(configPath);
+
+    const result = await runDoctor(repoDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const byName = new Map(result.value.checks.map((c) => [c.name, c]));
+    expect(byName.get("config")?.status).toBe("error");
   });
 });

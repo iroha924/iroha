@@ -1,4 +1,5 @@
-import { access } from "node:fs/promises";
+import { access, readdir, rm } from "node:fs/promises";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { writeCanonicalDocument } from "@iroha/canonical";
 import { CryptoRandomSource, FixedClock, makeTypedId } from "@iroha/domain";
@@ -119,5 +120,26 @@ describe("rebuildDatabase", () => {
       }
       closeDatabase(opened.value);
     }
+  });
+
+  it("cleans up the sibling database file when the final atomic swap fails", async () => {
+    repoDir = await createTempGitRepo();
+    const init = await initRepository(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR);
+    expect(init.ok).toBe(true);
+    if (!init.ok) return;
+
+    // Deleting the primary DB file makes `replaceDatabaseAtomically`'s first
+    // rename (`primaryDbPath -> backupPath`) fail with ENOENT — a clean,
+    // cross-platform way to force this specific failure path without
+    // relying on OS-specific file-locking/permission behavior.
+    await rm(init.value.dbPath, { force: true });
+
+    const result = await rebuildDatabase(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR);
+    expect(result.ok).toBe(false);
+
+    const dbDir = dirname(init.value.dbPath);
+    const remaining = await readdir(dbDir);
+    const siblingFiles = remaining.filter((name) => name.includes("index.rebuild-"));
+    expect(siblingFiles).toEqual([]);
   });
 });

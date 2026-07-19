@@ -262,15 +262,6 @@ importers:
       '@iroha/core':
         specifier: workspace:*
         version: link:../core
-      '@iroha/domain':
-        specifier: workspace:*
-        version: link:../domain
-      '@iroha/search':
-        specifier: workspace:*
-        version: link:../search
-      '@iroha/storage':
-        specifier: workspace:*
-        version: link:../storage
       gunshi:
         specifier: 'catalog:'
         version: 0.37.1
@@ -281,6 +272,9 @@ importers:
       '@iroha/canonical':
         specifier: workspace:*
         version: link:../canonical
+      '@iroha/domain':
+        specifier: workspace:*
+        version: link:../domain
       '@iroha/git':
         specifier: workspace:*
         version: link:../git

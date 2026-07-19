@@ -129,6 +129,13 @@ export async function rebuildDatabase(
 
   const replaced = await replaceDatabaseAtomically(primaryDbPath, siblingDbPath, clock);
   if (!replaced.ok) {
+    // `replaceDatabaseAtomically` only ever fails before its rename of
+    // `siblingDbPath` into `primaryDbPath` succeeds (each of its two
+    // renames is atomic-or-untouched, and it already restores its own
+    // partial state on a mid-sequence failure) — the sibling is still at
+    // `siblingDbPath` either way, so it is safe (and, unlike every earlier
+    // failure branch above, was previously missing) to clean it up here too.
+    await removeSiblingDatabase(siblingDbPath);
     return replaced;
   }
 

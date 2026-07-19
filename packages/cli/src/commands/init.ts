@@ -1,20 +1,9 @@
-import {
-  type InitRepositoryResult,
-  initRepository,
-  type SyncCanonicalResult,
-  syncCanonicalToDatabase,
-} from "@iroha/core";
-import { closeDatabase, openDatabase } from "@iroha/storage";
+import { type RunInitResult, runInit } from "@iroha/core";
 import { define } from "gunshi";
-import { clock, MIGRATIONS_DIR, newRandom } from "../context.js";
+import { MIGRATIONS_DIR } from "../context.js";
 import { printError, printSuccess } from "../output.js";
 
-interface InitOutput {
-  init: InitRepositoryResult;
-  sync: SyncCanonicalResult;
-}
-
-function formatInit(data: InitOutput): string {
+function formatInit(data: RunInitResult): string {
   return [
     data.init.freshInit
       ? `Initialized a new repository (${data.init.repositoryId}).`
@@ -30,35 +19,18 @@ export const initCommand = define({
   rendering: { header: null },
   args: {
     json: { type: "boolean", description: "Output JSON" },
+    scan: {
+      type: "boolean",
+      description: "Also scan AGENTS.md/CLAUDE.md/.claude/rules/**/*.md into local candidates",
+    },
   },
   run: async (ctx) => {
     const json = ctx.values.json ?? false;
-    const cwd = process.cwd();
-
-    const initResult = await initRepository(cwd, clock, newRandom(), MIGRATIONS_DIR);
-    if (!initResult.ok) {
-      printError(json, initResult.error);
+    const result = await runInit(process.cwd(), MIGRATIONS_DIR, { scan: ctx.values.scan ?? false });
+    if (!result.ok) {
+      printError(json, result.error);
       return;
     }
-
-    const opened = await openDatabase(initResult.value.dbPath);
-    if (!opened.ok) {
-      printError(json, opened.error);
-      return;
-    }
-    const syncResult = await syncCanonicalToDatabase(
-      opened.value,
-      initResult.value.repositoryId,
-      initResult.value.irohaCanonicalDir,
-      clock,
-      newRandom(),
-    );
-    closeDatabase(opened.value);
-    if (!syncResult.ok) {
-      printError(json, syncResult.error);
-      return;
-    }
-
-    printSuccess<InitOutput>(json, { init: initResult.value, sync: syncResult.value }, formatInit);
+    printSuccess(json, result.value, formatInit);
   },
 });

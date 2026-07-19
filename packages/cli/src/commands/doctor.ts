@@ -1,6 +1,5 @@
 import { type DoctorReport, runDoctor } from "@iroha/core";
 import { define } from "gunshi";
-import { newRandom } from "../context.js";
 import { printError, printSuccess } from "../output.js";
 
 const STATUS_ICON: Record<string, string> = {
@@ -25,9 +24,8 @@ export const doctorCommand = define({
   },
   run: async (ctx) => {
     const json = ctx.values.json ?? false;
-    const cwd = process.cwd();
 
-    const result = await runDoctor(cwd, newRandom());
+    const result = await runDoctor(process.cwd());
     if (!result.ok) {
       printError(json, result.error);
       return;

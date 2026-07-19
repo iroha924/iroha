@@ -64,11 +64,18 @@ async function queryFtsRanked(
     // "no such column: f" instead of running the query. The table name is
     // interpolated from the closed `table` parameter's literal type, not
     // caller input, so this is not a SQL-injection surface.
+    //
+    // Joining to `entities` and excluding `tombstoned` rows is required, not
+    // optional: `syncCanonicalToDatabase` marks a deleted canonical file's
+    // entity `tombstoned` via `UPDATE entities SET status = ...` — it never
+    // touches `search_documents`, so without this filter a deleted
+    // document's stale content would keep surfacing here indefinitely.
     const result = await db.execute({
       sql: `SELECT sd.entity_id AS entity_id, sd.id AS search_document_id, sd.title AS title, sd.authority AS authority
         FROM ${table}
         JOIN search_documents sd ON sd.rowid = ${table}.rowid
-        WHERE ${table} MATCH ?
+        JOIN entities e ON e.id = sd.entity_id
+        WHERE ${table} MATCH ? AND e.status != 'tombstoned'
         ORDER BY rank
         LIMIT ?`,
       args: [query, CANDIDATE_LIMIT],
@@ -99,10 +106,11 @@ async function queryByLike(db: Executor, query: string): Promise<Result<RankedRo
   const pattern = `%${escapeLikePattern(query)}%`;
   try {
     const result = await db.execute({
-      sql: `SELECT entity_id, id AS search_document_id, title, authority
-        FROM search_documents
-        WHERE title LIKE ? ESCAPE '\\' OR body LIKE ? ESCAPE '\\'
-        ORDER BY authority DESC, indexed_at DESC
+      sql: `SELECT sd.entity_id AS entity_id, sd.id AS search_document_id, sd.title AS title, sd.authority AS authority
+        FROM search_documents sd
+        JOIN entities e ON e.id = sd.entity_id
+        WHERE (sd.title LIKE ? ESCAPE '\\' OR sd.body LIKE ? ESCAPE '\\') AND e.status != 'tombstoned'
+        ORDER BY sd.authority DESC, sd.indexed_at DESC
         LIMIT ?`,
       args: [pattern, pattern, CANDIDATE_LIMIT],
     });
@@ -137,7 +145,7 @@ export async function searchText(
   if (trimmed.length === 0) {
     return ok([]);
   }
-  const limit = Math.min(options.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
+  const limit = Math.max(0, Math.min(options.limit ?? DEFAULT_LIMIT, MAX_LIMIT));
 
   if ([...trimmed].length < MIN_FTS_QUERY_LENGTH) {
     const likeResult = await queryByLike(db, trimmed);

@@ -1,9 +1,15 @@
 import type { ExecFileException } from "node:child_process";
 import { execFile } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { access, constants, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parseRepositoryConfig } from "@iroha/config";
-import { type IrohaError, ok, type RandomSource, type Result } from "@iroha/domain";
+import {
+  CryptoRandomSource,
+  type IrohaError,
+  ok,
+  type RandomSource,
+  type Result,
+} from "@iroha/domain";
 import { resolveGitLocation, resolveGitPath } from "@iroha/git";
 import { closeDatabase, openDatabase, probeCapabilities } from "@iroha/storage";
 import { readSchemaVersion } from "./schema-version.js";
@@ -58,8 +64,26 @@ function checkCliVersion(binary: string, args: readonly string[]): Promise<strin
   });
 }
 
+/** compatibility.md §2: `Node.js | 24 LTS | >=24.0.0 <25`. */
+function isSupportedNodeVersion(version: string): boolean {
+  const match = /^v?(\d+)\./.exec(version);
+  if (match?.[1] === undefined) {
+    return false;
+  }
+  const major = Number(match[1]);
+  return major === 24;
+}
+
 async function checkNode(): Promise<DoctorCheckResult> {
-  return { name: "node", status: "ok", message: `Node.js ${process.version}` };
+  const version = process.version;
+  if (!isSupportedNodeVersion(version)) {
+    return {
+      name: "node",
+      status: "warning",
+      message: `Node.js ${version} (expected >=24.0.0 <25 — newer or older is unverified, not necessarily broken)`,
+    };
+  }
+  return { name: "node", status: "ok", message: `Node.js ${version}` };
 }
 
 async function checkGit(): Promise<DoctorCheckResult> {
@@ -99,6 +123,22 @@ async function checkGitRepository(cwd: string): Promise<{
       irohaStateDir: null,
     };
   }
+
+  /** compatibility.md §9 point 8: "verify Git root, common dir, worktree git dir, and write access." */
+  try {
+    await access(locationResult.value.root, constants.W_OK);
+  } catch {
+    return {
+      check: {
+        name: "git-repository",
+        status: "error",
+        message: "Git repository root is not writable",
+      },
+      irohaCanonicalDir: null,
+      irohaStateDir: null,
+    };
+  }
+
   return {
     check: { name: "git-repository", status: "ok", message: "Git repository resolved" },
     irohaCanonicalDir: join(locationResult.value.root, ".iroha"),
@@ -169,8 +209,20 @@ async function checkProviders(irohaCanonicalDir: string): Promise<DoctorCheckRes
   let content: string;
   try {
     content = await readFile(join(irohaCanonicalDir, "config.yaml"), "utf8");
-  } catch {
-    return [];
+  } catch (cause) {
+    // Only a missing file is "nothing to check" — any other failure
+    // (permission denied, I/O error, ...) must be surfaced, not silently
+    // treated as if the config simply did not exist yet.
+    if ((cause as NodeJS.ErrnoException).code === "ENOENT") {
+      return [];
+    }
+    return [
+      {
+        name: "config",
+        status: "error",
+        message: "Failed to read .iroha/config.yaml",
+      },
+    ];
   }
   const parsed = parseRepositoryConfig(content);
   if (!parsed.ok) {
@@ -203,10 +255,8 @@ async function checkProviders(irohaCanonicalDir: string): Promise<DoctorCheckRes
  * report `warning`, not `error`: the capability is not yet part of this
  * build, not something the environment is missing.
  */
-export async function runDoctor(
-  cwd: string,
-  random: RandomSource,
-): Promise<Result<DoctorReport, IrohaError>> {
+export async function runDoctor(cwd: string): Promise<Result<DoctorReport, IrohaError>> {
+  const random = new CryptoRandomSource();
   const checks: DoctorCheckResult[] = [];
 
   checks.push(await checkNode());

@@ -1,34 +1,38 @@
-import {
-  type RebuildDatabaseResult,
-  rebuildDatabase,
-  resolveInitializedRepository,
-  type SyncCanonicalResult,
-  syncCanonicalToDatabase,
-} from "@iroha/core";
-import { closeDatabase, openDatabase } from "@iroha/storage";
+import { type RunSyncResult, runSync } from "@iroha/core";
 import { define } from "gunshi";
-import { clock, MIGRATIONS_DIR, newRandom } from "../context.js";
+import { MIGRATIONS_DIR } from "../context.js";
 import { printError, printSuccess } from "../output.js";
 
-function formatSync(data: { sync: SyncCanonicalResult }): string {
-  const { added, changed, unchanged, deleted, scanErrors, unresolvedRelations } = data.sync;
-  const lines = [
-    `+${added} added, ${changed} changed, ${unchanged} unchanged, ${deleted} deleted.`,
-  ];
-  if (scanErrors > 0) {
-    lines.push(`${scanErrors} file(s) failed to parse — see dirty markers.`);
+function formatSync(data: RunSyncResult): string {
+  if (data.rebuilt) {
+    return [
+      `Rebuilt the local database (backup at ${data.rebuild.backupPath}).`,
+      formatSyncCounts(data.rebuild.sync),
+    ].join("\n");
   }
-  if (unresolvedRelations > 0) {
-    lines.push(`${unresolvedRelations} relation(s) could not be resolved — see dirty markers.`);
-  }
-  return lines.join("\n");
+  return formatSyncCounts(data.sync);
 }
 
-function formatRebuild(data: { rebuild: RebuildDatabaseResult }): string {
-  return [
-    `Rebuilt the local database (backup at ${data.rebuild.backupPath}).`,
-    formatSync({ sync: data.rebuild.sync }),
-  ].join("\n");
+function formatSyncCounts(sync: {
+  added: number;
+  changed: number;
+  unchanged: number;
+  deleted: number;
+  scanErrors: number;
+  unresolvedRelations: number;
+}): string {
+  const lines = [
+    `+${sync.added} added, ${sync.changed} changed, ${sync.unchanged} unchanged, ${sync.deleted} deleted.`,
+  ];
+  if (sync.scanErrors > 0) {
+    lines.push(`${sync.scanErrors} file(s) failed to parse — see dirty markers.`);
+  }
+  if (sync.unresolvedRelations > 0) {
+    lines.push(
+      `${sync.unresolvedRelations} relation(s) could not be resolved — see dirty markers.`,
+    );
+  }
+  return lines.join("\n");
 }
 
 export const syncCommand = define({
@@ -41,40 +45,13 @@ export const syncCommand = define({
   },
   run: async (ctx) => {
     const json = ctx.values.json ?? false;
-    const cwd = process.cwd();
-
-    if (ctx.values.rebuild) {
-      const rebuildResult = await rebuildDatabase(cwd, clock, newRandom(), MIGRATIONS_DIR);
-      if (!rebuildResult.ok) {
-        printError(json, rebuildResult.error);
-        return;
-      }
-      printSuccess(json, { rebuild: rebuildResult.value }, formatRebuild);
+    const result = await runSync(process.cwd(), MIGRATIONS_DIR, {
+      rebuild: ctx.values.rebuild ?? false,
+    });
+    if (!result.ok) {
+      printError(json, result.error);
       return;
     }
-
-    const resolvedResult = await resolveInitializedRepository(cwd);
-    if (!resolvedResult.ok) {
-      printError(json, resolvedResult.error);
-      return;
-    }
-    const opened = await openDatabase(resolvedResult.value.dbPath);
-    if (!opened.ok) {
-      printError(json, opened.error);
-      return;
-    }
-    const syncResult = await syncCanonicalToDatabase(
-      opened.value,
-      resolvedResult.value.repositoryId,
-      resolvedResult.value.irohaCanonicalDir,
-      clock,
-      newRandom(),
-    );
-    closeDatabase(opened.value);
-    if (!syncResult.ok) {
-      printError(json, syncResult.error);
-      return;
-    }
-    printSuccess(json, { sync: syncResult.value }, formatSync);
+    printSuccess(json, result.value, formatSync);
   },
 });

@@ -1,4 +1,8 @@
-import type { IrohaError } from "@iroha/domain";
+/** Structural, not `@iroha/domain`'s `IrohaError` — the CLI's only dependency is `@iroha/core` (compatibility.md §4). */
+interface DisplayableError {
+  code: string;
+  message: string;
+}
 
 export function printSuccess<T extends object>(
   json: boolean,
@@ -12,7 +16,7 @@ export function printSuccess<T extends object>(
   }
 }
 
-export function printError(json: boolean, error: IrohaError): void {
+export function printError(json: boolean, error: DisplayableError): void {
   if (json) {
     process.stdout.write(
       `${JSON.stringify({ ok: false, error: { code: error.code, message: error.message } }, null, 2)}\n`,

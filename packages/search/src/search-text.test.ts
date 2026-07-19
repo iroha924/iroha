@@ -4,6 +4,7 @@ import {
   type Database,
   insertEntity,
   insertRepository,
+  updateEntityStatus,
   upsertSearchDocument,
 } from "@iroha/storage";
 import { afterEach, describe, expect, it } from "vitest";
@@ -174,6 +175,69 @@ describe("searchText", () => {
     db = opened.db;
 
     const result = await searchText(db, "nonexistent-term-xyz");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toEqual([]);
+    }
+  });
+
+  it("excludes a tombstoned entity's document from FTS results", async () => {
+    const opened = await openMigratedTestDb();
+    tempDir = opened.dir;
+    db = opened.db;
+    const repositoryId = repoId("e");
+    await insertRepository(db, {
+      id: repositoryId,
+      rootFingerprint: "fp-e",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    const entityId = "dec_0000000000000000000000006";
+    await seedSearchDocument(db, repositoryId, entityId, {
+      searchDocumentId: sdocId("f"),
+      title: "Deleted decision",
+      body: "this decision document was later deleted from .iroha/.",
+    });
+
+    const beforeTombstone = await searchText(db, "deleted decision");
+    expect(beforeTombstone.ok).toBe(true);
+    if (beforeTombstone.ok) {
+      expect(beforeTombstone.value.map((hit) => hit.entityId)).toEqual([entityId]);
+    }
+
+    const updated = await updateEntityStatus(db, entityId, {
+      status: "tombstoned",
+      updatedAt: NOW,
+    });
+    expect(updated.ok).toBe(true);
+
+    const afterTombstone = await searchText(db, "deleted decision");
+    expect(afterTombstone.ok).toBe(true);
+    if (afterTombstone.ok) {
+      expect(afterTombstone.value).toEqual([]);
+    }
+  });
+
+  it("excludes a tombstoned entity's document from the short-query LIKE fallback", async () => {
+    const opened = await openMigratedTestDb();
+    tempDir = opened.dir;
+    db = opened.db;
+    const repositoryId = repoId("f");
+    await insertRepository(db, {
+      id: repositoryId,
+      rootFingerprint: "fp-f",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    const entityId = "dec_0000000000000000000000007";
+    await seedSearchDocument(db, repositoryId, entityId, {
+      searchDocumentId: sdocId("g"),
+      title: "CI pipeline (deleted)",
+      body: "the CI pipeline runs lint, typecheck, test, and build.",
+    });
+    await updateEntityStatus(db, entityId, { status: "tombstoned", updatedAt: NOW });
+
+    const result = await searchText(db, "CI");
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value).toEqual([]);

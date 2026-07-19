@@ -1,5 +1,4 @@
 import { fileURLToPath } from "node:url";
-import { CryptoRandomSource, SystemClock } from "@iroha/domain";
 
 /**
  * `packages/cli/dist/` and `packages/cli/src/` sit at the same depth under
@@ -9,9 +8,3 @@ import { CryptoRandomSource, SystemClock } from "@iroha/domain";
  * migrations path once `@iroha/cli` ships outside this monorepo.
  */
 export const MIGRATIONS_DIR = fileURLToPath(new URL("../../../migrations", import.meta.url));
-
-export const clock = new SystemClock();
-
-export function newRandom(): CryptoRandomSource {
-  return new CryptoRandomSource();
-}
