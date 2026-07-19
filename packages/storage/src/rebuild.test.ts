@@ -1,4 +1,4 @@
-import { readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { FixedClock, FixedRandomSource } from "@iroha/domain";
 import { afterEach, describe, expect, it } from "vitest";
@@ -61,6 +61,33 @@ describe("replaceDatabaseAtomically", () => {
     if (result.ok) {
       expect(await readFile(result.value.backupPath, "utf8")).toBe("old-content");
     }
+  });
+
+  it("restores the original database if a sidecar rename fails while moving it aside", async () => {
+    const { dir, dbPath } = await createTempDbPath();
+    tempDir = dir;
+    await writeFile(dbPath, "old-content", "utf8");
+    await writeFile(`${dbPath}-wal`, "old-wal", "utf8");
+    const siblingPath = join(dir, "index.rebuild-abc.db");
+    await writeFile(siblingPath, "new-content", "utf8");
+
+    // CLOCK is fixed, so the backup path this call computes is
+    // predictable. Pre-create its `-wal` destination as a directory so
+    // `renameSidecarIfExists`'s rename onto it fails — a real I/O failure
+    // (Node's rename() cannot move a regular file onto an existing
+    // directory), not a mock.
+    const timestamp = CLOCK.now().toISOString().replace(/[:.]/g, "-");
+    const backupPath = `${dbPath}.backup-${timestamp}`;
+    await mkdir(`${backupPath}-wal`);
+
+    const result = await replaceDatabaseAtomically(dbPath, siblingPath, CLOCK);
+
+    expect(result.ok).toBe(false);
+    // The original database (and its sidecar) must still be usable at their
+    // original path — moving the main file aside must not succeed halfway
+    // and then abandon the sidecar move.
+    expect(await readFile(dbPath, "utf8")).toBe("old-content");
+    expect(await readFile(`${dbPath}-wal`, "utf8")).toBe("old-wal");
   });
 
   it("restores the original database when moving the sibling into place fails", async () => {

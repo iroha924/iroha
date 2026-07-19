@@ -63,6 +63,14 @@ export async function replaceDatabaseAtomically(
     await rename(primaryDbPath, backupPath);
     await renameSidecarIfExists(primaryDbPath, backupPath);
   } catch (cause) {
+    // Best-effort recovery, mirroring the catch block below: if the main
+    // rename succeeded but a sidecar rename then failed (plausible on
+    // Windows, where this file already documents transient EBUSY/EPERM
+    // issues), undo the partial move so this does not leave the repository
+    // without a database at `primaryDbPath`. A no-op when the main rename
+    // itself is what failed, since there is then nothing to move back.
+    await rename(backupPath, primaryDbPath).catch(() => undefined);
+    await renameSidecarIfExists(backupPath, primaryDbPath).catch(() => undefined);
     return err(
       new IrohaError("INTERNAL_ERROR", "Failed to move aside the current database", { cause }),
     );

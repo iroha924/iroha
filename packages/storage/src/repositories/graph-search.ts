@@ -195,9 +195,16 @@ export async function getPath(
 /**
  * Matches implementation/database-schema.md §11:
  * `getSubgraph(rootIds, maxDepth = 2, maxEdges = 200)`. Also implemented as
- * BFS (see `getPath`'s comment); the visited-entity set inherently prevents
- * revisiting any node — including through `DUPLICATES` edges — which is
- * what §11's "excludes DUPLICATES cycles already visited" requires.
+ * BFS (see `getPath`'s comment). The visited-entity set stops re-expanding
+ * an already-visited node, but that alone does not stop a `DUPLICATES`
+ * relation *back* to one from being collected — confirmed by reproduction
+ * that without an explicit check, a `DUPLICATES` cycle (e.g. A visited via
+ * some path, then reached again from B via a `DUPLICATES` edge) still
+ * appears in the returned edge list. §11 excludes specifically `DUPLICATES`
+ * cycles already visited, not every relation type, so other relation types
+ * between already-visited nodes are still collected (e.g. a `RELATED_TO`
+ * edge discovered from two different directions is legitimate exploration
+ * data, not a cycle to hide).
  */
 export async function getSubgraph(
   db: Executor,
@@ -227,9 +234,12 @@ export async function getSubgraph(
         if (collectedRelations.size >= maxEdges || collectedRelations.has(relation.id)) {
           continue;
         }
-        collectedRelations.set(relation.id, relation);
         const neighborId =
           relation.fromEntityId === entityId ? relation.toEntityId : relation.fromEntityId;
+        if (relation.relationType === "DUPLICATES" && visitedEntities.has(neighborId)) {
+          continue;
+        }
+        collectedRelations.set(relation.id, relation);
         if (!visitedEntities.has(neighborId)) {
           visitedEntities.add(neighborId);
           nextFrontier.push(neighborId);

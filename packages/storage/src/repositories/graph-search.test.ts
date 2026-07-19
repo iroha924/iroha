@@ -263,6 +263,57 @@ describe("graph-search repositories", () => {
     }
   });
 
+  it("excludes a DUPLICATES edge back to an already-visited node, but keeps other relation types", async () => {
+    // implementation/database-schema.md §11: subgraph traversal "excludes
+    // DUPLICATES cycles already visited". A visited via RELATED_TO to B,
+    // then B has a DUPLICATES edge back to A — that back edge must be
+    // dropped, but a non-DUPLICATES edge between the same already-visited
+    // pair must still be collected (it is real exploration data, not a
+    // cycle to hide).
+    const opened = await openMigratedTestDb();
+    tempDir = opened.dir;
+    db = opened.db;
+    const repositoryId = await seedRepository(db, "e");
+    for (const suffix of ["a", "b"]) {
+      await seedEntity(db, `dec_0000000000000000000000e${suffix}`, repositoryId);
+    }
+    await insertRelation(db, {
+      id: relId("e1"),
+      repositoryId,
+      fromEntityId: "dec_0000000000000000000000ea",
+      relationType: "RELATED_TO",
+      toEntityId: "dec_0000000000000000000000eb",
+      sourceKind: "human",
+      createdAt: NOW,
+    });
+    await insertRelation(db, {
+      id: relId("e2"),
+      repositoryId,
+      fromEntityId: "dec_0000000000000000000000eb",
+      relationType: "DUPLICATES",
+      toEntityId: "dec_0000000000000000000000ea",
+      sourceKind: "human",
+      createdAt: NOW,
+    });
+    await insertRelation(db, {
+      id: relId("e3"),
+      repositoryId,
+      fromEntityId: "dec_0000000000000000000000eb",
+      relationType: "CONTRADICTS",
+      toEntityId: "dec_0000000000000000000000ea",
+      sourceKind: "human",
+      createdAt: NOW,
+    });
+
+    const subgraph = await getSubgraph(db, ["dec_0000000000000000000000ea"], 2, 200);
+    expect(subgraph.ok).toBe(true);
+    if (subgraph.ok) {
+      const ids = subgraph.value.map((r) => r.id).sort();
+      expect(ids).toEqual([relId("e1"), relId("e3")].sort());
+      expect(ids).not.toContain(relId("e2"));
+    }
+  });
+
   it("upserts a search document, re-indexing in place on a second call", async () => {
     const opened = await openMigratedTestDb();
     tempDir = opened.dir;
