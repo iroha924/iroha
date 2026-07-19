@@ -17,7 +17,22 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "preset": "recommended"
+      "preset": "recommended",
+      "style": {
+        "useConsistentTypeDefinitions": {
+          "level": "error",
+          "options": {
+            "style": "interface"
+          }
+        },
+        "noDefaultExport": "error",
+        "useFilenamingConvention": {
+          "level": "error",
+          "options": {
+            "filenameCases": ["kebab-case"]
+          }
+        }
+      }
     }
   },
   "assist": {
@@ -27,5 +42,362 @@
         "organizeImports": "on"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["apps/dashboard/src/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "useFilenamingConvention": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/domain/src/**/*.ts", "!packages/domain/src/**/*.test.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@iroha/*"],
+                    "message": "compatibility.md §4: @iroha/domain may depend only on: none."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/config/src/**/*.ts", "!packages/config/src/**/*.test.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@iroha/*", "!@iroha/domain"],
+                    "message": "compatibility.md §4: @iroha/config may depend only on: @iroha/domain."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/canonical/src/**/*.ts", "!packages/canonical/src/**/*.test.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@iroha/*", "!@iroha/domain", "!@iroha/config"],
+                    "message": "compatibility.md §4: @iroha/canonical may depend only on: @iroha/domain, @iroha/config."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/storage/src/**/*.ts", "!packages/storage/src/**/*.test.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@iroha/*", "!@iroha/domain", "!@iroha/config"],
+                    "message": "compatibility.md §4: @iroha/storage may depend only on: @iroha/domain, @iroha/config."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/search/src/**/*.ts", "!packages/search/src/**/*.test.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@iroha/*", "!@iroha/domain", "!@iroha/storage"],
+                    "message": "compatibility.md §4: @iroha/search may depend only on: @iroha/domain, @iroha/storage."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/git/src/**/*.ts", "!packages/git/src/**/*.test.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@iroha/*", "!@iroha/domain"],
+                    "message": "compatibility.md §4: @iroha/git may depend only on: @iroha/domain."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/forge/src/**/*.ts", "!packages/forge/src/**/*.test.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@iroha/*", "!@iroha/domain"],
+                    "message": "compatibility.md §4: @iroha/forge may depend only on: @iroha/domain."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/forge-github/src/**/*.ts", "!packages/forge-github/src/**/*.test.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@iroha/*", "!@iroha/forge"],
+                    "message": "compatibility.md §4: @iroha/forge-github may depend only on: @iroha/forge."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/platform/src/**/*.ts", "!packages/platform/src/**/*.test.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@iroha/*", "!@iroha/domain"],
+                    "message": "compatibility.md §4: @iroha/platform may depend only on: @iroha/domain."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "packages/adapter-claude/src/**/*.ts",
+        "!packages/adapter-claude/src/**/*.test.ts"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@iroha/*", "!@iroha/platform"],
+                    "message": "compatibility.md §4: @iroha/adapter-claude may depend only on: @iroha/platform."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "packages/adapter-codex/src/**/*.ts",
+        "!packages/adapter-codex/src/**/*.test.ts"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@iroha/*", "!@iroha/platform"],
+                    "message": "compatibility.md §4: @iroha/adapter-codex may depend only on: @iroha/platform."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/core/src/**/*.ts", "!packages/core/src/**/*.test.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": [
+                      "@iroha/*",
+                      "!@iroha/domain",
+                      "!@iroha/config",
+                      "!@iroha/canonical",
+                      "!@iroha/storage",
+                      "!@iroha/search",
+                      "!@iroha/git",
+                      "!@iroha/forge",
+                      "!@iroha/forge-github",
+                      "!@iroha/platform",
+                      "!@iroha/adapter-claude",
+                      "!@iroha/adapter-codex"
+                    ],
+                    "message": "compatibility.md §4: @iroha/core may depend only on: @iroha/domain, @iroha/config, @iroha/canonical, @iroha/storage, @iroha/search, @iroha/git, @iroha/forge, @iroha/forge-github, @iroha/platform, @iroha/adapter-claude, @iroha/adapter-codex."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/mcp/src/**/*.ts", "!packages/mcp/src/**/*.test.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@iroha/*", "!@iroha/core"],
+                    "message": "compatibility.md §4: @iroha/mcp may depend only on: @iroha/core."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/api/src/**/*.ts", "!packages/api/src/**/*.test.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@iroha/*", "!@iroha/core"],
+                    "message": "compatibility.md §4: @iroha/api may depend only on: @iroha/core."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/cli/src/**/*.ts", "!packages/cli/src/**/*.test.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@iroha/*", "!@iroha/core", "!@iroha/api"],
+                    "message": "compatibility.md §4: @iroha/cli may depend only on: @iroha/core, @iroha/api."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/plugin/src/**/*.ts", "!packages/plugin/src/**/*.test.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": [
+                      "@iroha/*",
+                      "!@iroha/cli",
+                      "!@iroha/mcp",
+                      "!@iroha/adapter-claude",
+                      "!@iroha/adapter-codex"
+                    ],
+                    "message": "compatibility.md §4: @iroha/plugin may depend only on: @iroha/cli, @iroha/mcp, @iroha/adapter-claude, @iroha/adapter-codex."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }
