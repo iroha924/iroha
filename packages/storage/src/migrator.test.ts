@@ -216,6 +216,44 @@ describe("runMigrations", () => {
     const afterRows = await opened.value.execute("SELECT version, checksum FROM schema_migrations");
     expect(afterRows.rows).toEqual([{ version: 1, checksum: initial.checksum }]);
   });
+
+  it("fails with SCHEMA_MISMATCH when user_version is ahead of every migration file this build knows about", async () => {
+    const newerMigrationsDir = await copyMigrationsDir();
+    tempDirs.push(newerMigrationsDir);
+    await writeFile(
+      join(newerMigrationsDir, "002_add_synthetic_table.sql"),
+      "BEGIN IMMEDIATE;\nCREATE TABLE synthetic_two (id INTEGER PRIMARY KEY);\nPRAGMA user_version = 2;\nCOMMIT;\n",
+      "utf8",
+    );
+    const { dir, dbPath } = await createTempDbPath();
+    tempDirs.push(dir);
+    const opened = await openDatabase(dbPath);
+    if (!opened.ok) throw new Error("failed to open database");
+    dbs.push(opened.value);
+
+    // A newer build applies both migrations, reaching user_version 2.
+    const first = await runMigrations(opened.value, newerMigrationsDir, dbPath, CLOCK);
+    expect(first.ok).toBe(true);
+
+    // A downgraded build only ships migration 001 — nothing is "pending"
+    // from its point of view, but its own repository code was written
+    // against schema version 1, not the version 2 this database is
+    // actually at.
+    const olderMigrationsDir = await mkdtemp(join(tmpdir(), "iroha-migrations-older-"));
+    tempDirs.push(olderMigrationsDir);
+    await writeFile(
+      join(olderMigrationsDir, "001_initial.sql"),
+      await readFile(join(newerMigrationsDir, "001_initial.sql"), "utf8"),
+      "utf8",
+    );
+
+    const result = await runMigrations(opened.value, olderMigrationsDir, dbPath, CLOCK);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("SCHEMA_MISMATCH");
+    }
+  });
 });
 
 describe("loadMigrations", () => {

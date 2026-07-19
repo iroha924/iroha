@@ -85,6 +85,41 @@ describe("operations repositories", () => {
     }
   });
 
+  it("preserves the last successful cursor/state when recording a failure-only sync attempt", async () => {
+    const opened = await openMigratedTestDb();
+    tempDir = opened.dir;
+    db = opened.db;
+    const repositoryId = await seedRepository(db, "a2");
+
+    await upsertSyncCursor(db, {
+      repositoryId,
+      provider: "github",
+      cursor: "c1",
+      stateJson: '{"page":3}',
+      lastSuccessAt: NOW,
+      lastAttemptAt: NOW,
+    });
+
+    // A later attempt fails before reaching a new cursor; callers typically
+    // omit the success-path fields entirely for a failure record.
+    await upsertSyncCursor(db, {
+      repositoryId,
+      provider: "github",
+      lastAttemptAt: LATER,
+      lastErrorCode: "RATE_LIMITED",
+    });
+
+    const read = await getSyncCursor(db, repositoryId, "github");
+    expect(read.ok).toBe(true);
+    if (read.ok) {
+      expect(read.value?.cursor).toBe("c1");
+      expect(read.value?.stateJson).toBe('{"page":3}');
+      expect(read.value?.lastSuccessAt).toBe(NOW);
+      expect(read.value?.lastAttemptAt).toBe(LATER);
+      expect(read.value?.lastErrorCode).toBe("RATE_LIMITED");
+    }
+  });
+
   it("inserts a dirty marker, lists it as open, and resolves it", async () => {
     const opened = await openMigratedTestDb();
     tempDir = opened.dir;

@@ -209,6 +209,7 @@ export async function runMigrations(
     return appliedResult;
   }
   const applied = appliedResult.value;
+  const maxKnownVersion = files.length > 0 ? Math.max(...files.map((file) => file.version)) : 0;
 
   // Drift recovery: a migration file's own transaction (its DDL plus
   // `PRAGMA user_version`) can commit while the separate `schema_migrations`
@@ -255,6 +256,22 @@ export async function runMigrations(
 
   const pending = files.filter((file) => !applied.has(file.version));
   if (pending.length === 0) {
+    // Confirmed by review: every file this build knows about is already
+    // applied, but `PRAGMA user_version` can still be ahead of
+    // `maxKnownVersion` — e.g. a downgraded/older build (fewer migration
+    // files) opening a database a newer build already migrated further.
+    // Nothing here is "pending" from this build's point of view, but this
+    // build's own repository code was written against `maxKnownVersion`'s
+    // schema, not whatever schema `userVersionBefore` actually reflects.
+    if (userVersionBefore !== maxKnownVersion) {
+      return err(
+        new IrohaError(
+          "SCHEMA_MISMATCH",
+          "schema_migrations and PRAGMA user_version disagree and no pending migration file can reconcile them",
+          { details: { userVersion: userVersionBefore, maxKnownVersion } },
+        ),
+      );
+    }
     return ok([]);
   }
 
@@ -291,7 +308,6 @@ export async function runMigrations(
 
   const userVersionResult = await db.execute("PRAGMA user_version");
   const userVersion = Number(userVersionResult.rows[0]?.user_version ?? 0);
-  const maxKnownVersion = Math.max(...files.map((file) => file.version));
   if (userVersion !== maxKnownVersion) {
     return err(
       new IrohaError(

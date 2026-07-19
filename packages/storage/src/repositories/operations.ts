@@ -37,30 +37,52 @@ function rowToSyncCursor(row: Record<string, unknown>): SyncCursorRow {
   };
 }
 
-/** Keyed on `(repository_id, provider)`, its primary key. */
+/**
+ * Keyed on `(repository_id, provider)`, its primary key.
+ *
+ * `cursor`/`stateJson`/`lastSuccessAt` track the last *successful* sync
+ * position; `lastAttemptAt`/`lastErrorCode` track the most recent attempt,
+ * success or failure. A caller recording a failed attempt after a prior
+ * success typically omits the success-path fields — confirmed by
+ * reproduction that unconditionally overwriting them with `excluded.*`
+ * turns those omissions into `NULL`/`{}`, erasing the last known-good
+ * cursor. Omitted success-path fields fall back to the existing row's
+ * value instead; `lastAttemptAt`/`lastErrorCode` always take the new value,
+ * since they must reflect the latest attempt regardless of outcome.
+ */
 export async function upsertSyncCursor(
   db: Executor,
   input: UpsertSyncCursorInput,
 ): Promise<Result<void, IrohaError>> {
+  const cursor = input.cursor ?? null;
+  const stateJson = input.stateJson ?? null;
+  const lastSuccessAt = input.lastSuccessAt ?? null;
+  const lastAttemptAt = input.lastAttemptAt ?? null;
+  const lastErrorCode = input.lastErrorCode ?? null;
   try {
     await db.execute({
       sql: `INSERT INTO sync_cursors
         (repository_id, provider, cursor, state_json, last_success_at, last_attempt_at, last_error_code)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, COALESCE(?, '{}'), ?, ?, ?)
         ON CONFLICT (repository_id, provider) DO UPDATE SET
-          cursor = excluded.cursor,
-          state_json = excluded.state_json,
-          last_success_at = excluded.last_success_at,
-          last_attempt_at = excluded.last_attempt_at,
-          last_error_code = excluded.last_error_code`,
+          cursor = COALESCE(?, sync_cursors.cursor),
+          state_json = COALESCE(?, sync_cursors.state_json),
+          last_success_at = COALESCE(?, sync_cursors.last_success_at),
+          last_attempt_at = ?,
+          last_error_code = ?`,
       args: [
         input.repositoryId,
         input.provider,
-        input.cursor ?? null,
-        input.stateJson ?? "{}",
-        input.lastSuccessAt ?? null,
-        input.lastAttemptAt ?? null,
-        input.lastErrorCode ?? null,
+        cursor,
+        stateJson,
+        lastSuccessAt,
+        lastAttemptAt,
+        lastErrorCode,
+        cursor,
+        stateJson,
+        lastSuccessAt,
+        lastAttemptAt,
+        lastErrorCode,
       ],
     });
     return ok(undefined);
