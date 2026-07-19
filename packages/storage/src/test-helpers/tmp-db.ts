@@ -20,11 +20,37 @@ export async function createTempDbPath(prefix = "iroha-storage-test-"): Promise<
  * synchronously, but the native libsql binding's own file-handle teardown
  * can still be in flight, so an immediately-following `rm()` sees `EBUSY`
  * ("resource busy or locked") on Windows even though POSIX allows deleting
- * an open file. `maxRetries`/`retryDelay` are Node's own documented option
- * for exactly this class of transient Windows delete failure.
+ * an open file.
+ *
+ * `fs.rm`'s own `maxRetries`/`retryDelay` option exists for exactly this
+ * error class, but confirmed by CI reproduction that it does not bound the
+ * wait the way its docs describe here (every affected hook ran to exactly
+ * vitest's 10000ms hook timeout instead of failing or succeeding within the
+ * configured retry budget) — so this rolls its own short, explicitly bounded
+ * retry instead of trusting that option. Each unique `mkdtemp` directory is
+ * never reused by another test, and nothing in this suite reads it back
+ * after cleanup, so giving up quietly once the budget is spent is safe: it
+ * leaves an orphaned directory in the CI runner's temp folder (which the
+ * runner discards at job end) rather than failing the test over cleanup
+ * hygiene.
  */
 export async function removeTempDir(dir: string): Promise<void> {
-  await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  const maxAttempts = 5;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await rm(dir, { recursive: true, force: true });
+      return;
+    } catch (cause) {
+      const code = (cause as NodeJS.ErrnoException).code;
+      if (code !== "EBUSY" && code !== "EPERM") {
+        throw cause;
+      }
+      if (attempt === maxAttempts) {
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, attempt * 100));
+    }
+  }
 }
 
 const REAL_MIGRATIONS_DIR = fileURLToPath(new URL("../../../../migrations", import.meta.url));
