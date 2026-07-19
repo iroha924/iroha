@@ -317,4 +317,32 @@ describe("redactAbsolutePathsInText", () => {
       "error: pathspec '<path>' did not match any file(s) known to git",
     );
   });
+
+  it("redacts an unquoted path whose own filename contains a quote character", () => {
+    // Confirmed by reproduction: a malformed GIT_CONFIG_GLOBAL file under a
+    // directory whose name contains an apostrophe produces exactly this
+    // shape. An earlier version of this function's unquoted-path search
+    // stopped at the *first* quote found anywhere later in the text — which
+    // here is the one embedded in the path itself, not a genuine boundary —
+    // leaving "'o dir/gitconfig" (the rest of the local path) in the output.
+    const text = "fatal: bad config line 1 in file /tmp/xxx/iroha'o dir/gitconfig";
+
+    expect(redactAbsolutePathsInText(text)).toBe("fatal: bad config line 1 in file <path>");
+  });
+
+  it("redacts every mention when the quoted path itself contains a quote character", () => {
+    // Confirmed by reproduction: `git checkout "/tmp/secret'with'quotes"`
+    // run outside any repo produces exactly this shape — Git does not
+    // escape the embedded quotes in either its unquoted or quoted mention
+    // of the same path. An earlier version of this function's
+    // closing-quote search stopped at the *first* occurrence of the quote
+    // character after the opening one, landing on an embedded quote
+    // instead of the genuine closing quote, and leaked the remainder.
+    const text =
+      "fatal: /tmp/secret'with'quotes: '/tmp/secret'with'quotes' is outside repository at '/private/var/folders/x/tmp.abc123'";
+
+    expect(redactAbsolutePathsInText(text)).toBe(
+      "fatal: <path> '<path>' is outside repository at '<path>'",
+    );
+  });
 });
