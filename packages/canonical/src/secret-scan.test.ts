@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { scanForSecrets } from "./secret-scan.js";
 
 describe("scanForSecrets", () => {
@@ -28,5 +28,46 @@ describe("scanForSecrets", () => {
       expect(result.value.findings[0]?.message).not.toContain(base64Body);
       expect(JSON.stringify(result.value)).not.toContain(base64Body);
     }
+  });
+});
+
+describe("scanForSecrets engine retry", () => {
+  afterEach(() => {
+    vi.doUnmock("@secretlint/node");
+    vi.resetModules();
+  });
+
+  it("retries engine creation on the next call after a transient createEngine failure", async () => {
+    // Regression test (confirmed by review): the module-level engine
+    // promise must not permanently pin a rejected `createEngine()` call —
+    // otherwise one transient failure (e.g. a filesystem hiccup resolving
+    // a rule package) would break every future scan for the rest of the
+    // process's life. `@secretlint/node` is a third-party dependency, so
+    // mocking it here (unlike this project's own filesystem/subprocess
+    // code) is the only way to force a specific, real failure mode.
+    let callCount = 0;
+    vi.doMock("@secretlint/node", () => ({
+      createEngine: vi.fn(() => {
+        callCount += 1;
+        if (callCount === 1) {
+          return Promise.reject(new Error("transient failure"));
+        }
+        return Promise.resolve({
+          executeOnContent: async () => ({
+            ok: true,
+            output: JSON.stringify([{ messages: [] }]),
+          }),
+        });
+      }),
+    }));
+    vi.resetModules();
+    const { scanForSecrets: scanForSecretsWithMock } = await import("./secret-scan.js");
+
+    const first = await scanForSecretsWithMock("# Notes\n");
+    expect(first.ok).toBe(false);
+
+    const second = await scanForSecretsWithMock("# Notes\n");
+    expect(second.ok).toBe(true);
+    expect(callCount).toBe(2);
   });
 });

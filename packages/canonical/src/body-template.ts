@@ -53,7 +53,12 @@ export function validateBodyTemplate(document: CanonicalDocument): Result<void, 
   if (firstH1 === undefined) {
     return err(new IrohaError("INVALID_INPUT", "Canonical document body has no H1 heading"));
   }
-  if (firstH1.text !== document.frontmatter.title) {
+  // Unicode-normalize before comparing (NFC): confirmed by review that the
+  // same visible text typed as precomposed vs. combining-character
+  // sequences (e.g. an accented Latin or CJK title from different editors/
+  // input pipelines) is byte-different but semantically identical, and a
+  // raw `!==` would falsely reject a genuinely matching title.
+  if (firstH1.text.normalize("NFC") !== document.frontmatter.title.normalize("NFC")) {
     return err(
       new IrohaError("INVALID_INPUT", "Canonical document body's first H1 must equal the title", {
         details: { expected: document.frontmatter.title, actual: firstH1.text },

@@ -1,5 +1,5 @@
-import { mkdir, open, rename, rm } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { mkdir, open, realpath, rename, rm } from "node:fs/promises";
+import { dirname, join, sep } from "node:path";
 import {
   type CanonicalDocument,
   err,
@@ -103,6 +103,36 @@ export async function writeCanonicalDocument(
 
   try {
     await mkdir(targetDir, { recursive: true });
+  } catch (cause) {
+    return err(new IrohaError("INTERNAL_ERROR", "Failed to create canonical directory", { cause }));
+  }
+
+  // Reject a symlink escape: `.iroha/` is git-tracked and shared, so a type
+  // subdirectory (e.g. `decisions/`) could be replaced by a symlink
+  // pointing outside `repositoryRoot` via any merged commit. `mkdir`/
+  // `open`/`rename` all follow symlinks for intermediate path components
+  // under normal POSIX semantics, so this has to be checked explicitly —
+  // it is not something those calls fail closed on by themselves.
+  let realRoot: string;
+  let realTargetDir: string;
+  try {
+    realRoot = await realpath(repositoryRoot);
+    realTargetDir = await realpath(targetDir);
+  } catch (cause) {
+    return err(
+      new IrohaError("INTERNAL_ERROR", "Failed to resolve canonical write path", { cause }),
+    );
+  }
+  if (realTargetDir !== realRoot && !realTargetDir.startsWith(realRoot + sep)) {
+    return err(
+      new IrohaError(
+        "INVALID_INPUT",
+        "Canonical write target escapes the repository root (symlink?)",
+      ),
+    );
+  }
+
+  try {
     const fileHandle = await open(tempPath, "w");
     try {
       await fileHandle.writeFile(serialized.value.content, "utf8");

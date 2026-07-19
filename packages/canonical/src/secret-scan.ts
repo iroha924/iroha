@@ -31,7 +31,7 @@ interface SecretlintFileResult {
 // process (e.g. `iroha sync` re-scanning a whole `.iroha/` tree).
 let enginePromise: ReturnType<typeof createEngine> | undefined;
 
-function getEngine(): ReturnType<typeof createEngine> {
+async function getEngine(): Promise<Awaited<ReturnType<typeof createEngine>>> {
   enginePromise ??= createEngine({
     formatter: "json",
     color: false,
@@ -44,7 +44,16 @@ function getEngine(): ReturnType<typeof createEngine> {
       rules: [{ id: "@secretlint/secretlint-rule-preset-recommend" }],
     },
   });
-  return enginePromise;
+  try {
+    return await enginePromise;
+  } catch (cause) {
+    // Let the next call retry: a rejected promise is still a truthy value,
+    // so `??=` alone would otherwise pin this failure for the rest of the
+    // process's life even after a transient condition (e.g. a filesystem
+    // hiccup resolving a rule package) clears — confirmed by review.
+    enginePromise = undefined;
+    throw cause;
+  }
 }
 
 /**

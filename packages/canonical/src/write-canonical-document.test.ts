@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CryptoRandomSource, FixedClock, FixedRandomSource, makeTypedId } from "@iroha/domain";
@@ -184,5 +184,31 @@ describe("writeCanonicalDocument", () => {
     expect(result.ok).toBe(false);
     const entries = await readdir(tempDir);
     expect(entries).toEqual(["decisions"]);
+  });
+
+  it("rejects a write whose target directory escapes the repository root via a symlink", async () => {
+    // Regression test (confirmed by review): `.iroha/` is git-tracked and
+    // shared, so a merged commit could replace a type subdirectory with a
+    // symlink pointing outside the repository. mkdir/open/rename all
+    // follow symlinks for intermediate path components by default, so
+    // without an explicit boundary check this would silently write
+    // outside `repositoryRoot`.
+    tempDir = await mkdtemp(join(tmpdir(), "iroha-canonical-write-"));
+    const outsideDir = await mkdtemp(join(tmpdir(), "iroha-canonical-outside-"));
+    await symlink(outsideDir, join(tempDir, "decisions"));
+
+    const result = await writeCanonicalDocument(
+      decisionCandidate(),
+      tempDir,
+      new CryptoRandomSource(),
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("INVALID_INPUT");
+    }
+    const outsideEntries = await readdir(outsideDir);
+    expect(outsideEntries).toEqual([]);
+    await rm(outsideDir, { recursive: true, force: true });
   });
 });
