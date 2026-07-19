@@ -1,0 +1,6 @@
+# Confirmed false positives, verified by manual inspection of the flagged
+# lines — not real credentials, just test fixture strings shaped enough like
+# a generic API key to trip gitleaks' entropy-based `generic-api-key` rule.
+# One fingerprint per line, from `gitleaks git . --no-banner -v`.
+77411c61f29acc521a4ffcee852b65e18a2e357b:packages/storage/src/repositories/operations.test.ts:generic-api-key:213
+77411c61f29acc521a4ffcee852b65e18a2e357b:packages/storage/src/repositories/operations.test.ts:generic-api-key:223

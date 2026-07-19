@@ -210,7 +210,7 @@ describe("operations repositories", () => {
     const first = await insertIdempotencyRecord(db, {
       repositoryId,
       operation: "create_checkpoint",
-      idempotencyKey: "idem-key-0123456789",
+      idempotencyKey: "test-idempotency-fixture-aaaa",
       responseJson: '{"ok":true}',
       createdAt: NOW,
       expiresAt: LATER,
@@ -220,7 +220,7 @@ describe("operations repositories", () => {
     const second = await insertIdempotencyRecord(db, {
       repositoryId,
       operation: "create_checkpoint",
-      idempotencyKey: "idem-key-0123456789",
+      idempotencyKey: "test-idempotency-fixture-aaaa",
       responseJson: '{"ok":true,"different":true}',
       createdAt: NOW,
       expiresAt: LATER,
@@ -234,7 +234,7 @@ describe("operations repositories", () => {
       db,
       repositoryId,
       "create_checkpoint",
-      "idem-key-0123456789",
+      "test-idempotency-fixture-aaaa",
     );
     expect(read.ok).toBe(true);
     if (read.ok) {
@@ -251,7 +251,7 @@ describe("operations repositories", () => {
     await insertIdempotencyRecord(db, {
       repositoryId,
       operation: "create_checkpoint",
-      idempotencyKey: "idem-key-expired-0000",
+      idempotencyKey: "test-idempotency-expired-bbbb",
       responseJson: "{}",
       createdAt: NOW,
       expiresAt: NOW,
@@ -259,7 +259,7 @@ describe("operations repositories", () => {
     await insertIdempotencyRecord(db, {
       repositoryId,
       operation: "create_checkpoint",
-      idempotencyKey: "idem-key-active-00000",
+      idempotencyKey: "test-idempotency-active-cccc",
       responseJson: "{}",
       createdAt: NOW,
       expiresAt: "2027-01-01T00:00:00.000Z",
@@ -275,7 +275,7 @@ describe("operations repositories", () => {
       db,
       repositoryId,
       "create_checkpoint",
-      "idem-key-expired-0000",
+      "test-idempotency-expired-bbbb",
     );
     expect(expiredRead.ok).toBe(true);
     if (expiredRead.ok) {
@@ -285,7 +285,7 @@ describe("operations repositories", () => {
       db,
       repositoryId,
       "create_checkpoint",
-      "idem-key-active-00000",
+      "test-idempotency-active-cccc",
     );
     expect(activeRead.ok).toBe(true);
     if (activeRead.ok) {
