@@ -1,0 +1,421 @@
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { getSanitizedRemoteUrl, sanitizeRemoteUrl } from "./remote.js";
+import { runGit } from "./run-git.js";
+import { createTempGitRepo, removeTempDir } from "./test-helpers/tmp-repo.js";
+
+describe("sanitizeRemoteUrl", () => {
+  it("strips a token used as the https username", () => {
+    expect(sanitizeRemoteUrl("https://ghp_abc123token@github.com/org/repo.git")).toBe(
+      "https://github.com/org/repo.git",
+    );
+  });
+
+  it("strips a user:password pair from an https URL", () => {
+    expect(sanitizeRemoteUrl("https://alice:hunter2@example.com/org/repo.git")).toBe(
+      "https://example.com/org/repo.git",
+    );
+  });
+
+  it("leaves a credential-free https URL unchanged", () => {
+    expect(sanitizeRemoteUrl("https://github.com/org/repo.git")).toBe(
+      "https://github.com/org/repo.git",
+    );
+  });
+
+  it("leaves an SCP-like SSH remote unchanged", () => {
+    expect(sanitizeRemoteUrl("git@github.com:org/repo.git")).toBe("git@github.com:org/repo.git");
+  });
+
+  it("strips userinfo from an ssh:// scheme URL", () => {
+    expect(sanitizeRemoteUrl("ssh://git@github.com/org/repo.git")).toBe(
+      "ssh://github.com/org/repo.git",
+    );
+  });
+
+  it("suppresses a Windows drive-letter local path instead of exposing it (backslash form)", () => {
+    // mcp-contract.md §8: absolute filesystem paths never reach the model
+    // or persistence; unlike a credential-bearing scheme:// URL, there is
+    // no sub-slot to redact here — the whole value is the sensitive part.
+    expect(sanitizeRemoteUrl("C:\\Users\\dev\\repo.git")).toBe(null);
+  });
+
+  it("suppresses a Windows drive-letter local path instead of exposing it (forward-slash form)", () => {
+    expect(sanitizeRemoteUrl("C:/Users/dev/repo.git")).toBe(null);
+  });
+
+  it("suppresses a bare Unix absolute local path instead of exposing it", () => {
+    expect(sanitizeRemoteUrl("/srv/git/repo.git")).toBe(null);
+  });
+
+  it("suppresses a file:// remote instead of exposing its filesystem path", () => {
+    expect(sanitizeRemoteUrl("file:///srv/git/repo.git")).toBe(null);
+  });
+
+  it("suppresses a single-slash file: remote instead of exposing its filesystem path", () => {
+    // Confirmed by reproduction: Git accepts and stores "file:/path" (one
+    // slash) as a remote URL identically to "file://"/"file:///".
+    expect(sanitizeRemoteUrl("file:/Users/alice/private.git")).toBe(null);
+  });
+
+  it("suppresses a file: remote wrapping a Windows drive path with no slash after the colon", () => {
+    // Confirmed by reproduction: Git accepts and stores "file:C:/..." (and
+    // the backslash form) verbatim, with no "/" at all between "file:" and
+    // the drive letter.
+    expect(sanitizeRemoteUrl("file:C:/Users/alice/private.git")).toBe(null);
+  });
+
+  it("suppresses a file: remote wrapping a Windows drive path (backslash form)", () => {
+    expect(sanitizeRemoteUrl("file:C:\\Users\\alice\\private.git")).toBe(null);
+  });
+
+  it("leaves a relative file: remote unchanged, unlike an absolute one", () => {
+    // No leading slash after "file:" means no absolute filesystem path is
+    // being exposed — consistent with this module's existing scope of only
+    // suppressing absolute local paths (relative bare paths are left alone
+    // too; see "leaves an SCP-like SSH remote unchanged" etc. above).
+    expect(sanitizeRemoteUrl("file:relative/path.git")).toBe("file:relative/path.git");
+  });
+
+  it("suppresses a UNC path instead of exposing it", () => {
+    expect(sanitizeRemoteUrl("\\\\fileserver\\share\\repo.git")).toBe(null);
+  });
+
+  it("suppresses the whole value when a local path appears on a later line", () => {
+    const multiline = "https://github.com/org/repo.git\nfile:///Users/alice/private.git";
+
+    expect(sanitizeRemoteUrl(multiline)).toBe(null);
+  });
+
+  it("suppresses a local path that follows other content on the same line", () => {
+    // Git stores this verbatim as a single config value (confirmed by
+    // reproduction): a naive line-start-only check would miss the local
+    // path entirely since the line starts with a safe-looking https:// URL.
+    const spaceJoined = "https://github.com/org/repo.git /Users/alice/private.git";
+
+    expect(sanitizeRemoteUrl(spaceJoined)).toBe(null);
+  });
+
+  it("suppresses a file: URL joined to other content by a comma with no whitespace", () => {
+    // Confirmed by reproduction: Git stores this verbatim as one value. A
+    // whitespace-only token split (an earlier version of this check) never
+    // sees a boundary here at all, since there is no whitespace anywhere in
+    // the string.
+    const commaJoined = "https://github.com/org/repo.git,file:///Users/alice/private.git";
+
+    expect(sanitizeRemoteUrl(commaJoined)).toBe(null);
+  });
+
+  it("suppresses a file: URL joined to other content by a semicolon with no whitespace", () => {
+    const semicolonJoined = "https://github.com/org/repo.git;file:///Users/alice/private.git";
+
+    expect(sanitizeRemoteUrl(semicolonJoined)).toBe(null);
+  });
+
+  it("suppresses a file: URL joined to other content by a parenthesis with no whitespace", () => {
+    // Confirmed by reproduction: Git stores this verbatim as one value. "("
+    // is one of credential-redaction.ts's HARD_DELIMITER characters, so an
+    // earlier boundary set covering only whitespace/comma/semicolon missed
+    // it, even though the sibling module already treated it as a boundary.
+    const parenJoined = "https://github.com/org/repo.git(file:///Users/alice/private.git";
+
+    expect(sanitizeRemoteUrl(parenJoined)).toBe(null);
+  });
+
+  it("suppresses a file: URL joined to other content by an angle bracket with no whitespace", () => {
+    const angleJoined = "https://github.com/org/repo.git<file:///Users/alice/private.git";
+
+    expect(sanitizeRemoteUrl(angleJoined)).toBe(null);
+  });
+
+  it("suppresses a file: URL joined to other content by a pipe with no whitespace", () => {
+    // Confirmed by reproduction: Git stores this verbatim as one value.
+    // "|" is not in any punctuation allowlist tried so far (space, comma,
+    // semicolon, parens/brackets/quotes/angle-brackets) — the boundary
+    // check no longer enumerates specific punctuation at all, so this
+    // (and any future joiner character) is covered without needing its
+    // own dedicated fix.
+    const pipeJoined = "https://github.com/org/repo.git|file:///Users/alice/private.git";
+
+    expect(sanitizeRemoteUrl(pipeJoined)).toBe(null);
+  });
+
+  it("suppresses a file: URL joined to other content by an @ with no whitespace", () => {
+    const atJoined = "https://github.com/org/repo.git@file:///Users/alice/private.git";
+
+    expect(sanitizeRemoteUrl(atJoined)).toBe(null);
+  });
+
+  it("suppresses a bare local path joined by a pipe with no whitespace (no file: prefix)", () => {
+    // Confirmed by reproduction: Git stores this verbatim. Unlike the
+    // "file:"-joined cases above, this bare path has no distinctive prefix
+    // of its own — it only works because "|" isn't in the RFC 3986 pchar
+    // set this module now protects for the bare-path alternative.
+    const pipeJoinedBare = "https://github.com/org/repo.git|/Users/alice/private.git";
+
+    expect(sanitizeRemoteUrl(pipeJoinedBare)).toBe(null);
+  });
+
+  it("suppresses a home-relative local path (current user)", () => {
+    // Confirmed by reproduction: Git accepts and stores "~/private.git"
+    // verbatim as a remote and expands it under the home directory on
+    // fetch. An earlier version of the bare-path alternatives omitted "~/"
+    // entirely.
+    expect(sanitizeRemoteUrl("~/private.git")).toBe(null);
+  });
+
+  it("suppresses a home-relative local path (another user)", () => {
+    // Confirmed by reproduction: Git also accepts and stores
+    // "~someuser/private.git" verbatim.
+    expect(sanitizeRemoteUrl("~someuser/private.git")).toBe(null);
+  });
+
+  it("leaves a URL with a ~user path segment unchanged, unlike a home-relative remote", () => {
+    // "~user/" is only a local-path marker at a valid narrow boundary
+    // (value start or whitespace) — inside an ordinary URL path it's always
+    // preceded by "/", which is excluded, so this stays a normal,
+    // credential-redactable URL.
+    expect(sanitizeRemoteUrl("https://example.com/~user/repo.git")).toBe(
+      "https://example.com/~user/repo.git",
+    );
+  });
+
+  it("leaves a URL unchanged when a path segment ends in an underscore", () => {
+    // Confirmed by reproduction: Git accepts and stores this verbatim, and
+    // an underscore right before "/" is completely ordinary in real
+    // repo/path names. A denylist boundary (not alphanumeric/:/\\) used to
+    // wrongly treat "_" as a valid marker-start boundary here, matching the
+    // "/" that follows it as if it were a fresh bare-path marker.
+    expect(sanitizeRemoteUrl("https://example.com/foo_/repo.git")).toBe(
+      "https://example.com/foo_/repo.git",
+    );
+  });
+
+  it("leaves an SCP-like remote with an underscore path segment unchanged", () => {
+    expect(sanitizeRemoteUrl("git@github.com:foo_/repo.git")).toBe("git@github.com:foo_/repo.git");
+  });
+
+  it("strips a credential-bearing query string", () => {
+    expect(sanitizeRemoteUrl("https://github.com/org/repo.git?access_token=SECRET")).toBe(
+      "https://github.com/org/repo.git",
+    );
+  });
+
+  it("redacts every embedded URL in a multiline value", () => {
+    // Git accepts (and `remote get-url` prints back) a value containing an
+    // embedded newline; a naive single-URL-shaped regex only strips the
+    // first URL's credentials and leaves a second one after the newline.
+    const multiline = "https://user1@one.example/repo.git\nhttps://user2@two.example/other.git";
+
+    expect(sanitizeRemoteUrl(multiline)).toBe(
+      "https://one.example/repo.git\nhttps://two.example/other.git",
+    );
+  });
+});
+
+describe("getSanitizedRemoteUrl", () => {
+  let repoDir: string;
+
+  beforeEach(async () => {
+    repoDir = await createTempGitRepo();
+  });
+
+  afterEach(async () => {
+    await removeTempDir(repoDir);
+  });
+
+  it("returns null when no remote is configured", async () => {
+    const result = await getSanitizedRemoteUrl(repoDir);
+    expect(result).toEqual({ ok: true, value: null });
+  });
+
+  it("returns the sanitized URL for a configured remote", async () => {
+    await runGit(["remote", "add", "origin", "https://token123@github.com/org/repo.git"], {
+      cwd: repoDir,
+    });
+
+    const result = await getSanitizedRemoteUrl(repoDir, "origin");
+
+    expect(result).toEqual({ ok: true, value: "https://github.com/org/repo.git" });
+  });
+
+  it("strips a query-string token from a configured remote", async () => {
+    await runGit(
+      ["remote", "add", "origin", "https://github.com/org/repo.git?access_token=SECRET"],
+      { cwd: repoDir },
+    );
+
+    const result = await getSanitizedRemoteUrl(repoDir, "origin");
+
+    expect(result).toEqual({ ok: true, value: "https://github.com/org/repo.git" });
+  });
+
+  it("propagates a REPOSITORY_NOT_FOUND-style error instead of returning null when cwd is not a repository", async () => {
+    const outsideDir = await mkdtemp(join(tmpdir(), "iroha-remote-outside-test-"));
+    try {
+      const result = await getSanitizedRemoteUrl(outsideDir, "origin");
+
+      expect(result.ok).toBe(false);
+    } finally {
+      await removeTempDir(outsideDir);
+    }
+  });
+
+  it("returns null for a configured local absolute path remote instead of exposing it", async () => {
+    const otherRepoDir = await createTempGitRepo();
+    try {
+      await runGit(["remote", "add", "origin", otherRepoDir], { cwd: repoDir });
+
+      const result = await getSanitizedRemoteUrl(repoDir, "origin");
+
+      expect(result).toEqual({ ok: true, value: null });
+    } finally {
+      await removeTempDir(otherRepoDir);
+    }
+  });
+
+  it("uses the first configured URL, not the last, when a remote has multiple", async () => {
+    await runGit(["remote", "add", "origin", "https://first.example/repo.git"], {
+      cwd: repoDir,
+    });
+    // Git supports configuring more than one URL per remote (push fans out
+    // to all of them, but fetch always uses only the first). Confirmed by
+    // reproduction that `git config --get` (a single value) returns the
+    // *last* configured one in that case, while Git itself uses the first —
+    // this must match Git's actual fetch behavior, not `--get`'s pick.
+    await runGit(["remote", "set-url", "--add", "origin", "https://second.example/repo.git"], {
+      cwd: repoDir,
+    });
+
+    const result = await getSanitizedRemoteUrl(repoDir, "origin");
+
+    expect(result).toEqual({ ok: true, value: "https://first.example/repo.git" });
+  });
+
+  it("suppresses a local path hidden on a later line of one embedded-newline value", () => {
+    // A single config value can itself contain a newline (Git accepts and
+    // stores it) — confirmed by reproduction that plain `--get-all` output
+    // (newline-separated) makes that indistinguishable from two genuinely
+    // separate values, so splitting on "\n" alone would truncate this to
+    // just the first, safe-looking line. This is a synchronous unit check
+    // of sanitizeRemoteUrl itself (getSanitizedRemoteUrl's own --null
+    // parsing is covered by the async test below).
+    const embeddedNewlineValue = "https://github.com/org/repo.git\nfile:///Users/alice/private.git";
+
+    expect(sanitizeRemoteUrl(embeddedNewlineValue)).toBe(null);
+  });
+
+  it("reads a value with an embedded newline as one complete record, not just its first line", async () => {
+    await runGit(
+      [
+        "config",
+        "--local",
+        "--add",
+        "remote.origin.url",
+        "https://github.com/org/repo.git\nfile:///Users/alice/private.git",
+      ],
+      { cwd: repoDir },
+    );
+    // Confirmed by reproduction: plain `git config --get-all` prints this
+    // single value with its embedded newline indistinguishable from a
+    // second, separate value — only `--null` (NUL-separated records)
+    // resolves the ambiguity. The whole value must reach sanitizeRemoteUrl
+    // intact so it can see the local-path suffix and suppress it.
+    const result = await getSanitizedRemoteUrl(repoDir, "origin");
+
+    expect(result).toEqual({ ok: true, value: null });
+  });
+
+  it("reads the configured remote URL, not a locally rewritten insteadOf mirror", async () => {
+    await runGit(["remote", "add", "origin", "https://github.com/org/repo.git"], {
+      cwd: repoDir,
+    });
+    // A per-machine rewrite (e.g. a corporate mirror or SSH-over-HTTPS
+    // preference) must not leak into `remote_url_normalized`: two teammates
+    // with different local rewrites would otherwise compute a different
+    // value for the identical repository. `git remote get-url` applies this
+    // rewrite; `git config --get remote.<name>.url` (what this package uses)
+    // must not.
+    await runGit(
+      ["config", "--local", "url.https://mirror.internal/.insteadOf", "https://github.com/"],
+      { cwd: repoDir },
+    );
+
+    const result = await getSanitizedRemoteUrl(repoDir, "origin");
+
+    expect(result).toEqual({ ok: true, value: "https://github.com/org/repo.git" });
+  });
+
+  it("falls back to --worktree scope when a linked worktree's remote lives only there", async () => {
+    await runGit(["config", "extensions.worktreeConfig", "true"], { cwd: repoDir });
+    await runGit(["commit", "--allow-empty", "-m", "init"], { cwd: repoDir });
+    const worktreeDir = `${repoDir}-linked`;
+    const addWorktree = await runGit(["worktree", "add", worktreeDir, "-b", "feature"], {
+      cwd: repoDir,
+    });
+    expect(addWorktree.ok).toBe(true);
+
+    try {
+      // Confirmed by reproduction: with extensions.worktreeConfig enabled,
+      // a value set via `git config --worktree` lives in a file `--local`
+      // alone never reads, so a naive `--local`-only lookup reports "no
+      // remote" for this worktree even though one is configured.
+      await runGit(
+        ["config", "--worktree", "remote.origin.url", "https://worktree-only.example/repo.git"],
+        { cwd: worktreeDir },
+      );
+
+      const result = await getSanitizedRemoteUrl(worktreeDir, "origin");
+
+      expect(result).toEqual({ ok: true, value: "https://worktree-only.example/repo.git" });
+    } finally {
+      await removeTempDir(worktreeDir);
+    }
+  });
+
+  it("returns null instead of erroring when a linked worktree has multiple trees and worktreeConfig is not enabled", async () => {
+    // Confirmed by reproduction: without extensions.worktreeConfig enabled,
+    // `git config --worktree` fails outright (exit 128) once there is more
+    // than one worktree — a regression an earlier version of the --worktree
+    // fallback above introduced, since it only treated exit 1 as "no
+    // remote" and propagated this exit-128 case as a hard error instead.
+    await runGit(["commit", "--allow-empty", "-m", "init"], { cwd: repoDir });
+    const worktreeDir = `${repoDir}-linked`;
+    const addWorktree = await runGit(["worktree", "add", worktreeDir, "-b", "feature"], {
+      cwd: repoDir,
+    });
+    expect(addWorktree.ok).toBe(true);
+
+    try {
+      const result = await getSanitizedRemoteUrl(worktreeDir, "origin");
+
+      expect(result).toEqual({ ok: true, value: null });
+    } finally {
+      await removeTempDir(worktreeDir);
+    }
+  });
+
+  it("reads a remote defined via an include directive", async () => {
+    // Confirmed by reproduction: `git remote get-url` resolves a
+    // remote.<name>.url defined in an included file, but a plain
+    // `--local --get-all` lookup (no --includes) does not.
+    const includeDir = await mkdtemp(join(tmpdir(), "iroha-remote-include-test-"));
+    try {
+      const includeFile = join(includeDir, "remote.conf");
+      await writeFile(
+        includeFile,
+        '[remote "origin"]\n\turl = https://included-file.example/repo.git\n',
+        "utf8",
+      );
+      await runGit(["config", "--local", "include.path", includeFile], { cwd: repoDir });
+
+      const result = await getSanitizedRemoteUrl(repoDir, "origin");
+
+      expect(result).toEqual({ ok: true, value: "https://included-file.example/repo.git" });
+    } finally {
+      await removeTempDir(includeDir);
+    }
+  });
+});
