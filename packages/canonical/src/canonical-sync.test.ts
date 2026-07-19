@@ -99,7 +99,7 @@ describe("diffCanonicalFiles", () => {
       baseline.set(entry.path, entry.hash);
     }
     // Simulate a baseline that also knows about a file since deleted from disk.
-    baseline.set(join("decisions", `${idDeleted}.md`), "sha256:0".padEnd(71, "0"));
+    baseline.set(`decisions/${idDeleted}.md`, "sha256:0".padEnd(71, "0"));
 
     // Now mutate the directory: rewrite `idChanged`'s document and add a new one.
     await writeCanonicalDocument(
@@ -120,7 +120,7 @@ describe("diffCanonicalFiles", () => {
     expect(diff.added.map((e) => e.document.frontmatter.id)).toEqual([idAdded]);
     expect(diff.changed.map((e) => e.document.frontmatter.id)).toEqual([idChanged]);
     expect(diff.unchanged.map((e) => e.document.frontmatter.id)).toEqual([idUnchanged]);
-    expect(diff.deletedPaths).toEqual([join("decisions", `${idDeleted}.md`)]);
+    expect(diff.deletedPaths).toEqual([`decisions/${idDeleted}.md`]);
   });
 });
 
@@ -146,7 +146,7 @@ describe("findTombstoneReferences", () => {
 
     const scan = await scanCanonicalDirectory(tempDir);
     if (!scan.ok) throw new Error("scan failed");
-    const deletedPath = join("decisions", `${deletedId}.md`);
+    const deletedPath = `decisions/${deletedId}.md`;
 
     const references = findTombstoneReferences(scan.value, [deletedPath]);
     expect(references).toEqual([
@@ -154,7 +154,7 @@ describe("findTombstoneReferences", () => {
         deletedId,
         referencedBy: [
           {
-            path: join("decisions", `${survivorId}.md`),
+            path: `decisions/${survivorId}.md`,
             id: survivorId,
             relationType: "RELATED_TO",
           },
@@ -175,7 +175,7 @@ describe("findTombstoneReferences", () => {
 
     const scan = await scanCanonicalDirectory(tempDir);
     if (!scan.ok) throw new Error("scan failed");
-    const deletedPath = join("decisions", `${deletedId}.md`);
+    const deletedPath = `decisions/${deletedId}.md`;
 
     const references = findTombstoneReferences(scan.value, [deletedPath]);
     expect(references).toEqual([]);

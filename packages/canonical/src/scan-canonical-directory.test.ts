@@ -89,7 +89,7 @@ describe("scanCanonicalDirectory", () => {
     if (result.ok) {
       expect(result.value.errors).toEqual([]);
       expect(result.value.entries.map((e) => e.path).sort()).toEqual(
-        [join("decisions", `${idA}.md`), join("decisions", `${idB}.md`)].sort(),
+        [`decisions/${idA}.md`, `decisions/${idB}.md`].sort(),
       );
     }
   });
@@ -114,7 +114,7 @@ describe("scanCanonicalDirectory", () => {
     if (result.ok) {
       expect(result.value.entries.length).toBe(1);
       expect(result.value.errors.length).toBe(1);
-      expect(result.value.errors[0]?.path).toBe(join("decisions", "dec_broken.md"));
+      expect(result.value.errors[0]?.path).toBe("decisions/dec_broken.md");
     }
   });
 
