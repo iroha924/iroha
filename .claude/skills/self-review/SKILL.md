@@ -6,7 +6,7 @@ paths:
   - "packages/forge*/src/**/*.ts"
   - "packages/adapter-*/src/**/*.ts"
 user-invocable: true
-allowed-tools: Bash(grep *) Bash(pnpm *) Agent(security-diff-reviewer)
+allowed-tools: Bash(grep *) Bash(pnpm lint) Bash(pnpm typecheck) Bash(pnpm test) Bash(pnpm build) Agent(security-diff-reviewer)
 ---
 
 # Self-review before push
