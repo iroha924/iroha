@@ -22,21 +22,22 @@ const WAL_SUFFIXES = ["-wal", "-shm"] as const;
 /**
  * `rename()` with a bounded retry on `EBUSY`/`EPERM` — confirmed by
  * reproduction (Windows CI): a native libSQL connection's file-handle
- * teardown can still be in flight for a short window after this package's
- * own `closeDatabase()` call returns (the same lag `windows-ci-compat.md`
- * documents for `rm()`), so a `rename()` immediately following a close can
- * transiently fail even though every caller of this function has already
- * closed its connections per its own contract. Two smaller budgets (5
- * attempts/1.5s, then 8 attempts/3.6s) both proved insufficient on Windows
- * CI when the rename follows immediately after the close in the same call
- * stack (as opposed to after other work has run, which is what the
- * originally-verified 5-attempt budget in `@iroha/storage`'s own
- * `test-helpers/tmp-db.ts` relies on). This budget caps each backoff step at
- * 500ms and allows up to 20 attempts (~9s worst case) to cover a
- * multi-second teardown lag without retrying indefinitely.
+ * teardown can still be in flight after this package's own
+ * `closeDatabase()` call returns, so a `rename()` immediately following a
+ * close can transiently fail even though every caller of this function has
+ * already closed its connections per its own contract. This is the one
+ * rename in this file that is on the actual product-required path
+ * (database-schema.md §12 step 11, "atomically replace the DB"), so it gets
+ * a real retry — but only a modest one: chasing a longer and longer budget
+ * to make an occasional multi-second Windows CI stall disappear (observed up
+ * to ~9s at least once, plausibly antivirus-related) is not a guarantee this
+ * function needs to provide. If the lock genuinely does not clear within a
+ * few seconds, surfacing a real, retryable error to the caller is the
+ * correct behavior.
  */
 async function renameWithRetry(from: string, to: string): Promise<void> {
-  const maxAttempts = 20;
+  const maxAttempts = 10;
+  const delayMs = 300;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       await rename(from, to);
@@ -46,7 +47,7 @@ async function renameWithRetry(from: string, to: string): Promise<void> {
       if ((code !== "EBUSY" && code !== "EPERM") || attempt === maxAttempts) {
         throw cause;
       }
-      await new Promise((resolve) => setTimeout(resolve, Math.min(attempt * 100, 500)));
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
   }
 }

@@ -8,9 +8,9 @@ import { createTempGitRepo, removeTempDir } from "./test-helpers/tmp-repo.js";
 const MIGRATIONS_DIR = fileURLToPath(new URL("../../../migrations", import.meta.url));
 
 // `runSync({ rebuild: true })` exercises `replaceDatabaseAtomically`'s rename
-// retries (packages/storage/src/rebuild.ts), which can take up to ~9s worst
-// case on Windows CI; give this test headroom above vitest's 5000ms default.
-const RUN_INIT_TEST_TIMEOUT_MS = 30000;
+// retries (packages/storage/src/rebuild.ts, up to ~3s worst case), which can
+// push this test past vitest's 5000ms default.
+const RUN_INIT_TEST_TIMEOUT_MS = 15000;
 
 describe("run* command wrappers", () => {
   let repoDir: string | undefined;

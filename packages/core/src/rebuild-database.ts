@@ -22,36 +22,20 @@ import { resolveInitializedRepository } from "./resolve-repository.js";
 import { type SyncCanonicalResult, syncCanonicalToDatabase } from "./sync-canonical.js";
 
 /**
- * `rm()` with a bounded retry on `EBUSY`/`EPERM`, same class of issue as
- * `@iroha/storage`'s `renameWithRetry` (confirmed by CI reproduction): the
- * sibling database this cleans up was just closed by this file's own
- * `closeDatabase(siblingDb)` call, and the native libSQL binding's
- * file-handle teardown can still be in flight on Windows. Best-effort: this
- * runs on failure paths that are already reporting an error, so it gives up
- * quietly rather than throwing a second, unrelated error.
+ * Best-effort: the `.iroha` local database (including any sibling rebuild
+ * artifact) is a disposable, rebuildable index, not canonical data, and each
+ * sibling path carries a random suffix (`createSiblingDatabasePath`) so a
+ * leftover file can never collide with a future rebuild. A transient
+ * `EBUSY`/`EPERM` from the native libSQL binding's file-handle teardown
+ * (still in flight right after this file's own `closeDatabase(siblingDb)`
+ * call, especially on Windows) is not worth retrying for — this always runs
+ * on a failure path that is already reporting a real error, so it silently
+ * leaves the orphaned file rather than spending time chasing a guarantee
+ * the product does not need.
  */
-async function removeWithRetry(path: string): Promise<void> {
-  const maxAttempts = 20;
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      await rm(path, { force: true });
-      return;
-    } catch (cause) {
-      const code = (cause as NodeJS.ErrnoException).code;
-      if (code !== "EBUSY" && code !== "EPERM") {
-        return;
-      }
-      if (attempt === maxAttempts) {
-        return;
-      }
-      await new Promise((resolve) => setTimeout(resolve, Math.min(attempt * 100, 500)));
-    }
-  }
-}
-
 async function removeSiblingDatabase(dbPath: string): Promise<void> {
   for (const suffix of ["", "-wal", "-shm"]) {
-    await removeWithRetry(`${dbPath}${suffix}`);
+    await rm(`${dbPath}${suffix}`, { force: true }).catch(() => undefined);
   }
 }
 
