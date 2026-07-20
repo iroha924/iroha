@@ -95,13 +95,12 @@ export async function runEmbeddingSync(
   if (!config.enabled) {
     return ok({ processed: 0, failed: 0, dead: 0, skipped: "disabled" });
   }
-  let provider = options.provider;
-  if (provider === undefined) {
-    const apiKey = process.env[config.api_key_env];
-    if (apiKey === undefined || apiKey.length === 0) {
-      return ok({ processed: 0, failed: 0, dead: 0, skipped: "missing_key" });
-    }
-    provider = createVoyageProvider({ apiKey, model: config.model, dimension: config.dimension });
+  // Reuse the shared resolver (config already known enabled here, so a null
+  // means the API key env var is unset) rather than re-reading the env inline —
+  // any future hardening of key resolution then reaches the worker too.
+  const provider = options.provider ?? resolveEmbeddingProvider(config);
+  if (provider === null) {
+    return ok({ processed: 0, failed: 0, dead: 0, skipped: "missing_key" });
   }
 
   let processed = 0;

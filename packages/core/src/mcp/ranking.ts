@@ -158,10 +158,15 @@ function parseSources(value: unknown): SourceRef[] {
  * Simplified prefix globbing shared with `get_active_rules` (mcp-contract.md §6.3):
  * `src/x/**` and `src/x/*` match by prefix, a bare path matches itself or a child.
  * Full glob semantics remain deferred (surfaced as a tool warning there).
+ *
+ * Both wildcard branches keep the boundary `/`: `src/**` strips only the two
+ * stars → prefix `src/`, so it matches `src/foo` but NOT the sibling directory
+ * `src-generated/foo` (stripping the `/` too would over-match — a real defect
+ * caught in review).
  */
 export function pathMatches(scopePath: string, requested: string): boolean {
   if (scopePath.endsWith("/**")) {
-    return requested.startsWith(scopePath.slice(0, -3));
+    return requested.startsWith(scopePath.slice(0, -2));
   }
   if (scopePath.endsWith("*")) {
     return requested.startsWith(scopePath.slice(0, -1));
