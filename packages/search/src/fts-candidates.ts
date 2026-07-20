@@ -35,6 +35,17 @@ function rowToRanked(row: Record<string, unknown>): RankedRow {
 }
 
 /**
+ * An identifier/path-style token signals an exact-token query (keep AND
+ * precision); a query with none is treated as natural language (use OR recall).
+ * Markers: a path/namespace separator, camelCase, or snake_case.
+ */
+function hasExactTokenMarker(tokens: readonly string[]): boolean {
+  return tokens.some(
+    (token) => /[/\\.:#]/.test(token) || /[a-z][A-Z]/.test(token) || token.includes("_"),
+  );
+}
+
+/**
  * FTS5's `MATCH` right-hand side is its own query language (`AND`/`OR`/
  * `NOT`, `-` exclusion, `column:` filters, `NEAR`) — confirmed by
  * reproduction that an unquoted query containing a hyphen (e.g.
@@ -42,16 +53,25 @@ function rowToRanked(row: Record<string, unknown>): RankedRow {
  * running as a literal search. Wrapping each whitespace-separated word in
  * `"..."` (doubling embedded `"` per FTS5's string-literal escaping) turns
  * every word into an opaque phrase token, so caller-supplied text can never
- * be reinterpreted as a query operator. Multiple quoted phrases are
- * implicitly ANDed by FTS5, matching this function's "all words must
- * appear" search semantics.
+ * be reinterpreted as a query operator — the only operator in the output is
+ * the `AND`/`OR` this function chooses between the quoted phrases.
+ *
+ * Operator routing (see the hybrid-search research recorded in decision-log):
+ * FTS5's implicit multi-word AND requires *every* word to appear, which drops
+ * to zero recall for long natural-language and cross-lingual queries. So a
+ * multi-word natural-language query is joined with `OR` (any word, BM25-ranked,
+ * precision recovered by the RRF authority/scope/graph boosts), while an
+ * exact-token query (identifiers, paths) keeps `AND` for precision. A
+ * single-token query is identical either way. Cross-lingual recall still comes
+ * only from the vector arm; OR just recovers same-language partial matches.
  */
 export function buildMatchQuery(query: string): string {
-  return query
-    .split(/\s+/u)
-    .filter((word) => word.length > 0)
-    .map((word) => `"${word.replace(/"/g, '""')}"`)
-    .join(" ");
+  const tokens = query.split(/\s+/u).filter((word) => word.length > 0);
+  const phrases = tokens.map((word) => `"${word.replace(/"/g, '""')}"`);
+  if (phrases.length <= 1) {
+    return phrases.join(" ");
+  }
+  return phrases.join(hasExactTokenMarker(tokens) ? " AND " : " OR ");
 }
 
 export async function queryFtsRanked(
