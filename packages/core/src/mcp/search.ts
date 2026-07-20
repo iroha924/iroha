@@ -1,7 +1,8 @@
 import type { Clock, IrohaError, RandomSource, Result } from "@iroha/domain";
 import { err, ok } from "@iroha/domain";
-import { searchText } from "@iroha/search";
+import { type SearchMode, searchHybrid } from "@iroha/search";
 import { type EntityType, getEntityById } from "@iroha/storage";
+import { resolveEmbeddingProvider } from "../embedding-sync.js";
 import { withMcpRepository } from "./with-repository.js";
 
 export interface McpSearchResult {
@@ -19,7 +20,7 @@ export interface McpSearchResult {
 
 export interface McpSearchData {
   query: string;
-  effectiveMode: "lexical";
+  effectiveMode: SearchMode;
   degradedFrom?: "hybrid" | "vector" | undefined;
   results: McpSearchResult[];
 }
@@ -36,7 +37,7 @@ export interface McpSearchInput {
   random: RandomSource;
   query: string;
   repositoryPath?: string | undefined;
-  mode?: "hybrid" | "lexical" | "vector" | "graph" | undefined;
+  mode?: SearchMode | undefined;
   limit?: number | undefined;
   filters?: McpSearchFilters | undefined;
 }
@@ -45,20 +46,56 @@ const DEFAULT_MINIMUM_AUTHORITY = 60;
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 50;
 
+function whyRelevantFor(matchedBy: readonly string[], authority: number): string[] {
+  const reasons = matchedBy.map((source) => `${source} match`);
+  if (authority >= 100) {
+    reasons.push("approved canonical");
+  } else if (authority >= 80) {
+    reasons.push("verified source");
+  }
+  return reasons;
+}
+
 /**
- * The FTS-only slice of `search` (mcp-contract.md §6.1). Delegates ranking to
- * `@iroha/search`'s lexical Reciprocal Rank Fusion (`searchText`), then applies
- * the authority/status/entity-type filters. The vector term, the
- * authority/scope/graph boosts, provenance (`sources`) and relation enrichment,
- * `includeBody`, and the label/path/symbol/issueRef/date filters are WP-08's
- * additions — surfaced to the caller as tool `warnings`, never silently dropped.
+ * `search` (mcp-contract.md §6.1): database-schema.md §9's hybrid retrieval over
+ * approved/verified entities. When embedding is configured and the query
+ * embedding succeeds, the vector term joins the FTS RRF sum; otherwise the
+ * request degrades to lexical (`effectiveMode="lexical"`, `degradedFrom` set to
+ * the requested vector-bearing mode) — no error, per CLAUDE.md's "embedding
+ * failure must degrade to lexical search". Scope/graph boosts, `sources`/
+ * `relations` enrichment, `mode="graph"`, and the richer filters are layered on
+ * in Slice 3.
  */
 export async function mcpSearch(input: McpSearchInput): Promise<Result<McpSearchData, IrohaError>> {
   return withMcpRepository(
     { cwd: input.repositoryPath ?? input.cwd, clock: input.clock, random: input.random },
     async (ctx) => {
       const limit = Math.min(input.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
-      const hits = await searchText(ctx.db, input.query, { limit });
+      const requestedMode: SearchMode = input.mode ?? "hybrid";
+      // `graph` traversal is Slice 3; until then it rides the hybrid path.
+      const runMode: SearchMode = requestedMode === "graph" ? "hybrid" : requestedMode;
+      const wantsVector = runMode === "hybrid" || runMode === "vector";
+
+      let queryVector: readonly number[] | undefined;
+      let degradedFrom: "hybrid" | "vector" | undefined;
+      if (wantsVector) {
+        const provider = resolveEmbeddingProvider(ctx.repo.config.search.embedding);
+        const embedded = provider === null ? null : await provider.embed([input.query], "query");
+        if (embedded !== null && embedded.ok && embedded.value[0] !== undefined) {
+          queryVector = embedded.value[0];
+        } else {
+          degradedFrom = runMode === "vector" ? "vector" : "hybrid";
+        }
+      }
+      const effectiveMode: SearchMode = queryVector !== undefined ? runMode : "lexical";
+
+      const hits = await searchHybrid(ctx.db, {
+        query: input.query,
+        queryVector,
+        mode: effectiveMode,
+        limit,
+        now: ctx.clock.now().toISOString(),
+      });
       if (!hits.ok) {
         return err(hits.error);
       }
@@ -91,15 +128,13 @@ export async function mcpSearch(input: McpSearchInput): Promise<Result<McpSearch
           authority: e.authority,
           status: e.status,
           score: hit.score,
-          whyRelevant: ["lexical match"],
+          whyRelevant: whyRelevantFor(hit.matchedBy, e.authority),
           sources: [],
           relations: [],
         });
       }
 
-      const degradedFrom =
-        input.mode === "hybrid" || input.mode === "vector" ? input.mode : undefined;
-      return ok({ query: input.query, effectiveMode: "lexical", degradedFrom, results });
+      return ok({ query: input.query, effectiveMode, degradedFrom, results });
     },
   );
 }

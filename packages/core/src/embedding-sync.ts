@@ -47,6 +47,23 @@ export interface RunEmbeddingSyncOptions {
   provider?: EmbeddingProvider;
 }
 
+/**
+ * Builds a Voyage provider from config + env, or returns `null` when embedding
+ * is disabled or its API key env var is unset. Shared by the sync worker and
+ * the query-embedding path (`mcpSearch`) so both resolve the key identically —
+ * and neither ever puts the value anywhere but the provider's request header.
+ */
+export function resolveEmbeddingProvider(config: EmbeddingConfig): EmbeddingProvider | null {
+  if (!config.enabled) {
+    return null;
+  }
+  const apiKey = process.env[config.api_key_env];
+  if (apiKey === undefined || apiKey.length === 0) {
+    return null;
+  }
+  return createVoyageProvider({ apiKey, model: config.model, dimension: config.dimension });
+}
+
 /** Exponential backoff (deterministic — single local writer, no jitter needed). */
 function backoffAt(clock: Clock, attempts: number): string {
   const seconds = Math.min(BACKOFF_CAP_SECONDS, BACKOFF_BASE_SECONDS * 2 ** (attempts - 1));
