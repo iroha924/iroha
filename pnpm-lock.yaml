@@ -175,6 +175,9 @@ importers:
       '@iroha/platform':
         specifier: workspace:*
         version: link:../platform
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
     devDependencies:
       '@biomejs/biome':
         specifier: 'catalog:'

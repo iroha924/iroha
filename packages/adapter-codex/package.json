@@ -20,7 +20,8 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@iroha/platform": "workspace:*"
+    "@iroha/platform": "workspace:*",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",
