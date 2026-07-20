@@ -16,7 +16,7 @@ import {
   updateTurnCheckpointState,
 } from "@iroha/storage";
 import { runIdempotentWrite } from "./idempotency.js";
-import { type FieldRedaction, redactField, redactProposal } from "./redact.js";
+import { type FieldRedaction, redactField, redactProposal, redactReference } from "./redact.js";
 import { verifySessionToken } from "./verify-session-token.js";
 import { withMcpRepository } from "./with-repository.js";
 
@@ -45,6 +45,7 @@ interface RedactedCheckpoint {
   implementation: CheckpointInput["implementation"];
   validation: CheckpointInput["validation"];
   unresolved: string[];
+  references: CheckpointInput["references"];
   proposals: CheckpointInput["proposals"];
   redactions: FieldRedaction[];
 }
@@ -80,7 +81,18 @@ async function redactCheckpoint(
     if (change.value.redaction) {
       redactions.push(change.value.redaction);
     }
-    implementation.push({ ...item, change: change.value.value });
+    const next = { ...item, change: change.value.value };
+    if (item.symbol !== undefined) {
+      const symbol = await redactField(`implementation[${index}].symbol`, item.symbol);
+      if (!symbol.ok) {
+        return err(symbol.error);
+      }
+      if (symbol.value.redaction) {
+        redactions.push(symbol.value.redaction);
+      }
+      next.symbol = symbol.value.value;
+    }
+    implementation.push(next);
   }
 
   const validation: CheckpointInput["validation"] = [];
@@ -121,6 +133,16 @@ async function redactCheckpoint(
     unresolved.push(value.value.value);
   }
 
+  const references: CheckpointInput["references"] = [];
+  for (const [index, reference] of input.references.entries()) {
+    const result = await redactReference(reference, `references[${index}]`);
+    if (!result.ok) {
+      return err(result.error);
+    }
+    references.push(result.value.reference);
+    redactions.push(...result.value.redactions);
+  }
+
   const proposals: CheckpointInput["proposals"] = [];
   for (const [index, proposal] of input.proposals.entries()) {
     const result = await redactProposal(proposal, `proposals[${index}]`);
@@ -137,6 +159,7 @@ async function redactCheckpoint(
     implementation,
     validation,
     unresolved,
+    references,
     proposals,
     redactions,
   });
@@ -243,7 +266,7 @@ export async function mcpCreateCheckpoint(
             implementationJson: JSON.stringify(redacted.value.implementation),
             validationJson: JSON.stringify(redacted.value.validation),
             unresolvedJson: JSON.stringify(redacted.value.unresolved),
-            referencesJson: JSON.stringify(input.references),
+            referencesJson: JSON.stringify(redacted.value.references),
             labelsJson: JSON.stringify(input.labels),
             createdAt: nowIso,
           });

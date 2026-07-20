@@ -64,10 +64,10 @@ export const searchTool = defineTool({
         message: "labels/paths/symbols/issueRefs/from/to filters are not applied yet (WP-08)",
       });
     }
-    if (input.mode === "hybrid" || input.mode === "vector") {
+    if (input.mode !== undefined && input.mode !== "lexical") {
       warnings.push({
         code: "degraded",
-        message: "served lexical FTS only; vector ranking is WP-08",
+        message: `served lexical FTS only; ${input.mode} ranking is WP-08`,
       });
     }
     return warnings;

@@ -74,4 +74,61 @@ describe("mcpGetRelations", () => {
     expect(res.value.nodes.map((n) => n.id).sort()).toEqual([a, b].sort());
     expect(res.value.truncated).toBe(false);
   }, 15000);
+
+  it("reports truncated when a root has more relations than maxEdges", async () => {
+    const repo = await setupMcpRepo(random);
+    repoDir = repo.repoDir;
+    const iso = T0.toISOString();
+    const root = makeTypedId("dec", clock, random);
+
+    const db = await openDatabase(repo.dbPath);
+    if (!db.ok) throw new Error("open failed");
+    await insertEntity(db.value, {
+      id: root,
+      repositoryId: repo.repositoryId,
+      entityType: "decision",
+      title: "root",
+      status: "approved",
+      authority: 100,
+      sourceKind: "canonical",
+      createdAt: iso,
+      updatedAt: iso,
+    });
+    for (let i = 0; i < 5; i++) {
+      const target = makeTypedId("con", clock, random);
+      await insertEntity(db.value, {
+        id: target,
+        repositoryId: repo.repositoryId,
+        entityType: "concept",
+        title: `t${i}`,
+        status: "approved",
+        authority: 80,
+        sourceKind: "canonical",
+        createdAt: iso,
+        updatedAt: iso,
+      });
+      await insertRelation(db.value, {
+        id: makeTypedId("rel", clock, random),
+        repositoryId: repo.repositoryId,
+        fromEntityId: root,
+        relationType: "RELATED_TO",
+        toEntityId: target,
+        sourceKind: "human",
+        createdAt: iso,
+      });
+    }
+    await closeDatabase(db.value);
+
+    const res = await mcpGetRelations({
+      cwd: repo.repoDir,
+      clock,
+      random,
+      entityIds: [root],
+      maxEdges: 3,
+    });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.value.edges).toHaveLength(3);
+    expect(res.value.truncated).toBe(true);
+  }, 15000);
 });

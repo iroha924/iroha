@@ -19,6 +19,11 @@ const PROPOSAL: KnowledgeProposal = {
   sources: [{ type: "commit", ref: "abc1234" }],
 };
 
+// Same known-detected private-key shape the canonical secret-scan test uses.
+const PRIVATE_KEY_BODY =
+  "MIIEowIBAAKCAQEA1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyz+/==";
+const SECRET_BLOCK = `-----BEGIN RSA PRIVATE KEY-----\n${PRIVATE_KEY_BODY}\n-----END RSA PRIVATE KEY-----`;
+
 describe("mcpProposeKnowledge", () => {
   let repo: McpTestRepo | undefined;
 
@@ -114,5 +119,50 @@ describe("mcpProposeKnowledge", () => {
     if (!result.ok) {
       expect(result.error.code).toBe("INVALID_INPUT");
     }
+  }, 15000);
+
+  it("redacts a secret embedded in a guard denyCommand", async () => {
+    repo = await setupMcpRepo(random);
+    const seedDb = await openDatabase(repo.dbPath);
+    if (!seedDb.ok) return;
+    const seeded = await seedSessionWithToken(seedDb.value, repo, clock, random);
+    await closeDatabase(seedDb.value);
+
+    const guardrailProposal: KnowledgeProposal = {
+      type: "rule",
+      title: "Block a dangerous command",
+      summary: "a guardrail rule",
+      body: "This guardrail denies a command.",
+      labels: [],
+      scope: { paths: [], symbols: [] },
+      sources: [{ type: "commit", ref: "abc1234" }],
+      enforcement: "guardrail",
+      guard: { tools: ["bash"], paths: [], denyCommands: [SECRET_BLOCK] },
+    };
+
+    const result = await mcpProposeKnowledge({
+      cwd: repo.repoDir,
+      clock,
+      random,
+      sessionToken: seeded.token,
+      idempotencyKey: "idem-propose-00000004",
+      proposal: guardrailProposal,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(
+      result.value.redactions.some((redaction) => redaction.field.includes("denyCommands")),
+    ).toBe(true);
+
+    const db = await openDatabase(repo.dbPath);
+    if (!db.ok) return;
+    const candidates = await listCandidatesByStatus(db.value, repo.repositoryId, "pending");
+    const candidate = candidates.ok ? candidates.value[0] : undefined;
+    if (candidate) {
+      expect(candidate.payloadJson).not.toContain("PRIVATE KEY");
+      expect(candidate.payloadJson).toContain("[redacted");
+    }
+    await closeDatabase(db.value);
   }, 15000);
 });

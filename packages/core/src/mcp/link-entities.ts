@@ -1,6 +1,11 @@
 import type { Clock, IrohaError, RandomSource, Result, TypedId } from "@iroha/domain";
 import { err, IrohaError as IrohaErrorClass, makeTypedId, ok } from "@iroha/domain";
-import { getEntityById, insertRelation, type RelationType } from "@iroha/storage";
+import {
+  getEntityById,
+  getRelationByTuple,
+  insertRelation,
+  type RelationType,
+} from "@iroha/storage";
 import { runIdempotentWrite } from "./idempotency.js";
 import { verifySessionToken } from "./verify-session-token.js";
 import { withMcpRepository } from "./with-repository.js";
@@ -104,7 +109,20 @@ export async function mcpLinkEntities(
           if (!relation.ok) {
             return err(relation.error);
           }
-          return ok({ relationId, deduplicated: false });
+          // `insertRelation` is ON CONFLICT DO NOTHING: if this (from, type, to,
+          // inferred) tuple already existed under a different call, our generated
+          // id was not stored. Return the id actually on record, never a phantom.
+          const stored = await getRelationByTuple(
+            tx,
+            input.fromEntityId,
+            input.relationType,
+            input.toEntityId,
+            "inferred",
+          );
+          if (!stored.ok) {
+            return err(stored.error);
+          }
+          return ok({ relationId: stored.value?.id ?? relationId, deduplicated: false });
         },
       });
     },

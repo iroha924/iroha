@@ -8,11 +8,31 @@ export interface FieldRedaction {
 }
 
 const REDACTED_PLACEHOLDER = "[redacted: secret detected]";
+// A `url`-shaped placeholder, so a redacted reference still satisfies the
+// `z.url()` contract if the candidate is later re-validated at approval time.
+const REDACTED_URL_PLACEHOLDER = "https://redacted.invalid/";
+
+/** A checkpoint/proposal reference (`referenceSchema`): the `sources[]`/`references[]` element. */
+type Reference = KnowledgeProposal["sources"][number];
+
+async function scanFinding(value: string): Promise<Result<string | null, IrohaError>> {
+  if (value.length === 0) {
+    return ok(null);
+  }
+  const scan = await scanForSecrets(value);
+  if (!scan.ok) {
+    return err(scan.error);
+  }
+  if (scan.value.clean) {
+    return ok(null);
+  }
+  return ok([...new Set(scan.value.findings.map((finding) => finding.ruleId))].join(", "));
+}
 
 /**
- * Scans one local checkpoint/proposal text field for secrets. A Checkpoint is a
- * candidate, not canonical, so — unlike a canonical write, which rejects on a
- * finding (secret-scan.ts) — a flagged field is redacted wholesale and the
+ * Scans one local checkpoint/proposal free-text field for secrets. A Checkpoint
+ * is a candidate, not canonical, so — unlike a canonical write, which rejects on
+ * a finding (secret-scan.ts) — a flagged field is redacted wholesale and the
  * redaction is reported (mcp-contract.md §6.6 step 2 / §8). Coarse field-level
  * redaction favours safety over preserving partial context. A scanner failure
  * propagates as an error: an unscanned field is never stored.
@@ -20,35 +40,89 @@ const REDACTED_PLACEHOLDER = "[redacted: secret detected]";
 export async function redactField(
   field: string,
   value: string,
+  placeholder: string = REDACTED_PLACEHOLDER,
 ): Promise<Result<{ value: string; redaction?: FieldRedaction }, IrohaError>> {
-  if (value.length === 0) {
+  const reason = await scanFinding(value);
+  if (!reason.ok) {
+    return err(reason.error);
+  }
+  if (reason.value === null) {
     return ok({ value });
   }
-  const scan = await scanForSecrets(value);
-  if (!scan.ok) {
-    return err(scan.error);
+  return ok({ value: placeholder, redaction: { field, reason: reason.value } });
+}
+
+/** Scans each element of a free-text string array, redacting flagged entries in place. */
+export async function redactStringArray(
+  field: string,
+  values: readonly string[],
+): Promise<Result<{ values: string[]; redactions: FieldRedaction[] }, IrohaError>> {
+  const out: string[] = [];
+  const redactions: FieldRedaction[] = [];
+  for (const [index, value] of values.entries()) {
+    const result = await redactField(`${field}[${index}]`, value);
+    if (!result.ok) {
+      return err(result.error);
+    }
+    out.push(result.value.value);
+    if (result.value.redaction) {
+      redactions.push(result.value.redaction);
+    }
   }
-  if (scan.value.clean) {
-    return ok({ value });
-  }
-  const reason = [...new Set(scan.value.findings.map((finding) => finding.ruleId))].join(", ");
-  return ok({ value: REDACTED_PLACEHOLDER, redaction: { field, reason } });
+  return ok({ values: out, redactions });
 }
 
 /**
- * Redacts a proposal's free-text fields (`title`/`summary`/`body`), collecting
- * any redactions under `<prefix>.<field>`. The constrained fields (labels,
- * scope paths/symbols, source refs) are not scanned: their formats
- * (`[a-z0-9-]` labels, relative paths) cannot carry a credential.
+ * Scans a reference's free-text `ref` and `url`. A `url` is a prime credential
+ * carrier (userinfo, presigned-URL signatures), so it is scanned and, if
+ * flagged, replaced with a still-valid placeholder URL.
+ */
+export async function redactReference(
+  reference: Reference,
+  prefix: string,
+): Promise<Result<{ reference: Reference; redactions: FieldRedaction[] }, IrohaError>> {
+  const redactions: FieldRedaction[] = [];
+  const next: Reference = { ...reference };
+
+  const ref = await redactField(`${prefix}.ref`, reference.ref);
+  if (!ref.ok) {
+    return err(ref.error);
+  }
+  next.ref = ref.value.value;
+  if (ref.value.redaction) {
+    redactions.push(ref.value.redaction);
+  }
+
+  if (reference.url !== undefined) {
+    const url = await redactField(`${prefix}.url`, reference.url, REDACTED_URL_PLACEHOLDER);
+    if (!url.ok) {
+      return err(url.error);
+    }
+    next.url = url.value.value;
+    if (url.value.redaction) {
+      redactions.push(url.value.redaction);
+    }
+  }
+
+  return ok({ reference: next, redactions });
+}
+
+/**
+ * Redacts every free-text field of a proposal — the prose (`title`/`summary`/
+ * `body`), the `scope.symbols`, the `guard.tools`/`guard.denyCommands` (which
+ * are exactly where a secret-bearing command would live), and each source's
+ * `ref`/`url`. The remaining fields are not scanned because their formats
+ * cannot carry a credential: `labels` (`[a-z0-9-]`), `scope.paths`/`guard.paths`
+ * (relative paths), `scope.languages`, and the enum `type`/`enforcement` fields.
  */
 export async function redactProposal(
   proposal: KnowledgeProposal,
   prefix: string,
 ): Promise<Result<{ proposal: KnowledgeProposal; redactions: FieldRedaction[] }, IrohaError>> {
   const redactions: FieldRedaction[] = [];
-  const fields: Array<"title" | "summary" | "body"> = ["title", "summary", "body"];
-  const redacted = { ...proposal };
-  for (const field of fields) {
+  const redacted: KnowledgeProposal = { ...proposal };
+
+  for (const field of ["title", "summary", "body"] as const) {
     const result = await redactField(`${prefix}.${field}`, proposal[field]);
     if (!result.ok) {
       return err(result.error);
@@ -58,5 +132,45 @@ export async function redactProposal(
       redactions.push(result.value.redaction);
     }
   }
+
+  const symbols = await redactStringArray(`${prefix}.scope.symbols`, proposal.scope.symbols);
+  if (!symbols.ok) {
+    return err(symbols.error);
+  }
+  redacted.scope = { ...proposal.scope, symbols: symbols.value.values };
+  redactions.push(...symbols.value.redactions);
+
+  if (proposal.guard !== undefined) {
+    const tools = await redactStringArray(`${prefix}.guard.tools`, proposal.guard.tools);
+    if (!tools.ok) {
+      return err(tools.error);
+    }
+    redactions.push(...tools.value.redactions);
+    const guard = { ...proposal.guard, tools: tools.value.values };
+    if (proposal.guard.denyCommands !== undefined) {
+      const denyCommands = await redactStringArray(
+        `${prefix}.guard.denyCommands`,
+        proposal.guard.denyCommands,
+      );
+      if (!denyCommands.ok) {
+        return err(denyCommands.error);
+      }
+      guard.denyCommands = denyCommands.value.values;
+      redactions.push(...denyCommands.value.redactions);
+    }
+    redacted.guard = guard;
+  }
+
+  const sources: Reference[] = [];
+  for (const [index, source] of proposal.sources.entries()) {
+    const result = await redactReference(source, `${prefix}.sources[${index}]`);
+    if (!result.ok) {
+      return err(result.error);
+    }
+    sources.push(result.value.reference);
+    redactions.push(...result.value.redactions);
+  }
+  redacted.sources = sources;
+
   return ok({ proposal: redacted, redactions });
 }

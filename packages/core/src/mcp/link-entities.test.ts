@@ -147,4 +147,38 @@ describe("mcpLinkEntities", () => {
       expect(result.error.code).toBe("NOT_FOUND");
     }
   }, 15000);
+
+  it("returns the real stored relationId when the tuple already exists under a different key", async () => {
+    repo = await setupMcpRepo(random);
+    const seedDb = await openDatabase(repo.dbPath);
+    if (!seedDb.ok) return;
+    const seeded = await seedSessionWithToken(seedDb.value, repo, clock, random);
+    await closeDatabase(seedDb.value);
+
+    const fromId = makeTypedId("dec", clock, random);
+    const toId = makeTypedId("dec", clock, random);
+    await seedEntity(repo.dbPath, repo, fromId);
+    await seedEntity(repo.dbPath, repo, toId);
+
+    const base = {
+      cwd: repo.repoDir,
+      clock,
+      random,
+      sessionToken: seeded.token,
+      fromEntityId: fromId,
+      relationType: "RELATED_TO" as const,
+      toEntityId: toId,
+      evidence: "the same edge twice",
+      confidence: 0.9,
+    };
+    const first = await mcpLinkEntities({ ...base, idempotencyKey: "idem-link-000000000010" });
+    const second = await mcpLinkEntities({ ...base, idempotencyKey: "idem-link-000000000011" });
+
+    expect(first.ok && second.ok).toBe(true);
+    if (!first.ok || !second.ok) return;
+    // Different idempotency keys, but the (from, RELATED_TO, to, inferred) tuple
+    // already exists → the second call must return the SAME real relation id
+    // (the ON CONFLICT DO NOTHING insert stored nothing new), not a phantom.
+    expect(second.value.relationId).toBe(first.value.relationId);
+  }, 15000);
 });
