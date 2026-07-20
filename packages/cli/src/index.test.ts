@@ -168,7 +168,7 @@ describe("runCli", () => {
     expect(searchParsed.hits.length).toBe(1);
   });
 
-  it("exits non-zero from the dashboard stub", async () => {
+  it("exits non-zero when launching the dashboard in an uninitialized repository", async () => {
     repoDir = await createTempGitRepo();
     process.chdir(repoDir);
 

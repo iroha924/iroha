@@ -23,6 +23,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@iroha/api": "workspace:*",
     "@iroha/core": "workspace:*",
     "gunshi": "catalog:"
   },
