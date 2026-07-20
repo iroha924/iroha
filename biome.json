@@ -45,6 +45,16 @@
   },
   "overrides": [
     {
+      "includes": ["**/*.config.ts", "**/*.config.mts", "**/*.config.js", "**/*.config.mjs"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noDefaultExport": "off"
+          }
+        }
+      }
+    },
+    {
       "includes": ["apps/dashboard/src/**"],
       "linter": {
         "rules": {

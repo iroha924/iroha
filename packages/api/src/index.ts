@@ -7,6 +7,7 @@
 // "generated API client" contract, compatibility.md §4) rather than reaching
 // into `@iroha/core`. These are type-only and erase at build.
 export type {
+  ApproveCandidateData,
   BootstrapData,
   CandidateDetailData,
   CandidateQueueItem,
@@ -14,6 +15,8 @@ export type {
   CandidateStatusChangeData,
   CandidateValidation,
   CheckpointDetailData,
+  DoctorRepairData,
+  DoctorReport,
   EditCandidateData,
   GraphData,
   GraphEdge,
@@ -23,6 +26,7 @@ export type {
   KnowledgeListItem,
   KnowledgeListPage,
   KnowledgeRelation,
+  McpSearchData,
   OverviewData,
   RepositoryConfig,
   RunDetailData,
@@ -30,6 +34,7 @@ export type {
   SessionListItem,
   SessionListPage,
   SettingsData,
+  SyncCanonicalResult,
   SyncStatusData,
 } from "@iroha/core";
 export { type AppConfig, type AppType, createApp } from "./app.js";
