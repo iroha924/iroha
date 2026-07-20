@@ -3,4 +3,6 @@
  */
 export const packageName = "@iroha/search";
 
+export * from "./embedding-provider.js";
+export * from "./search-hybrid.js";
 export * from "./search-text.js";

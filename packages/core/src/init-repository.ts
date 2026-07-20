@@ -65,7 +65,7 @@ function buildDefaultConfig(repositoryId: TypedId<"repo">): RepositoryConfig {
       embedding: {
         enabled: false,
         provider: "voyage",
-        model: "voyage-4",
+        model: "voyage-4-large",
         dimension: 1024,
         api_key_env: "VOYAGE_API_KEY",
       },

@@ -21,7 +21,8 @@
   },
   "dependencies": {
     "@iroha/domain": "workspace:*",
-    "@iroha/storage": "workspace:*"
+    "@iroha/storage": "workspace:*",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",

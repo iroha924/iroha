@@ -545,6 +545,9 @@ importers:
       '@iroha/storage':
         specifier: workspace:*
         version: link:../storage
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
     devDependencies:
       '@biomejs/biome':
         specifier: 'catalog:'

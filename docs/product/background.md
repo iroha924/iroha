@@ -144,7 +144,7 @@ Embedding API、GitHub/GitLab API、Hookの一部が利用できなくても、G
 | Graph | リレーショナルDBの`relations`と再帰CTE。Graph DBは使わない |
 | 全文検索 | FTS5 `unicode61` + `trigram` |
 | ベクトル検索 | libSQL vector / DiskANN |
-| Embedding | 任意。Voyage `voyage-4` / 1024次元。未設定時はFTS-only |
+| Embedding | 任意。Voyage `voyage-4-large` / 1024次元。未設定時はFTS-only |
 | ID | 型付きULID |
 | 生transcript | ローカル限定。正本や安定APIとして扱わない |
 | 承認 | 意思決定・ルール等は人間承認後に共有 |

@@ -23,7 +23,7 @@ const envVarNameSchema = z
 const embeddingConfigSchema = z.strictObject({
   enabled: z.boolean(),
   provider: z.literal("voyage"),
-  model: z.literal("voyage-4"),
+  model: z.literal("voyage-4-large"),
   dimension: z.literal(1024),
   api_key_env: envVarNameSchema,
 });

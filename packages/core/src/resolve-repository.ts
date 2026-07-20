@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { parseRepositoryConfig } from "@iroha/config";
+import { parseRepositoryConfig, type RepositoryConfig } from "@iroha/config";
 import { err, IrohaError, ok, type Result, type TypedId } from "@iroha/domain";
 import { type GitLocation, resolveGitLocation, resolveGitPath } from "@iroha/git";
 import { assertSupportedSchemaVersion, readSchemaVersion } from "./schema-version.js";
@@ -11,6 +11,8 @@ export interface ResolvedRepository {
   irohaStateDir: string;
   dbPath: string;
   repositoryId: TypedId<"repo">;
+  /** The parsed `.iroha/config.yaml` — callers needing embedding/forge settings avoid re-reading it. */
+  config: RepositoryConfig;
 }
 
 /**
@@ -66,5 +68,6 @@ export async function resolveInitializedRepository(
     irohaStateDir,
     dbPath: join(irohaStateDir, "index.db"),
     repositoryId: configResult.value.repository_id as TypedId<"repo">,
+    config: configResult.value,
   });
 }

@@ -5,12 +5,15 @@ import { openMigratedTestDb, removeTempDir } from "../test-helpers/tmp-db.js";
 import {
   enqueueEmbeddingJob,
   getEmbeddingMetadataBySearchDocumentId,
+  getEmbeddingVectorByContentHash,
   getNeighbors,
   getPath,
   getSearchDocumentByEntityId,
+  getSearchDocumentById,
   getSubgraph,
   insertRelation,
   listDueEmbeddingJobs,
+  listSearchDocumentHashes,
   searchByVector,
   updateEmbeddingJobStatus,
   upsertEmbedding,
@@ -527,7 +530,7 @@ describe("graph-search repositories", () => {
       id,
       searchDocumentId: sdoc,
       provider: "voyage",
-      model: "voyage-4",
+      model: "voyage-4-large",
       createdAt: NOW,
       updatedAt: NOW,
     });
@@ -571,7 +574,7 @@ describe("graph-search repositories", () => {
       id,
       searchDocumentId: sdoc,
       provider: "voyage",
-      model: "voyage-4",
+      model: "voyage-4-large",
       createdAt: NOW,
       updatedAt: NOW,
     });
@@ -581,7 +584,7 @@ describe("graph-search repositories", () => {
       id: jobId("i2"),
       searchDocumentId: sdoc,
       provider: "voyage",
-      model: "voyage-4",
+      model: "voyage-4-large",
       createdAt: NOW,
       updatedAt: NOW,
     });
@@ -621,7 +624,7 @@ describe("graph-search repositories", () => {
       id,
       searchDocumentId: sdoc,
       provider: "voyage",
-      model: "voyage-4",
+      model: "voyage-4-large",
       createdAt: NOW,
       updatedAt: NOW,
     });
@@ -637,7 +640,7 @@ describe("graph-search repositories", () => {
       id: jobId("i2b"),
       searchDocumentId: sdoc,
       provider: "voyage",
-      model: "voyage-4",
+      model: "voyage-4-large",
       createdAt: LATER,
       updatedAt: LATER,
     });
@@ -681,7 +684,7 @@ describe("graph-search repositories", () => {
       id,
       searchDocumentId: sdoc,
       provider: "voyage",
-      model: "voyage-4",
+      model: "voyage-4-large",
       createdAt: NOW,
       updatedAt: NOW,
     });
@@ -699,7 +702,7 @@ describe("graph-search repositories", () => {
       id: jobId("i3b"),
       searchDocumentId: sdoc,
       provider: "voyage",
-      model: "voyage-4",
+      model: "voyage-4-large",
       createdAt: LATER,
       updatedAt: LATER,
     });
@@ -720,5 +723,107 @@ describe("graph-search repositories", () => {
       expect(dueAtFarFuture.value[0]?.attempts).toBe(2);
       expect(dueAtFarFuture.value[0]?.lastErrorCode).toBe("RATE_LIMITED");
     }
+  });
+
+  it("reads a search document by its sdoc id, returning null when absent", async () => {
+    const opened = await openMigratedTestDb();
+    tempDir = opened.dir;
+    db = opened.db;
+    const repositoryId = await seedRepository(db, "j");
+    await seedEntity(db, "dec_00000000000000000000000j1", repositoryId);
+    const id = sdocId("j1");
+    await upsertSearchDocument(db, {
+      id,
+      entityId: "dec_00000000000000000000000j1",
+      documentKind: "decision",
+      title: "Title",
+      body: "Body",
+      authority: 100,
+      contentHash: "sha256:aa",
+      indexedAt: NOW,
+    });
+
+    const found = await getSearchDocumentById(db, id);
+    expect(found.ok).toBe(true);
+    if (found.ok) {
+      expect(found.value?.title).toBe("Title");
+      expect(found.value?.contentHash).toBe("sha256:aa");
+    }
+
+    const missing = await getSearchDocumentById(db, sdocId("jz"));
+    expect(missing.ok && missing.value).toBeNull();
+  });
+
+  it("lists every search document's id and content hash", async () => {
+    const opened = await openMigratedTestDb();
+    tempDir = opened.dir;
+    db = opened.db;
+    const repositoryId = await seedRepository(db, "k");
+    await seedEntity(db, "dec_00000000000000000000000k1", repositoryId);
+    await seedEntity(db, "dec_00000000000000000000000k2", repositoryId);
+    await upsertSearchDocument(db, {
+      id: sdocId("k1"),
+      entityId: "dec_00000000000000000000000k1",
+      documentKind: "decision",
+      title: "One",
+      body: "b",
+      authority: 100,
+      contentHash: "sha256:aa",
+      indexedAt: NOW,
+    });
+    await upsertSearchDocument(db, {
+      id: sdocId("k2"),
+      entityId: "dec_00000000000000000000000k2",
+      documentKind: "decision",
+      title: "Two",
+      body: "b",
+      authority: 100,
+      contentHash: "sha256:bb",
+      indexedAt: NOW,
+    });
+
+    const hashes = await listSearchDocumentHashes(db);
+    expect(hashes.ok).toBe(true);
+    if (hashes.ok) {
+      const byId = new Map(hashes.value.map((h) => [h.searchDocumentId, h.contentHash]));
+      expect(byId.get(sdocId("k1"))).toBe("sha256:aa");
+      expect(byId.get(sdocId("k2"))).toBe("sha256:bb");
+    }
+  });
+
+  it("reads a stored embedding vector back by content hash, returning null when absent", async () => {
+    const opened = await openMigratedTestDb();
+    tempDir = opened.dir;
+    db = opened.db;
+    const repositoryId = await seedRepository(db, "l");
+    await seedEntity(db, "dec_00000000000000000000000l1", repositoryId);
+    const id = sdocId("l1");
+    await upsertSearchDocument(db, {
+      id,
+      entityId: "dec_00000000000000000000000l1",
+      documentKind: "decision",
+      title: "t",
+      body: "b",
+      authority: 100,
+      contentHash: "sha256:cc",
+      indexedAt: NOW,
+    });
+    // Values exactly representable in float32, so the round-trip is exact.
+    const vector = new Array(1024).fill(0.5);
+    await upsertEmbedding(db, {
+      searchDocumentId: id,
+      contentHash: "sha256:cc",
+      embedding: vector,
+      createdAt: NOW,
+    });
+
+    const read = await getEmbeddingVectorByContentHash(db, "sha256:cc");
+    expect(read.ok).toBe(true);
+    if (read.ok) {
+      expect(read.value).toEqual(vector);
+    }
+
+    const missing = await getEmbeddingVectorByContentHash(db, "sha256:nope");
+    expect(missing.ok && missing.value).toBeNull();
   });
 });

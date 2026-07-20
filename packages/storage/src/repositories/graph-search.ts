@@ -400,16 +400,55 @@ export async function getSearchDocumentByEntityId(
   }
 }
 
+/** The embedding worker resolves a queued `embedding_jobs` row's text/`content_hash` by its `sdoc` id. */
+export async function getSearchDocumentById(
+  db: Executor,
+  id: TypedId<"sdoc">,
+): Promise<Result<SearchDocumentRow | null, IrohaError>> {
+  try {
+    const result = await db.execute({
+      sql: "SELECT * FROM search_documents WHERE id = ?",
+      args: [id],
+    });
+    const row = result.rows[0];
+    return ok(row === undefined ? null : rowToSearchDocument(row));
+  } catch (cause) {
+    return err(mapLibsqlError(cause, "Failed to read search document"));
+  }
+}
+
+export interface SearchDocumentHash {
+  searchDocumentId: TypedId<"sdoc">;
+  contentHash: string;
+}
+
+/** `rebuildDatabase` iterates these to carry matching embeddings across a rebuild by content hash. */
+export async function listSearchDocumentHashes(
+  db: Executor,
+): Promise<Result<SearchDocumentHash[], IrohaError>> {
+  try {
+    const result = await db.execute("SELECT id, content_hash FROM search_documents");
+    return ok(
+      result.rows.map((row) => ({
+        searchDocumentId: row.id as TypedId<"sdoc">,
+        contentHash: String(row.content_hash),
+      })),
+    );
+  } catch (cause) {
+    return err(mapLibsqlError(cause, "Failed to list search document hashes"));
+  }
+}
+
 // --- embeddings_1024 ---------------------------------------------------
 
 const EMBEDDING_PROVIDER = "voyage";
-const EMBEDDING_MODEL = "voyage-4";
+const EMBEDDING_MODEL = "voyage-4-large";
 const EMBEDDING_DIMENSION = 1024;
 
 export interface EmbeddingMetadataRow {
   searchDocumentId: TypedId<"sdoc">;
   provider: "voyage";
-  model: "voyage-4";
+  model: "voyage-4-large";
   dimension: 1024;
   contentHash: string;
   createdAt: string;
@@ -427,7 +466,7 @@ function rowToEmbeddingMetadata(row: Record<string, unknown>): EmbeddingMetadata
   return {
     searchDocumentId: row.search_document_id as TypedId<"sdoc">,
     provider: "voyage",
-    model: "voyage-4",
+    model: "voyage-4-large",
     dimension: 1024,
     contentHash: String(row.content_hash),
     createdAt: String(row.created_at),
@@ -489,6 +528,38 @@ export async function getEmbeddingMetadataBySearchDocumentId(
     return ok(row === undefined ? null : rowToEmbeddingMetadata(row));
   } catch (cause) {
     return err(mapLibsqlError(cause, "Failed to read embedding"));
+  }
+}
+
+/**
+ * Reads a stored vector back as a plain `number[]` via libSQL's
+ * `vector_extract` (confirmed by reproduction to return a JSON array string,
+ * e.g. `"[0.1,0.2]"`). `rebuildDatabase` uses this to carry an
+ * already-computed embedding across a rebuild by content hash — the vector
+ * for identical content is identical, so any row sharing the hash serves —
+ * instead of re-calling the embedding provider (database-schema.md §12
+ * steps 8-9). Returns null when no stored embedding shares the hash.
+ */
+export async function getEmbeddingVectorByContentHash(
+  db: Executor,
+  contentHash: string,
+): Promise<Result<number[] | null, IrohaError>> {
+  try {
+    const result = await db.execute({
+      sql: "SELECT vector_extract(embedding) AS vector FROM embeddings_1024 WHERE content_hash = ? LIMIT 1",
+      args: [contentHash],
+    });
+    const row = result.rows[0];
+    if (row === undefined) {
+      return ok(null);
+    }
+    const decoded: unknown = JSON.parse(String(row.vector));
+    if (!Array.isArray(decoded) || !decoded.every((n): n is number => typeof n === "number")) {
+      return err(new IrohaError("INTERNAL_ERROR", "Stored embedding vector could not be decoded"));
+    }
+    return ok(decoded);
+  } catch (cause) {
+    return err(mapLibsqlError(cause, "Failed to read embedding vector"));
   }
 }
 

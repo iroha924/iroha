@@ -1,6 +1,5 @@
 import { mcpGetContext } from "@iroha/core";
 import { z } from "zod";
-import type { McpWarning } from "../envelope.js";
 import { defineTool } from "./types.js";
 
 const getContextInputSchema = z.strictObject({
@@ -26,21 +25,10 @@ export const getContextTool = defineTool({
       random: ctx.random,
       sessionToken: input.sessionToken,
       query: input.query,
+      activeIssueRefs: input.activeIssueRefs,
+      paths: input.paths,
+      symbols: input.symbols,
       maxItems: input.maxItems,
       maxCharacters: input.maxCharacters,
     }),
-  warnings: (input) => {
-    const warnings: McpWarning[] = [];
-    if (
-      (input.activeIssueRefs?.length ?? 0) > 0 ||
-      (input.paths?.length ?? 0) > 0 ||
-      (input.symbols?.length ?? 0) > 0
-    ) {
-      warnings.push({
-        code: "unsupported_option",
-        message: "activeIssueRefs/paths/symbols are not applied yet (WP-08)",
-      });
-    }
-    return warnings;
-  },
 });

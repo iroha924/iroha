@@ -83,13 +83,15 @@ describe("dispatchTool", () => {
     }
   });
 
-  it("attaches degraded-mode warnings to a successful search envelope", async () => {
+  it("reports degraded mode in the search envelope data when embedding is unavailable", async () => {
     const dir = await mkdtemp(join(tmpdir(), "iroha-mcp-dispatch-"));
     try {
       execFileSync("git", ["init"], { cwd: dir });
       const init = await runInit(dir, MIGRATIONS_DIR);
       expect(init.ok).toBe(true);
 
+      // A fresh repo has embedding disabled, so a hybrid request degrades to
+      // lexical — surfaced structurally in the envelope data, not as a warning.
       const result = await dispatchTool(
         "search",
         { query: "anything", mode: "hybrid" },
@@ -98,7 +100,10 @@ describe("dispatchTool", () => {
       const env = envelopeOf(result);
       expect(env.ok).toBe(true);
       if (env.ok) {
-        expect(env.warnings.some((warning) => warning.code === "degraded")).toBe(true);
+        const data = env.data as { effectiveMode: string; degradedFrom?: string };
+        expect(data.effectiveMode).toBe("lexical");
+        expect(data.degradedFrom).toBe("hybrid");
+        expect(env.warnings.some((warning) => warning.code === "degraded")).toBe(false);
       }
     } finally {
       await removeDir(dir);

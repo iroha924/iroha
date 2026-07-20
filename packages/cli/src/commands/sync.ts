@@ -10,7 +10,14 @@ function formatSync(data: RunSyncResult): string {
       formatSyncCounts(data.rebuild.sync),
     ].join("\n");
   }
-  return formatSyncCounts(data.sync);
+  const lines = [formatSyncCounts(data.sync)];
+  const embedding = data.embedding;
+  if (embedding.skipped === null && embedding.processed + embedding.failed + embedding.dead > 0) {
+    lines.push(
+      `Embeddings: ${embedding.processed} embedded, ${embedding.failed} retrying, ${embedding.dead} dead-lettered.`,
+    );
+  }
+  return lines.join("\n");
 }
 
 function formatSyncCounts(sync: {

@@ -373,7 +373,7 @@ CREATE TABLE embeddings_1024 (
   row_id INTEGER PRIMARY KEY,
   search_document_id TEXT NOT NULL UNIQUE REFERENCES search_documents(id) ON DELETE CASCADE,
   provider TEXT NOT NULL CHECK (provider = 'voyage'),
-  model TEXT NOT NULL CHECK (model = 'voyage-4'),
+  model TEXT NOT NULL CHECK (model = 'voyage-4-large'),
   dimension INTEGER NOT NULL CHECK (dimension = 1024),
   content_hash TEXT NOT NULL CHECK (content_hash GLOB 'sha256:*'),
   embedding F32_BLOB(1024) NOT NULL,

@@ -19,6 +19,7 @@ import {
   insertSessionRun,
   insertToolEvent,
   insertTurn,
+  listApprovedRulesForRepository,
   listCheckpointsBySession,
   type SessionRunEndReason,
   type ToolEventTargetKind,
@@ -26,7 +27,11 @@ import {
   updateTurnCheckpointState,
 } from "@iroha/storage";
 import type { ResolvedRepository } from "../resolve-repository.js";
-import { formatSessionContext, type RecentCheckpoint } from "./context.js";
+import {
+  type ApprovedKnowledgeItem,
+  formatSessionContext,
+  type RecentCheckpoint,
+} from "./context.js";
 import { resolveTargets } from "./resolve-targets.js";
 import { issueSessionToken } from "./session-token.js";
 
@@ -159,14 +164,48 @@ async function handleSessionStart(
     recentCheckpoint = { id: latest.id, summary: latest.summary };
   }
 
+  const approvedKnowledge = await buildApprovedKnowledge(ctx.db, repositoryId);
+
   return contextOutput(
     formatSessionContext({
       token: token.value,
       sessionId,
       runId,
+      ...(approvedKnowledge.length === 0 ? {} : { approvedKnowledge }),
       ...(recentCheckpoint === undefined ? {} : { recentCheckpoint }),
     }),
   );
+}
+
+/** Approved Rules shown at SessionStart, oldest→newest (hooks-contract.md §9). No embedding — a direct list. */
+const MAX_HOOK_KNOWLEDGE = 10;
+
+function ruleProvenance(scopeJson: string): string {
+  try {
+    const scope = JSON.parse(scopeJson) as { paths?: unknown };
+    const paths = Array.isArray(scope.paths)
+      ? scope.paths.filter((path): path is string => typeof path === "string")
+      : [];
+    return paths.length > 0 ? `why: path ${paths[0]}` : "why: repository-wide";
+  } catch {
+    return "why: repository-wide";
+  }
+}
+
+async function buildApprovedKnowledge(
+  db: Database,
+  repositoryId: TypedId<"repo">,
+): Promise<ApprovedKnowledgeItem[]> {
+  const listed = await listApprovedRulesForRepository(db, repositoryId);
+  if (!listed.ok) {
+    return [];
+  }
+  return listed.value.slice(0, MAX_HOOK_KNOWLEDGE).map((row) => ({
+    id: row.id,
+    title: row.title,
+    summary: row.summary ?? "",
+    provenance: ruleProvenance(row.scopeJson),
+  }));
 }
 
 async function handlePromptSubmitted(

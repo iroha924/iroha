@@ -29,6 +29,26 @@ describe("formatSessionContext", () => {
     expect(text).toContain("unresolved: cover Codex");
   });
 
+  it("renders the applicable approved knowledge section with ids and provenance", () => {
+    const text = formatSessionContext({
+      token: "ist_abc",
+      sessionId: "ses_x",
+      runId: "run_x",
+      approvedKnowledge: [
+        {
+          id: "rul_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+          title: "No direct edits to generated files",
+          summary: "src/generated is owned by the codegen step",
+          provenance: "why: path src/generated/**",
+        },
+      ],
+    });
+    expect(text).toContain("Applicable approved knowledge:");
+    expect(text).toContain(
+      "- rul_01ARZ3NDEKTSV4RRFFQ69G5FAV No direct edits to generated files — src/generated is owned by the codegen step (why: path src/generated/**)",
+    );
+  });
+
   it("bounds the output to 8000 characters", () => {
     const text = formatSessionContext({
       token: "ist_abc",

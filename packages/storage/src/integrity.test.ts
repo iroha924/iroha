@@ -214,7 +214,7 @@ describe("checkIntegrity", () => {
     await db.execute({
       sql: `INSERT INTO embeddings_1024
         (search_document_id, provider, model, dimension, content_hash, embedding, created_at)
-        VALUES ('sdoc_0000000000000000000001', 'voyage', 'voyage-4', 1024, 'sha256:stale', vector32(?), ?)`,
+        VALUES ('sdoc_0000000000000000000001', 'voyage', 'voyage-4-large', 1024, 'sha256:stale', vector32(?), ?)`,
       args: [sample, NOW],
     });
 
