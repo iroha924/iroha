@@ -1,3 +1,4 @@
+export * from "./dashboard.js";
 export * from "./development.js";
 export * from "./graph-search.js";
 export * from "./identity.js";

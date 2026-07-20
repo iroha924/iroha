@@ -443,6 +443,64 @@ export async function listEntitiesByRepository(
   }
 }
 
+/** The `entity_type` values that correspond to a canonical knowledge document. */
+const KNOWLEDGE_ENTITY_TYPES = [
+  "decision",
+  "rule",
+  "concept",
+  "insight",
+  "incident",
+  "pattern",
+  "review_learning",
+] as const;
+
+export interface ListKnowledgeEntitiesFilter {
+  /** Entity statuses to include; defaults to `["approved"]`. */
+  statuses?: string[];
+  /** Page size; the caller passes `limit + 1` to detect a next page. */
+  limit: number;
+  /** Keyset cursor: return rows strictly older than this `(updated_at, id)` pair. */
+  beforeUpdatedAt?: string;
+  beforeId?: string;
+}
+
+/**
+ * Keyset-paginated knowledge entity list for the dashboard Knowledge page
+ * (`GET /api/v1/knowledge`) — the seven canonical knowledge `entity_type`s
+ * only, so Sessions/Checkpoints/Git artifacts never appear here. Deterministic
+ * `updated_at DESC, id DESC` order with a `(updated_at, id)` cursor.
+ */
+export async function listKnowledgeEntities(
+  db: Executor,
+  repositoryId: TypedId<"repo">,
+  filter: ListKnowledgeEntitiesFilter,
+): Promise<Result<EntityRow[], IrohaError>> {
+  const statuses = filter.statuses ?? ["approved"];
+  const typePlaceholders = KNOWLEDGE_ENTITY_TYPES.map(() => "?").join(", ");
+  const statusPlaceholders = statuses.map(() => "?").join(", ");
+  const conditions = [
+    "repository_id = ?",
+    `entity_type IN (${typePlaceholders})`,
+    `status IN (${statusPlaceholders})`,
+  ];
+  const args: Array<string | number> = [repositoryId, ...KNOWLEDGE_ENTITY_TYPES, ...statuses];
+  if (filter.beforeUpdatedAt !== undefined && filter.beforeId !== undefined) {
+    conditions.push("(updated_at, id) < (?, ?)");
+    args.push(filter.beforeUpdatedAt, filter.beforeId);
+  }
+  args.push(filter.limit);
+  try {
+    const result = await db.execute({
+      sql: `SELECT * FROM entities WHERE ${conditions.join(" AND ")}
+        ORDER BY updated_at DESC, id DESC LIMIT ?`,
+      args,
+    });
+    return ok(result.rows.map(rowToEntity));
+  } catch (cause) {
+    return err(mapLibsqlError(cause, "Failed to list knowledge entities"));
+  }
+}
+
 // --- canonical_documents --------------------------------------------------
 
 export interface CanonicalDocumentRow {
