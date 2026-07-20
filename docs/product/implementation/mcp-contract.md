@@ -161,6 +161,29 @@ interface SearchData {
 }
 ```
 
+`SourceRef` and `RelationPreview` are MCP *output* shapes — the server constructs
+them, they are never parsed from a request — so they intentionally have no
+`schemas/*.json` JSON Schema mirror (decision-log ID-032):
+
+```ts
+interface SourceRef {
+  // canonical-schema.md §5 source kinds
+  type:
+    | "session" | "checkpoint" | "issue" | "pull_request" | "review"
+    | "commit" | "file" | "symbol" | "document" | "url";
+  ref: string;
+  path?: string;
+  lineStart?: number;
+}
+
+interface RelationPreview {
+  relationType: RelationType;              // canonical-schema.md §5 relation types
+  direction: "outgoing" | "incoming";
+  entityId: string;
+  title: string;
+}
+```
+
 `includeBody=true` is capped at 10 results and 30,000 output characters.
 
 ### 6.2 `get_context`
