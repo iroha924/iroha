@@ -15,7 +15,9 @@ import {
 } from "@iroha/domain";
 import {
   type Database,
+  enqueueEmbeddingJob,
   getEntityById,
+  getSearchDocumentByEntityId,
   insertDirtyMarker,
   insertRelation,
   listCanonicalDocumentsByRepository,
@@ -29,6 +31,9 @@ import {
 /** database-schema.md §6: "approved canonical" is the only tier this maps to — see decision-log.md ID-026. */
 const CANONICAL_AUTHORITY = 100;
 const SYNC_PROVIDER = "canonical";
+/** OQ-005 fixes the embedding provider/model; `embedding_jobs` is keyed on `(sdoc, provider, model)`. */
+const EMBEDDING_PROVIDER = "voyage";
+const EMBEDDING_MODEL = "voyage-4";
 
 function entityTypeForFrontmatterType(
   type: CanonicalDocument["frontmatter"]["type"],
@@ -101,6 +106,36 @@ async function upsertOneDocument(
   });
   if (!searchResult.ok) {
     return searchResult;
+  }
+
+  // `upsertSearchDocument` is keyed on `entity_id`; on re-index it keeps the
+  // row's original `sdoc` id, which differs from the one just generated. Read
+  // the effective id so the embedding job's foreign key (and its
+  // `(sdoc, provider, model)` dedup key) reference the real row rather than a
+  // phantom id.
+  const storedSearch = await getSearchDocumentByEntityId(db, frontmatter.id);
+  if (!storedSearch.ok) {
+    return storedSearch;
+  }
+  if (storedSearch.value !== null) {
+    // Queue this (re-)indexed document for embedding. Offline-safe: this only
+    // enqueues work — no embedding provider is called here (ID-014 forbids
+    // remote calls in hooks, and sync stays usable with no network/key). The
+    // worker (`runEmbeddingSync`) drains the queue during `iroha sync` when
+    // embedding is enabled and a key is present, and otherwise leaves jobs
+    // pending (database-schema.md §12 step 9). Both plain `sync` and
+    // `sync --rebuild` funnel through here, so one hook covers both.
+    const enqueueResult = await enqueueEmbeddingJob(db, {
+      id: makeTypedId("job", clock, random),
+      searchDocumentId: storedSearch.value.id,
+      provider: EMBEDDING_PROVIDER,
+      model: EMBEDDING_MODEL,
+      createdAt: now,
+      updatedAt: now,
+    });
+    if (!enqueueResult.ok) {
+      return enqueueResult;
+    }
   }
 
   return ok(undefined);

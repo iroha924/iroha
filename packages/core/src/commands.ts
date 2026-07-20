@@ -1,6 +1,7 @@
 import { CryptoRandomSource, type IrohaError, ok, type Result, SystemClock } from "@iroha/domain";
 import { type SearchTextHit, searchText } from "@iroha/search";
 import { closeDatabase, openDatabase, runMigrations } from "@iroha/storage";
+import { type RunEmbeddingSyncResult, runEmbeddingSync } from "./embedding-sync.js";
 import {
   type InitRepositoryOptions,
   type InitRepositoryResult,
@@ -69,7 +70,7 @@ export interface RunSyncOptions {
 
 export type RunSyncResult =
   | { rebuilt: true; rebuild: RebuildDatabaseResult }
-  | { rebuilt: false; sync: SyncCanonicalResult };
+  | { rebuilt: false; sync: SyncCanonicalResult; embedding: RunEmbeddingSyncResult };
 
 /** `iroha sync` / `iroha sync --rebuild`. */
 export async function runSync(
@@ -124,7 +125,21 @@ export async function runSync(
     if (!syncResult.ok) {
       return syncResult;
     }
-    return ok({ rebuilt: false, sync: syncResult.value });
+    // Drain the embedding queue this sync just (re)filled. A provider outage
+    // does not fail the sync — `runEmbeddingSync` degrades per job and only
+    // returns `err` on a real DB error (CLAUDE.md: embedding failure degrades
+    // to lexical search).
+    const embeddingResult = await runEmbeddingSync(
+      opened.value,
+      resolvedResult.value.repositoryId,
+      resolvedResult.value.config.search.embedding,
+      clock,
+      new CryptoRandomSource(),
+    );
+    if (!embeddingResult.ok) {
+      return embeddingResult;
+    }
+    return ok({ rebuilt: false, sync: syncResult.value, embedding: embeddingResult.value });
   } finally {
     await closeDatabase(opened.value);
   }
