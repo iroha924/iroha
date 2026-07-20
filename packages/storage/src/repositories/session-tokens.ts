@@ -89,3 +89,27 @@ export async function getSessionToken(
     return err(mapLibsqlError(cause, "Failed to read session token"));
   }
 }
+
+/**
+ * Slides the idle-expiry window on a successful verification: a token "expires
+ * 24 hours after last use" (mcp-contract.md §5), so each verified MCP call bumps
+ * `last_used_at` to now and `expires_at` to now + 24h. Updating a non-existent
+ * token is a no-op (0 rows) rather than an error — the caller has already
+ * confirmed the row exists.
+ */
+export async function updateSessionTokenLastUsed(
+  db: Executor,
+  tokenHmac: string,
+  lastUsedAt: string,
+  expiresAt: string,
+): Promise<Result<void, IrohaError>> {
+  try {
+    await db.execute({
+      sql: "UPDATE session_tokens SET last_used_at = ?, expires_at = ? WHERE token_hmac = ?",
+      args: [lastUsedAt, expiresAt, tokenHmac],
+    });
+    return ok(undefined);
+  } catch (cause) {
+    return err(mapLibsqlError(cause, "Failed to update session token"));
+  }
+}

@@ -1,0 +1,10 @@
+/**
+ * Re-exports the `@iroha/domain` primitives the `@iroha/mcp` transport package
+ * needs. `compatibility.md` §4 lets `@iroha/mcp` depend only on `@iroha/core`
+ * (biome-enforced), so the thin stdio layer receives its shared value/type
+ * vocabulary through this facade — the same pattern `@iroha/platform` uses to
+ * feed the adapters (decision-log ID-028(a)).
+ */
+
+export type { Clock, ErrorCode, RandomSource, Result, TypedId } from "@iroha/domain";
+export { CryptoRandomSource, IrohaError, SystemClock } from "@iroha/domain";

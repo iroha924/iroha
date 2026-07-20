@@ -1,0 +1,95 @@
+import { CryptoRandomSource, SystemClock } from "@iroha/core";
+import { describe, expect, it } from "vitest";
+import { dispatchTool } from "./dispatch.js";
+import type { McpEnvelope } from "./envelope.js";
+import { buildServer, SERVER_INSTRUCTIONS } from "./server.js";
+import { TOOLS } from "./tools/index.js";
+
+const ctx = { cwd: "/nonexistent-cwd", clock: new SystemClock(), random: new CryptoRandomSource() };
+
+function envelopeOf(result: { structuredContent?: unknown }): McpEnvelope<unknown> {
+  return result.structuredContent as McpEnvelope<unknown>;
+}
+
+describe("dispatchTool", () => {
+  it("returns a NOT_FOUND envelope for an unknown tool", async () => {
+    const result = await dispatchTool("does_not_exist", {}, ctx);
+    const env = envelopeOf(result);
+    expect(result.isError).toBe(true);
+    expect(env.ok).toBe(false);
+    if (!env.ok) {
+      expect(env.error.code).toBe("NOT_FOUND");
+    }
+    expect(env.traceId).toMatch(/^trc_[0-9a-f]{32}$/);
+  });
+
+  it("rejects an oversize request with LIMIT_EXCEEDED before running the tool", async () => {
+    const result = await dispatchTool(
+      "get_session_state",
+      { sessionToken: `ist_${"A".repeat(300 * 1024)}` },
+      ctx,
+    );
+    const env = envelopeOf(result);
+    expect(env.ok).toBe(false);
+    if (!env.ok) {
+      expect(env.error.code).toBe("LIMIT_EXCEEDED");
+    }
+  });
+
+  it("rejects an unknown input field with INVALID_INPUT", async () => {
+    const result = await dispatchTool(
+      "get_session_state",
+      { sessionToken: `ist_${"A".repeat(43)}`, unexpected: true },
+      ctx,
+    );
+    const env = envelopeOf(result);
+    expect(env.ok).toBe(false);
+    if (!env.ok) {
+      expect(env.error.code).toBe("INVALID_INPUT");
+      expect(env.error.message).toContain("unexpected");
+    }
+  });
+
+  it("wraps a valid request that resolves no repository as a typed failure envelope", async () => {
+    const result = await dispatchTool(
+      "get_session_state",
+      { sessionToken: `ist_${"A".repeat(43)}` },
+      ctx,
+    );
+    const env = envelopeOf(result);
+    expect(env.ok).toBe(false);
+    if (!env.ok) {
+      expect(typeof env.error.code).toBe("string");
+      expect(env.error.message).not.toContain("ist_");
+    }
+  });
+});
+
+describe("tool registry", () => {
+  it("exposes get_session_state and no human-approval operation", () => {
+    const names = TOOLS.map((tool) => tool.name);
+    expect(names).toContain("get_session_state");
+    for (const forbidden of [
+      "approve",
+      "reject",
+      "publish",
+      "delete",
+      "activate",
+      "edit_canonical",
+    ]) {
+      expect(names.some((name) => name.includes(forbidden))).toBe(false);
+    }
+  });
+});
+
+describe("server", () => {
+  it("has self-contained instructions within the 512-character budget", () => {
+    expect(SERVER_INSTRUCTIONS.length).toBeLessThanOrEqual(512);
+    expect(SERVER_INSTRUCTIONS).toContain("iroha");
+    expect(SERVER_INSTRUCTIONS.slice(0, 512)).toContain("Human approval");
+  });
+
+  it("builds without throwing", () => {
+    expect(() => buildServer(ctx)).not.toThrow();
+  });
+});
