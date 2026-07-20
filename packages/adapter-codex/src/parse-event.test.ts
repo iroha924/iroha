@@ -176,6 +176,54 @@ describe("parseCodexEvent — apply_patch and Bash targets", () => {
       payload: { targets: [{ kind: "command", value: "pnpm", operation: "execute" }] },
     });
   });
+
+  it("never leaks an env-assignment secret through the command target", () => {
+    const { ctx } = makeFakeCtx();
+    const event = unwrap(
+      parseCodexEvent(
+        {
+          ...common,
+          hook_event_name: "PreToolUse",
+          turn_id: "t-1",
+          tool_name: "Bash",
+          tool_input: { command: "AWS_SECRET_ACCESS_KEY=abcd/efgh aws s3 ls" },
+        },
+        ctx,
+      ),
+    );
+    expect(event).toMatchObject({
+      payload: { targets: [{ kind: "command", value: "command", operation: "execute" }] },
+    });
+    expect(JSON.stringify(event)).not.toContain("abcd/efgh");
+  });
+
+  it("does not treat a header-shaped patch body line as a real apply_patch header", () => {
+    const { ctx } = makeFakeCtx();
+    const patch = [
+      "*** Begin Patch",
+      "*** Update File: src/real.ts",
+      "@@",
+      "-*** Update File: src/removed-from-a-string.ts",
+      "+const doc = '*** Add File: src/inside-a-string.ts'",
+      "*** End Patch",
+    ].join("\n");
+    const event = unwrap(
+      parseCodexEvent(
+        {
+          ...common,
+          hook_event_name: "PreToolUse",
+          turn_id: "t-1",
+          tool_name: "apply_patch",
+          tool_input: { command: patch },
+        },
+        ctx,
+      ),
+    );
+    // Only the column-0 header is a target; the `+`/`-`-prefixed body lines are not.
+    expect(event).toMatchObject({
+      payload: { targets: [{ kind: "file", value: "src/real.ts", operation: "write" }] },
+    });
+  });
 });
 
 describe("parseCodexEvent — forward-compatibility and errors", () => {

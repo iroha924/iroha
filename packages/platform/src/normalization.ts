@@ -20,6 +20,31 @@ export interface ToolTarget {
 }
 
 /**
+ * A safe, bounded classification of a shell command for a `command` tool target.
+ * The full command is only ever kept as a digest; this value must never carry a
+ * secret or an absolute path (hooks-contract.md §8/§10). Shared by both adapters
+ * so the two extractors cannot drift.
+ *
+ * It takes the leading whitespace token, drops any leading directory (so
+ * `/Users/alice/bin/deploy.sh` → `deploy.sh`, never leaking a username or
+ * layout), and collapses anything that is not a bare program name — most
+ * importantly an `VAR=secret cmd` env-assignment prefix, whose leading token is
+ * `VAR=secret` — to the generic label `command`. The full command survives only
+ * as the tool event's `inputDigest`.
+ */
+export function classifyCommandTarget(command: string): string {
+  const leading = command.trim().split(/\s+/)[0] ?? "";
+  // An env-assignment prefix (`VAR=value`) is never a program name — collapse it
+  // *before* any path handling, because the assigned value can itself contain a
+  // `/` whose tail would otherwise pass the bare-name check and leak.
+  if (leading.length === 0 || leading.includes("=")) {
+    return "command";
+  }
+  const base = leading.split(/[/\\]/).pop() ?? "";
+  return /^[A-Za-z0-9._-]+$/.test(base) ? base : "command";
+}
+
+/**
  * Everything an adapter needs to finalize a normalized event but cannot compute
  * itself: repository-keyed HMAC digesting (the salt lives in `@iroha/git`, which
  * adapters may not depend on), a fresh event id, and the event timestamp.

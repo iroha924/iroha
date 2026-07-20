@@ -1,4 +1,5 @@
 import {
+  classifyCommandTarget,
   err,
   IrohaError,
   type NormalizationContext,
@@ -97,8 +98,13 @@ export function extractClaudeTargets(
 ): ToolTarget[] {
   if (toolName === "Bash") {
     const command = stringField(toolInput, "command");
-    const classified = command?.trim().split(/\s+/)[0];
-    return [{ kind: "command", value: classified || toolName, operation: "execute" }];
+    return [
+      {
+        kind: "command",
+        value: command === undefined ? toolName : classifyCommandTarget(command),
+        operation: "execute",
+      },
+    ];
   }
   if (toolName === "Read") {
     const path = stringField(toolInput, "file_path");

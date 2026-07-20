@@ -117,6 +117,25 @@ describe("parseClaudeEvent — tool events and target extraction", () => {
     expect(event?.kind === "TOOL_STARTED" && event.payload.targets[0]?.value).toBe("pnpm");
   });
 
+  it("never leaks an env-assignment secret through the command target", () => {
+    const { ctx } = makeFakeCtx();
+    const event = unwrap(
+      parseClaudeEvent(
+        {
+          ...common,
+          hook_event_name: "PreToolUse",
+          tool_name: "Bash",
+          tool_input: { command: "GITHUB_TOKEN=ghp_notARealSecret gh api /user" },
+        },
+        ctx,
+      ),
+    );
+    expect(event).toMatchObject({
+      payload: { targets: [{ kind: "command", value: "command", operation: "execute" }] },
+    });
+    expect(JSON.stringify(event)).not.toContain("ghp_notARealSecret");
+  });
+
   it("extracts an Edit file target as a write", () => {
     const { ctx } = makeFakeCtx();
     const event = unwrap(

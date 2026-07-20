@@ -1,4 +1,5 @@
 import {
+  classifyCommandTarget,
   err,
   IrohaError,
   type NormalizationContext,
@@ -72,8 +73,10 @@ function stringField(input: Record<string, unknown>, key: string): string | unde
 
 // Matches an apply_patch section header line: `*** Add File: path`,
 // `*** Update File: path`, `*** Delete File: path`. Captures only the file
-// path; the patch body (the actual content) is never read or stored (§8).
-const APPLY_PATCH_HEADER = /^\*\*\* (Add|Update|Delete) File: (.+)$/;
+// path (trailing whitespace/CR trimmed); the patch body is never read or stored
+// (§8). Matched against the untrimmed line so a `+`/`-`/space-prefixed body line
+// that merely *contains* header-shaped text is not mistaken for a real header.
+const APPLY_PATCH_HEADER = /^\*\*\* (Add|Update|Delete) File: (.+?)\s*$/;
 
 /**
  * Extract file targets from an apply_patch command by reading only its section
@@ -87,7 +90,7 @@ function extractApplyPatchTargets(command: string | undefined): ToolTarget[] {
   }
   const targets: ToolTarget[] = [];
   for (const line of command.split("\n")) {
-    const match = APPLY_PATCH_HEADER.exec(line.trim());
+    const match = APPLY_PATCH_HEADER.exec(line);
     if (match) {
       const operation = match[1] === "Delete" ? "delete" : "write";
       targets.push({ kind: "file", value: match[2] as string, operation });
@@ -105,8 +108,13 @@ export function extractCodexTargets(
 ): ToolTarget[] {
   if (toolName === "Bash") {
     const command = stringField(toolInput, "command");
-    const classified = command?.trim().split(/\s+/)[0];
-    return [{ kind: "command", value: classified || toolName, operation: "execute" }];
+    return [
+      {
+        kind: "command",
+        value: command === undefined ? toolName : classifyCommandTarget(command),
+        operation: "execute",
+      },
+    ];
   }
   if (toolName === "apply_patch") {
     return extractApplyPatchTargets(stringField(toolInput, "command"));
