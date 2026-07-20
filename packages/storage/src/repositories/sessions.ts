@@ -410,6 +410,27 @@ export async function getTurnByExternalId(
   }
 }
 
+/**
+ * The most recently started Turn of a Run — the "current" Turn a tool event or
+ * Stop hook refers to, since a Run's Turns are created one per user prompt in
+ * chronological order. Returns `null` for a Run with no Turns yet.
+ */
+export async function getLatestTurnForRun(
+  db: Executor,
+  runId: TypedId<"run">,
+): Promise<Result<TurnRow | null, IrohaError>> {
+  try {
+    const result = await db.execute({
+      sql: "SELECT * FROM turns WHERE run_id = ? ORDER BY started_at DESC, id DESC LIMIT 1",
+      args: [runId],
+    });
+    const row = result.rows[0];
+    return ok(row === undefined ? null : rowToTurn(row));
+  } catch (cause) {
+    return err(mapLibsqlError(cause, "Failed to read latest turn"));
+  }
+}
+
 export interface CloseTurnInput {
   from: TurnStatus;
   to: TurnStatus;

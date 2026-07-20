@@ -14,7 +14,9 @@ export type Digest = `hmac-sha256:${string}`;
 export interface ToolTarget {
   kind: "file" | "path" | "command" | "mcp" | "other";
   value: string;
-  operation?: "read" | "write" | "delete" | "execute" | "unknown";
+  // `| undefined` mirrors the Zod-inferred normalized target (`.optional()`),
+  // so an event's own `payload.targets` is assignable to `ToolTarget[]`.
+  operation?: "read" | "write" | "delete" | "execute" | "unknown" | undefined;
 }
 
 /**

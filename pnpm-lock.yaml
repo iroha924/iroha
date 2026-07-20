@@ -324,6 +324,12 @@ importers:
 
   packages/core:
     dependencies:
+      '@iroha/adapter-claude':
+        specifier: workspace:*
+        version: link:../adapter-claude
+      '@iroha/adapter-codex':
+        specifier: workspace:*
+        version: link:../adapter-codex
       '@iroha/canonical':
         specifier: workspace:*
         version: link:../canonical
