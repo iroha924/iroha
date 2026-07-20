@@ -4,7 +4,7 @@ iroha is a local-first Engineering Memory Graph for Claude Code and Codex (TypeS
 
 ## Read first
 
-Read `CLAUDE.md`, then the spec files it lists under `docs/product/` in the order given there (`background.md` → ... → `implementation-plan.md`). The checked-in product and implementation specifications are authoritative — do not substitute model memory, transcript parsing, a hosted database, or an unapproved architecture decision for them. If prose and a machine-readable contract (`docs/product/schemas/`, `docs/product/migrations/`) disagree, report the conflict; do not silently pick one.
+Read `CLAUDE.md`, then the spec files it lists under `docs/product/` in the order given there (`background.md` → ... → `implementation-plan.md`). The checked-in product and implementation specifications are authoritative — do not substitute model memory, transcript parsing, a hosted database, or an unapproved architecture decision for them. If prose and a machine-readable contract (repo-root `schemas/`, `migrations/`) disagree, report the conflict; do not silently pick one.
 
 ## Rules you must actively read (not auto-loaded for you)
 
