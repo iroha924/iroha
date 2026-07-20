@@ -1,0 +1,54 @@
+name: Agent task
+description: A unit of work an agent can pick up (acceptance criteria, target, verification)
+labels: ["task"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        With acceptance criteria, target files, verification commands, and spec links, this issue can be assigned directly to an agent. Aim for a 2–4 hour unit of work.
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What to achieve, in one sentence
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Verifiable conditions. Write them as test cases where possible.
+      placeholder: |
+        - GET /api/foo returns 200 with { id, name }
+        - every it() in describe('x') passes under `pnpm test`
+    validations:
+      required: true
+  - type: input
+    id: files
+    attributes:
+      label: Target files / packages
+      placeholder: "packages/... / apps/..."
+  - type: textarea
+    id: refs
+    attributes:
+      label: Related spec / ADR
+      description: A docs/product/... path, or a decision-log ID
+    validations:
+      required: true
+  - type: textarea
+    id: verify
+    attributes:
+      label: How to verify
+      description: Commands that must pass
+      placeholder: "pnpm lint && pnpm typecheck && pnpm test && pnpm build"
+  - type: textarea
+    id: outofscope
+    attributes:
+      label: Out of scope / non-goals
+  - type: checkboxes
+    id: impact
+    attributes:
+      label: Impact
+      options:
+        - label: Changes machine contracts (schemas/ · migrations/)
+        - label: Touches a security-sensitive package (credential / subprocess / path handling)
