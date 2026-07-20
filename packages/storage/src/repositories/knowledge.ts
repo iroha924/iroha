@@ -129,6 +129,54 @@ export async function getKnowledgeItemById(
   }
 }
 
+/** An approved Rule joined with its entity identity, for `get_active_rules`. */
+export interface ActiveRuleRow {
+  id: string;
+  title: string;
+  summary: string | null;
+  enforcement: "advisory" | "guardrail";
+  scopeJson: string;
+  guardSpecJson: string | null;
+  canonicalPath: string | null;
+}
+
+/**
+ * Lists a repository's approved Rule knowledge items (both advisory and
+ * guardrail enforcement) with their entity title/summary, for the MCP
+ * `get_active_rules` tool (mcp-contract.md §6.3). Only `status = 'approved'`
+ * entities are returned — pending candidates are never included.
+ */
+export async function listApprovedRulesForRepository(
+  db: Executor,
+  repositoryId: TypedId<"repo">,
+): Promise<Result<ActiveRuleRow[], IrohaError>> {
+  try {
+    const result = await db.execute({
+      sql: `SELECT e.id AS id, e.title AS title, e.summary AS summary,
+          k.enforcement AS enforcement, k.scope_json AS scope_json,
+          k.guard_spec_json AS guard_spec_json, k.canonical_path AS canonical_path
+        FROM knowledge_items k
+        JOIN entities e ON e.id = k.id
+        WHERE e.repository_id = ? AND k.knowledge_type = 'rule' AND e.status = 'approved'
+        ORDER BY e.authority DESC, e.id DESC`,
+      args: [repositoryId],
+    });
+    return ok(
+      result.rows.map((row) => ({
+        id: String(row.id),
+        title: String(row.title),
+        summary: nullableString(row.summary),
+        enforcement: row.enforcement as "advisory" | "guardrail",
+        scopeJson: String(row.scope_json),
+        guardSpecJson: nullableString(row.guard_spec_json),
+        canonicalPath: nullableString(row.canonical_path),
+      })),
+    );
+  } catch (cause) {
+    return err(mapLibsqlError(cause, "Failed to list approved rules"));
+  }
+}
+
 // --- candidates ---------------------------------------------------
 
 export const CANDIDATE_TYPES = [

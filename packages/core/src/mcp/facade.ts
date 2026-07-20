@@ -8,3 +8,5 @@
 
 export type { Clock, ErrorCode, RandomSource, Result, TypedId } from "@iroha/domain";
 export { CryptoRandomSource, IrohaError, SystemClock } from "@iroha/domain";
+export type { EntityType, RelationDirection, RelationType } from "@iroha/storage";
+export { ENTITY_TYPES, RELATION_TYPES } from "@iroha/storage";

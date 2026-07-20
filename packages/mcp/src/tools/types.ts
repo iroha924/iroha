@@ -1,6 +1,7 @@
 import type { Clock, IrohaError, RandomSource, Result } from "@iroha/core";
 import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import type { z } from "zod";
+import type { McpWarning } from "../envelope.js";
 
 /** Per-request execution context injected by the server. */
 export interface McpToolContext {
@@ -20,6 +21,8 @@ export interface AnyMcpTool {
   annotations: ToolAnnotations;
   inputSchema: z.ZodType;
   handler: (input: unknown, ctx: McpToolContext) => Promise<Result<unknown, IrohaError>>;
+  /** Optional per-request advisories (e.g. a filter that is not applied yet). */
+  warnings?: (input: unknown) => McpWarning[];
 }
 
 /** Binds a typed input schema to a typed handler, then erases to `AnyMcpTool`. */
@@ -29,6 +32,7 @@ export function defineTool<S extends z.ZodType, Data>(tool: {
   annotations: ToolAnnotations;
   inputSchema: S;
   handler: (input: z.output<S>, ctx: McpToolContext) => Promise<Result<Data, IrohaError>>;
+  warnings?: (input: z.output<S>) => McpWarning[];
 }): AnyMcpTool {
   return tool as unknown as AnyMcpTool;
 }

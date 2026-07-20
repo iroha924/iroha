@@ -74,9 +74,11 @@ export async function dispatchTool(
 
   try {
     const result = await tool.handler(parsed.data, ctx);
-    return toToolResult(
-      result.ok ? successEnvelope(result.value, traceId) : failureEnvelope(result.error, traceId),
-    );
+    if (!result.ok) {
+      return toToolResult(failureEnvelope(result.error, traceId));
+    }
+    const warnings = tool.warnings ? tool.warnings(parsed.data) : [];
+    return toToolResult(successEnvelope(result.value, traceId, warnings));
   } catch (cause) {
     // Transport boundary: a use-case that throws instead of returning `err`
     // must still yield a typed envelope, never a raw stack to the model.
