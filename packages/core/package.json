@@ -28,6 +28,8 @@
     "@iroha/git": "workspace:*",
     "@iroha/forge": "workspace:*",
     "@iroha/platform": "workspace:*",
+    "@iroha/adapter-claude": "workspace:*",
+    "@iroha/adapter-codex": "workspace:*",
     "yaml": "catalog:"
   },
   "devDependencies": {

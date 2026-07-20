@@ -1,6 +1,6 @@
 import { CryptoRandomSource, type IrohaError, ok, type Result, SystemClock } from "@iroha/domain";
 import { type SearchTextHit, searchText } from "@iroha/search";
-import { closeDatabase, openDatabase } from "@iroha/storage";
+import { closeDatabase, openDatabase, runMigrations } from "@iroha/storage";
 import {
   type InitRepositoryOptions,
   type InitRepositoryResult,
@@ -101,6 +101,19 @@ export async function runSync(
     return opened;
   }
   try {
+    // Apply any pending migrations before syncing (database-schema.md §3: only
+    // init/sync/doctor --repair migrate — hooks never do). Without this, a DB
+    // from an older build stays behind after `iroha sync` and a later hook that
+    // needs a not-yet-created table would silently fail-open.
+    const migrated = await runMigrations(
+      opened.value,
+      migrationsDir,
+      resolvedResult.value.dbPath,
+      clock,
+    );
+    if (!migrated.ok) {
+      return migrated;
+    }
     const syncResult = await syncCanonicalToDatabase(
       opened.value,
       resolvedResult.value.repositoryId,
