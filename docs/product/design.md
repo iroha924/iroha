@@ -152,7 +152,7 @@ DDLの正本は [001_initial.sql](./migrations/001_initial.sql) である。migr
 | Development | `work_items`, `commits`, `pull_requests`, `review_comments`, `files`, `symbols` |
 | Knowledge | `knowledge_items`, `candidates`, `approvals` |
 | Graph / search | `relations`, `search_documents`, `search_fts_unicode`, `search_fts_trigram`, `embeddings_1024`, `embedding_jobs` |
-| Operations | `sync_cursors`, `dirty_markers`, `local_settings`, `event_log`, `idempotency_keys` |
+| Operations | `sync_cursors`, `dirty_markers`, `local_settings`, `event_log`, `idempotency_keys`, `session_tokens` |
 
 主要原則:
 

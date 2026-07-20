@@ -115,6 +115,7 @@ Rules:
 
 - `sync_cursors`, `dirty_markers`, `local_settings`, `event_log`.
 - `idempotency_keys`: MCP/HTTP mutationの再試行結果をrepository・operation・key単位で保持する。
+- `session_tokens`: SessionStart Hookが発行した256-bit session tokenの**salt-keyed HMAC-SHA-256 digestだけ**を保持する（平文tokenは保存しない、design.md §9 / mcp-contract.md §5）。repository・Agent Session・Session Run・platformにbindし、`issued_at`/`last_used_at`/`expires_at`を持つ。MCP server（後続WP）が検証に読む。disposableなlocal運用状態であり、`sync --rebuild`はcanonicalのみ取り込むためrebuild後は空で再構築される。`migrations/002_session_tokens.sql`で追加。
 
 ## 6. Authority values
 

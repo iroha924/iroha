@@ -48,22 +48,26 @@ describe("runMigrations", () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.value).toEqual([{ version: 1, name: "initial" }]);
+      expect(result.value).toEqual([
+        { version: 1, name: "initial" },
+        { version: 2, name: "session_tokens" },
+      ]);
     }
 
     const tables = await opened.value.execute(
-      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'entities'",
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('entities', 'session_tokens')",
     );
-    expect(tables.rows.length).toBe(1);
+    expect(tables.rows.length).toBe(2);
 
     const migrations = await opened.value.execute(
-      "SELECT version, name, checksum FROM schema_migrations",
+      "SELECT version, name, checksum FROM schema_migrations ORDER BY version",
     );
-    expect(migrations.rows.length).toBe(1);
+    expect(migrations.rows.length).toBe(2);
     expect(migrations.rows[0]?.version).toBe(1);
+    expect(migrations.rows[1]?.version).toBe(2);
 
     const userVersion = await opened.value.execute("PRAGMA user_version");
-    expect(userVersion.rows[0]?.user_version).toBe(1);
+    expect(userVersion.rows[0]?.user_version).toBe(2);
   });
 
   it("is a no-op the second time it runs against an already-migrated database", async () => {
@@ -112,8 +116,8 @@ describe("runMigrations", () => {
     const migrationsDir = await copyMigrationsDir();
     tempDirs.push(migrationsDir);
     await writeFile(
-      join(migrationsDir, "002_add_synthetic_table.sql"),
-      "BEGIN IMMEDIATE;\nCREATE TABLE synthetic_two (id INTEGER PRIMARY KEY);\nPRAGMA user_version = 2;\nCOMMIT;\n",
+      join(migrationsDir, "003_add_synthetic_table.sql"),
+      "BEGIN IMMEDIATE;\nCREATE TABLE synthetic_two (id INTEGER PRIMARY KEY);\nPRAGMA user_version = 3;\nCOMMIT;\n",
       "utf8",
     );
     const { dir, dbPath } = await createTempDbPath();
@@ -126,14 +130,14 @@ describe("runMigrations", () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.value.map((m) => m.version)).toEqual([1, 2]);
+      expect(result.value.map((m) => m.version)).toEqual([1, 2, 3]);
     }
     const userVersion = await opened.value.execute("PRAGMA user_version");
-    expect(userVersion.rows[0]?.user_version).toBe(2);
+    expect(userVersion.rows[0]?.user_version).toBe(3);
     const migrations = await opened.value.execute(
       "SELECT version FROM schema_migrations ORDER BY version",
     );
-    expect(migrations.rows.map((r) => r.version)).toEqual([1, 2]);
+    expect(migrations.rows.map((r) => r.version)).toEqual([1, 2, 3]);
   });
 
   it("backs up the database file before applying a migration to an existing database", async () => {
@@ -148,8 +152,8 @@ describe("runMigrations", () => {
     await runMigrations(opened.value, migrationsDir, dbPath, CLOCK);
 
     await writeFile(
-      join(migrationsDir, "002_add_synthetic_table.sql"),
-      "BEGIN IMMEDIATE;\nCREATE TABLE synthetic_two (id INTEGER PRIMARY KEY);\nPRAGMA user_version = 2;\nCOMMIT;\n",
+      join(migrationsDir, "003_add_synthetic_table.sql"),
+      "BEGIN IMMEDIATE;\nCREATE TABLE synthetic_two (id INTEGER PRIMARY KEY);\nPRAGMA user_version = 3;\nCOMMIT;\n",
       "utf8",
     );
 
@@ -171,8 +175,8 @@ describe("runMigrations", () => {
     await runMigrations(opened.value, migrationsDir, dbPath, CLOCK);
 
     await writeFile(
-      join(migrationsDir, "002_add_synthetic_table.sql"),
-      "BEGIN IMMEDIATE;\nCREATE TABLE synthetic_two (id INTEGER PRIMARY KEY);\nPRAGMA user_version = 2;\nCOMMIT;\n",
+      join(migrationsDir, "003_add_synthetic_table.sql"),
+      "BEGIN IMMEDIATE;\nCREATE TABLE synthetic_two (id INTEGER PRIMARY KEY);\nPRAGMA user_version = 3;\nCOMMIT;\n",
       "utf8",
     );
 
@@ -209,11 +213,14 @@ describe("runMigrations", () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      // Nothing was newly *executed* this call — version 1 was backfilled,
-      // not (re-)applied.
-      expect(result.value).toEqual([]);
+      // Version 1 was backfilled (already applied by the simulated crash), not
+      // re-executed — re-running its DDL would fail with "table already exists".
+      // Only the genuinely-pending version 2 was newly applied this call.
+      expect(result.value.map((m) => m.version)).toEqual([2]);
     }
-    const afterRows = await opened.value.execute("SELECT version, checksum FROM schema_migrations");
+    const afterRows = await opened.value.execute(
+      "SELECT version, checksum FROM schema_migrations WHERE version = 1",
+    );
     expect(afterRows.rows).toEqual([{ version: 1, checksum: initial.checksum }]);
   });
 
@@ -221,8 +228,8 @@ describe("runMigrations", () => {
     const newerMigrationsDir = await copyMigrationsDir();
     tempDirs.push(newerMigrationsDir);
     await writeFile(
-      join(newerMigrationsDir, "002_add_synthetic_table.sql"),
-      "BEGIN IMMEDIATE;\nCREATE TABLE synthetic_two (id INTEGER PRIMARY KEY);\nPRAGMA user_version = 2;\nCOMMIT;\n",
+      join(newerMigrationsDir, "003_add_synthetic_table.sql"),
+      "BEGIN IMMEDIATE;\nCREATE TABLE synthetic_two (id INTEGER PRIMARY KEY);\nPRAGMA user_version = 3;\nCOMMIT;\n",
       "utf8",
     );
     const { dir, dbPath } = await createTempDbPath();
@@ -231,21 +238,16 @@ describe("runMigrations", () => {
     if (!opened.ok) throw new Error("failed to open database");
     dbs.push(opened.value);
 
-    // A newer build applies both migrations, reaching user_version 2.
+    // A newer build applies all migrations, reaching user_version 3.
     const first = await runMigrations(opened.value, newerMigrationsDir, dbPath, CLOCK);
     expect(first.ok).toBe(true);
 
-    // A downgraded build only ships migration 001 — nothing is "pending"
-    // from its point of view, but its own repository code was written
-    // against schema version 1, not the version 2 this database is
-    // actually at.
-    const olderMigrationsDir = await mkdtemp(join(tmpdir(), "iroha-migrations-older-"));
+    // A downgraded build ships only the real migrations (001, 002), not the
+    // synthetic 003 above — nothing is "pending" from its point of view, but
+    // its own repository code was written against version 2, not the version 3
+    // this database is actually at.
+    const olderMigrationsDir = await copyMigrationsDir();
     tempDirs.push(olderMigrationsDir);
-    await writeFile(
-      join(olderMigrationsDir, "001_initial.sql"),
-      await readFile(join(newerMigrationsDir, "001_initial.sql"), "utf8"),
-      "utf8",
-    );
 
     const result = await runMigrations(opened.value, olderMigrationsDir, dbPath, CLOCK);
 
@@ -272,23 +274,23 @@ describe("runMigrations", () => {
     const first = await runMigrations(opened.value, migrationsDir, dbPath, CLOCK);
     expect(first.ok).toBe(true);
     const userVersionAfterFirst = await opened.value.execute("PRAGMA user_version");
-    expect(userVersionAfterFirst.rows[0]?.user_version).toBe(1);
+    expect(userVersionAfterFirst.rows[0]?.user_version).toBe(2);
 
-    // Simulate schema_migrations already recording version 2 (e.g. a
+    // Simulate schema_migrations already recording version 3 (e.g. a
     // concurrent/other process's bookkeeping insert) without PRAGMA
-    // user_version having advanced to 2 yet.
+    // user_version having advanced to 3 yet.
     await opened.value.execute({
       sql: "INSERT INTO schema_migrations (version, name, checksum, applied_at) VALUES (?, ?, ?, ?)",
       args: [
-        2,
+        3,
         "orphaned",
         "sha256:0000000000000000000000000000000000000000000000000000000000000000",
         CLOCK.now().toISOString(),
       ],
     });
 
-    // This build's migrations directory only has version 1 — it does not
-    // even know version 2 exists.
+    // This build's migrations directory only has versions 1 and 2 — it does
+    // not even know version 3 exists.
     const result = await runMigrations(opened.value, migrationsDir, dbPath, CLOCK);
 
     expect(result.ok).toBe(false);
