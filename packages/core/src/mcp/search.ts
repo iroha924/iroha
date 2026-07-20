@@ -85,20 +85,24 @@ export async function mcpSearch(input: McpSearchInput): Promise<Result<McpSearch
 
       let queryVector: readonly number[] | undefined;
       let degradedFrom: "hybrid" | "vector" | undefined;
-      if (requestedMode === "hybrid" || requestedMode === "vector") {
+      if (requestedMode !== "lexical") {
+        // `graph` seeds with the vector too: a long relationship query rarely
+        // satisfies the lexical arm's all-terms AND, so lexical-only seeds would
+        // leave the graph expansion nothing to grow from.
         const provider = resolveEmbeddingProvider(ctx.repo.config.search.embedding);
         const embedded = provider === null ? null : await provider.embed([input.query], "query");
         if (embedded !== null && embedded.ok && embedded.value[0] !== undefined) {
           queryVector = embedded.value[0];
-        } else {
+        } else if (requestedMode === "hybrid" || requestedMode === "vector") {
+          // graph tolerates lexical seeds, so it is not reported as degraded.
           degradedFrom = requestedMode === "vector" ? "vector" : "hybrid";
         }
       }
 
-      // `graph` mode always seeds lexically; hybrid/vector fall back to lexical
-      // when no query vector is available.
+      // Hybrid and graph both seed with the fused hybrid candidates; vector uses
+      // only the vector arm; all fall back to lexical when no query vector exists.
       const searchMode: SearchMode =
-        requestedMode === "graph" || queryVector === undefined ? "lexical" : requestedMode;
+        queryVector === undefined ? "lexical" : requestedMode === "vector" ? "vector" : "hybrid";
       const effectiveMode: SearchMode =
         requestedMode === "graph" ? "graph" : queryVector !== undefined ? requestedMode : "lexical";
 

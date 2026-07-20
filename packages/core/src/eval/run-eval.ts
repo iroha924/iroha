@@ -27,10 +27,12 @@ async function rankedIdsFor(
   queryVector: number[] | undefined,
 ): Promise<string[]> {
   // Relationship intent uses graph mode: lexical seeds expanded along the
-  // relation graph (mirrors mcpSearch mode="graph"). Everything else uses the
-  // hybrid path with the recorded query vector.
+  // relation graph. Seeds always use the hybrid path (with the recorded query
+  // vector) — a long relationship query rarely satisfies the lexical arm's
+  // all-terms AND, so lexical-only seeds would be empty and the expansion would
+  // have nothing to grow from; the vector arm is what anchors these queries.
   const useGraph = query.class === "relationship";
-  const searchMode = useGraph || queryVector === undefined ? "lexical" : "hybrid";
+  const searchMode = queryVector === undefined ? "lexical" : "hybrid";
   const hits = await searchHybrid(db, {
     query: query.text,
     queryVector,
