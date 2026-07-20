@@ -278,6 +278,41 @@ describe("parseClaudeEvent — forward-compatibility and errors", () => {
     expect(event).toMatchObject({ kind: "SESSION_STARTED" });
   });
 
+  it("tolerates explicit JSON null on optional fields instead of dropping the event", () => {
+    const { ctx } = makeFakeCtx();
+    // Claude may send `null` (not omit) for an optional field; the whole event
+    // must still parse, with the field treated as absent.
+    const start = unwrap(
+      parseClaudeEvent(
+        {
+          ...common,
+          hook_event_name: "SessionStart",
+          source: "startup",
+          model: null,
+          permission_mode: null,
+        },
+        ctx,
+      ),
+    );
+    expect(start).toMatchObject({ kind: "SESSION_STARTED" });
+    expect(start).not.toHaveProperty("model");
+    expect(start).not.toHaveProperty("permissionMode");
+
+    const stop = unwrap(
+      parseClaudeEvent(
+        {
+          ...common,
+          hook_event_name: "Stop",
+          stop_hook_active: false,
+          last_assistant_message: null,
+        },
+        ctx,
+      ),
+    );
+    expect(stop).toMatchObject({ kind: "TURN_STOPPED" });
+    expect(stop).not.toHaveProperty("payload.lastMessageDigest");
+  });
+
   it("returns ok(null) for a recognized but unmapped event", () => {
     const { ctx } = makeFakeCtx();
     const result = parseClaudeEvent(

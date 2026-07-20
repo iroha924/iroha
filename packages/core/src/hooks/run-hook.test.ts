@@ -42,6 +42,19 @@ async function countSessionTokens(cwd: string): Promise<number> {
   }
 }
 
+async function turnStatuses(cwd: string): Promise<string[]> {
+  const repo = await resolveInitializedRepository(cwd);
+  if (!repo.ok) throw new Error("repo not resolved");
+  const opened = await openDatabase(repo.value.dbPath);
+  if (!opened.ok) throw new Error("db not opened");
+  try {
+    const result = await opened.value.execute("SELECT status FROM turns");
+    return result.rows.map((row) => String(row.status));
+  } finally {
+    await closeDatabase(opened.value);
+  }
+}
+
 describe("runHook", () => {
   let repoDir: string | undefined;
 
@@ -150,6 +163,8 @@ describe("runHook", () => {
       stop_hook_active: false,
     });
     expect(stop.stdout).toBeUndefined();
+    // The Turn completes on Stop (hooks-contract §6.6 step 1), not left active.
+    expect(await turnStatuses(repoDir)).toStrictEqual(["completed"]);
   });
 
   it("works identically for Codex (parity)", async () => {

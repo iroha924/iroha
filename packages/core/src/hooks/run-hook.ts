@@ -67,6 +67,7 @@ export async function runHook(invocation: HookInvocation, deps: HookDeps): Promi
     const output = await dispatchHookEvent(event, {
       db: db.value,
       repo: repo.value,
+      cwd: invocation.cwd,
       salt: salt.value,
       clock: deps.clock,
       random: deps.random,

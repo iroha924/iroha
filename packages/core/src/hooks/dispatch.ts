@@ -9,6 +9,7 @@ import {
 } from "@iroha/platform";
 import {
   closeSessionRun,
+  closeTurn,
   type Database,
   getActiveSessionRunForSession,
   getAgentSessionByPlatformIdentity,
@@ -32,6 +33,8 @@ import { issueSessionToken } from "./session-token.js";
 export interface HookDispatchContext {
   db: Database;
   repo: ResolvedRepository;
+  /** The agent's working directory — the base for resolving relative tool-target paths. */
+  cwd: string;
   salt: Uint8Array;
   clock: Clock;
   random: RandomSource;
@@ -211,7 +214,7 @@ async function handleToolStarted(
   if (turn === null) {
     return noOutput;
   }
-  const targets = await resolveTargets(event.payload.targets, ctx.repo.gitLocation.root);
+  const targets = await resolveTargets(event.payload.targets, ctx.repo.gitLocation.root, ctx.cwd);
   const primary = targets[0];
   await insertToolEvent(ctx.db, {
     id: makeTypedId("evt", ctx.clock, ctx.random),
@@ -254,7 +257,7 @@ async function handleToolCompleted(
   if (turn === null) {
     return noOutput;
   }
-  const targets = await resolveTargets(event.payload.targets, ctx.repo.gitLocation.root);
+  const targets = await resolveTargets(event.payload.targets, ctx.repo.gitLocation.root, ctx.cwd);
   const primary = targets[0];
   await insertToolEvent(ctx.db, {
     id: makeTypedId("evt", ctx.clock, ctx.random),
@@ -295,15 +298,28 @@ async function handleStop(
     return noOutput;
   }
   const turn = await currentTurn(ctx, sessionId);
-  if (turn === null || turn.checkpointState !== "pending") {
+  if (turn === null) {
     return noOutput;
   }
-  // Ask for a checkpoint exactly once: if this Stop is already a continuation
-  // retry (`stop_hook_active`), never block again (hooks-contract.md §6.6).
-  if (event.payload.stopHookActive) {
-    return noOutput;
+
+  // Ask for a checkpoint exactly once: the Turn needs one (pending) and this is
+  // not already a continuation retry (hooks-contract.md §6.6 step 3). The Turn
+  // stays active so the agent can still save it.
+  if (turn.checkpointState === "pending" && !event.payload.stopHookActive) {
+    return continuationOutput(CONTINUATION_REASON);
   }
-  return continuationOutput(CONTINUATION_REASON);
+
+  // Otherwise the Turn ends now (§6.6 steps 1/2/4: no checkpoint required, one
+  // was already saved, or we are allowing the stop after the single
+  // continuation). Complete it if still active (database-schema.md §7).
+  if (turn.status === "active") {
+    await closeTurn(ctx.db, turn.id, {
+      from: "active",
+      to: "completed",
+      stoppedAt: ctx.clock.now().toISOString(),
+    });
+  }
+  return noOutput;
 }
 
 const SESSION_END_REASONS: ReadonlySet<SessionRunEndReason> = new Set([

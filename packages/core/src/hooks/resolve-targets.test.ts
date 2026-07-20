@@ -22,7 +22,7 @@ describe("resolveTargets", () => {
     const targets: ToolTarget[] = [
       { kind: "file", value: join(root, "src", "payments", "service.ts"), operation: "write" },
     ];
-    expect(await resolveTargets(targets, root)).toStrictEqual([
+    expect(await resolveTargets(targets, root, root)).toStrictEqual([
       { kind: "file", value: "src/payments/service.ts", operation: "write" },
     ]);
   });
@@ -31,14 +31,25 @@ describe("resolveTargets", () => {
     const targets: ToolTarget[] = [
       { kind: "file", value: "src/payments/service.ts", operation: "read" },
     ];
-    expect(await resolveTargets(targets, root)).toStrictEqual([
+    expect(await resolveTargets(targets, root, root)).toStrictEqual([
       { kind: "file", value: "src/payments/service.ts", operation: "read" },
+    ]);
+  });
+
+  it("resolves a relative target against cwd (a subdirectory), not the repo root", async () => {
+    // Agent launched in <root>/src; apply_patch emits a cwd-relative path.
+    const cwd = join(root, "src");
+    const targets: ToolTarget[] = [
+      { kind: "file", value: "payments/service.ts", operation: "write" },
+    ];
+    expect(await resolveTargets(targets, root, cwd)).toStrictEqual([
+      { kind: "file", value: "src/payments/service.ts", operation: "write" },
     ]);
   });
 
   it("drops a target that escapes the repository root", async () => {
     const targets: ToolTarget[] = [{ kind: "file", value: "../outside.ts", operation: "write" }];
-    expect(await resolveTargets(targets, root)).toStrictEqual([]);
+    expect(await resolveTargets(targets, root, root)).toStrictEqual([]);
   });
 
   it("passes command/mcp/other targets through unchanged", async () => {
@@ -47,6 +58,6 @@ describe("resolveTargets", () => {
       { kind: "mcp", value: "mcp__iroha__search", operation: "unknown" },
       { kind: "other", value: "apply_patch", operation: "write" },
     ];
-    expect(await resolveTargets(targets, root)).toStrictEqual(targets);
+    expect(await resolveTargets(targets, root, root)).toStrictEqual(targets);
   });
 });

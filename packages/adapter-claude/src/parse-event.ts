@@ -21,10 +21,12 @@ const rawCommon = z.object({
   session_id: z.string().min(1),
   cwd: z.string().min(1),
   // Claude sends `model` only on SessionStart; `permission_mode` on a subset of
-  // events; `prompt_id` from v2.1.196+ and only once user input exists.
-  model: z.string().optional(),
-  permission_mode: z.string().optional(),
-  prompt_id: z.string().optional(),
+  // events; `prompt_id` from v2.1.196+ and only once user input exists. `.nullish()`
+  // (nullable + optional) so an explicit JSON `null` does not reject the whole
+  // event — it is normalized to "absent" in `baseEvent`.
+  model: z.string().nullish(),
+  permission_mode: z.string().nullish(),
+  prompt_id: z.string().nullish(),
 });
 
 const rawToolInput = z.record(z.string(), z.unknown());
@@ -48,12 +50,12 @@ const rawPostToolUse = rawCommon.extend({
 const rawPreCompact = rawCommon.extend({ trigger: z.enum(["manual", "auto"]) });
 const rawPostCompact = rawCommon.extend({
   trigger: z.enum(["manual", "auto"]),
-  compact_summary: z.string().optional(),
+  compact_summary: z.string().nullish(),
 });
 const rawStop = rawCommon.extend({
   stop_hook_active: z.boolean(),
-  last_assistant_message: z.string().optional(),
-  background_tasks: z.array(z.unknown()).optional(),
+  last_assistant_message: z.string().nullish(),
+  background_tasks: z.array(z.unknown()).nullish(),
 });
 const rawSessionEnd = rawCommon.extend({ reason: z.string().min(1).max(200) });
 
@@ -65,6 +67,11 @@ type RawCommon = z.infer<typeof rawCommon>;
  * satisfy `exactOptionalPropertyTypes` and the strict normalized schema.
  */
 function baseEvent(common: RawCommon, ctx: NormalizationContext) {
+  // `?? undefined` folds an explicit `null` into "absent" so the optional field
+  // is omitted rather than set to `null` (exactOptionalPropertyTypes + strict schema).
+  const platformTurnId = common.prompt_id ?? undefined;
+  const model = common.model ?? undefined;
+  const permissionMode = common.permission_mode ?? undefined;
   return {
     schemaVersion: 1 as const,
     eventId: ctx.newEventId(),
@@ -72,9 +79,9 @@ function baseEvent(common: RawCommon, ctx: NormalizationContext) {
     occurredAt: ctx.occurredAt(),
     platformSessionId: common.session_id,
     cwdFingerprint: ctx.digest(common.cwd),
-    ...(common.prompt_id === undefined ? {} : { platformTurnId: common.prompt_id }),
-    ...(common.model === undefined ? {} : { model: common.model }),
-    ...(common.permission_mode === undefined ? {} : { permissionMode: common.permission_mode }),
+    ...(platformTurnId === undefined ? {} : { platformTurnId }),
+    ...(model === undefined ? {} : { model }),
+    ...(permissionMode === undefined ? {} : { permissionMode }),
   };
 }
 
@@ -252,7 +259,7 @@ export function parseClaudeEvent(
           kind: "COMPACTION_COMPLETED",
           payload: {
             trigger: r.data.trigger,
-            ...(r.data.compact_summary === undefined
+            ...(r.data.compact_summary == null
               ? {}
               : { summaryDigest: ctx.digest(r.data.compact_summary) }),
           },
@@ -270,7 +277,7 @@ export function parseClaudeEvent(
           payload: {
             stopHookActive: r.data.stop_hook_active,
             backgroundTaskCount: r.data.background_tasks?.length ?? 0,
-            ...(r.data.last_assistant_message === undefined
+            ...(r.data.last_assistant_message == null
               ? {}
               : { lastMessageDigest: ctx.digest(r.data.last_assistant_message) }),
           },
