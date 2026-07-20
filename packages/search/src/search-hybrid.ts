@@ -3,9 +3,7 @@ import { type Executor, searchByVector } from "@iroha/storage";
 import {
   buildMatchQuery,
   CANDIDATE_LIMIT,
-  DEFAULT_LIMIT,
   hydrateRankedRows,
-  MAX_LIMIT,
   MIN_FTS_QUERY_LENGTH,
   queryByLike,
   queryFtsRanked,
@@ -32,7 +30,6 @@ export interface SearchHybridOptions {
   /** Present only when embedding is configured and the query embedding succeeded. */
   queryVector?: readonly number[] | undefined;
   mode?: SearchMode | undefined;
-  limit?: number | undefined;
   /** ISO-8601 timestamp for the recency tie-breaker (deterministic in tests). */
   now: string;
 }
@@ -78,15 +75,16 @@ function recencyFactor(updatedAt: string, now: string): number {
  * Fusion, then applies the authority multiplier and the recency tie-breaker.
  * `searchText` shares the same FTS/RRF primitives, so the lexical path and this
  * one never diverge; the vector term is simply added to the same sum ("missing
- * ranks contribute zero"). The scope/graph boosts and `mode="graph"` traversal
- * are layered on in Slice 3.
+ * ranks contribute zero"). This is the candidate-generation + base-scoring
+ * stage: it returns the full fused candidate set (≤3×30, sorted by base score)
+ * so the caller can apply the scope/graph boosts — which need canonical/graph
+ * data owned by `@iroha/core` — before taking the final result cap.
  */
 export async function searchHybrid(
   db: Executor,
   options: SearchHybridOptions,
 ): Promise<Result<SearchHybridHit[], IrohaError>> {
   const trimmed = options.query.trim();
-  const limit = Math.max(0, Math.min(options.limit ?? DEFAULT_LIMIT, MAX_LIMIT));
   const mode = options.mode ?? "hybrid";
   const useFts = mode !== "vector";
   const useVector = mode !== "lexical" && options.queryVector !== undefined;
@@ -194,5 +192,5 @@ export async function searchHybrid(
   }
 
   hits.sort((a, b) => b.score - a.score);
-  return ok(hits.slice(0, limit));
+  return ok(hits);
 }

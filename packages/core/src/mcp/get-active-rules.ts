@@ -1,6 +1,7 @@
 import type { Clock, IrohaError, RandomSource, Result } from "@iroha/domain";
 import { err, ok } from "@iroha/domain";
 import { listApprovedRulesForRepository } from "@iroha/storage";
+import { pathMatches } from "./ranking.js";
 import { withMcpRepository } from "./with-repository.js";
 
 export interface McpRuleScope {
@@ -48,17 +49,6 @@ function parseScope(scopeJson: string): McpRuleScope {
   } catch {
     return { paths: [], symbols: [], languages: [] };
   }
-}
-
-/** Simplified prefix globbing; full glob semantics are WP-08 (surfaced as a tool warning). */
-function pathMatches(rulePath: string, requested: string): boolean {
-  if (rulePath.endsWith("/**")) {
-    return requested.startsWith(rulePath.slice(0, -3));
-  }
-  if (rulePath.endsWith("*")) {
-    return requested.startsWith(rulePath.slice(0, -1));
-  }
-  return requested === rulePath || requested.startsWith(`${rulePath}/`);
 }
 
 function applies(scope: McpRuleScope, paths: string[], symbols: string[]): boolean {
