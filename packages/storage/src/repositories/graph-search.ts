@@ -98,6 +98,33 @@ export async function insertRelation(
   }
 }
 
+/**
+ * Looks up a relation by its unique `(from_entity_id, relation_type,
+ * to_entity_id, source_kind)` tuple — the same key `insertRelation`'s
+ * `ON CONFLICT DO NOTHING` targets. A caller that inserted such a tuple can use
+ * this to recover the actually-stored row id whether the insert created it or a
+ * prior row already held it.
+ */
+export async function getRelationByTuple(
+  db: Executor,
+  fromEntityId: string,
+  relationType: RelationType,
+  toEntityId: string,
+  sourceKind: RelationSourceKind,
+): Promise<Result<RelationRow | null, IrohaError>> {
+  try {
+    const result = await db.execute({
+      sql: `SELECT * FROM relations
+        WHERE from_entity_id = ? AND relation_type = ? AND to_entity_id = ? AND source_kind = ?`,
+      args: [fromEntityId, relationType, toEntityId, sourceKind],
+    });
+    const row = result.rows[0];
+    return ok(row === undefined ? null : rowToRelation(row));
+  } catch (cause) {
+    return err(mapLibsqlError(cause, "Failed to read relation"));
+  }
+}
+
 export type RelationDirection = "outgoing" | "incoming" | "both";
 
 export interface GetNeighborsOptions {

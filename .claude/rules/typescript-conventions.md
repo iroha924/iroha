@@ -26,7 +26,7 @@
 
 - 境界を検証する時は**必ず `.safeParse()` を使う**。`.parse()` は例外を投げるため使わない — このコードベースはリポジトリ全体で例外境界越えを許さない(上記「エラーハンドリング」の `Result<T, E>` 方針)。`safeParse()` の結果を `if (!result.success)` で分岐し、`IrohaError` にラップして `Result` として返す
 - スキーマの変数名は `<名前>Schema`(`actorRefSchema`, `scopeSchema` 等)。JSON Schemaの `$defs` をミラーするスキーマには、`packages/domain/src/schemas/*.ts` の既存ファイルにならい `Mirrors schemas/<file>.schema.json \`$defs.<name>\`` という1行docstringを付ける
-- **`packages/domain/src/schemas/*.ts` のスキーマは `docs/product/schemas/*.schema.json`(JSON Schema)のミラーである**。どちらか一方だけを直して他方を放置すると、実行時バリデーション(Zod)と契約ドキュメント(JSON Schema)が静かに乖離する。スキーマを追加・変更する時は両方を同じコミットで更新する。この同期を自動検証する `test:contracts` は現時点でどのpackageにも実装されていない(将来のWPでMCP contract testと共に追加予定 — `implementation-plan.md`)ため、**今は手動での同期維持が必須**
+- **`packages/domain/src/schemas/*.ts` のスキーマは repo ルートの `schemas/*.schema.json`(JSON Schema)のミラーである**(かつては `docs/product/schemas/` にも同一コピーがあったが、ID-029 で repo ルートを唯一の正本に統合済み)。どちらか一方だけを直して他方を放置すると、実行時バリデーション(Zod)と契約ドキュメント(JSON Schema)が静かに乖離する。スキーマを追加・変更する時は両方(Zod の `.ts` と `schemas/*.schema.json`)を同じコミットで更新する。この同期を自動検証する `test:contracts` は現時点でどのpackageにも実装されていない(将来のWPでMCP contract testと共に追加予定 — `implementation-plan.md`)ため、**今は手動での同期維持が必須**
 - 契約型(JSON Schemaをミラーするスキーマの型)は `type X = z.infer<typeof xSchema>` で導出する。手で別の `interface` を書いて二重管理しない — スキーマを変えれば型は自動的に追従する
 - オブジェクトスキーマは `z.strictObject()` を使う(`.strict()` より意図が明確)
 - 判別共用体は `z.discriminatedUnion()` を使う
