@@ -63,7 +63,7 @@ flowchart TB
 | Validation | Zod 4 + JSON Schema 2020-12 |
 | Database | local libSQL、Raw SQL、ORMなし |
 | Search | FTS5 `unicode61` + `trigram`、任意のlibSQL vector |
-| Embedding | 任意のVoyage `voyage-4`、1024次元 |
+| Embedding | 任意のVoyage `voyage-4-large`、1024次元 |
 | Graph | `relations` table + bounded recursive CTE |
 | Test | Vitest、Playwright、contract fixtures |
 | Build | tsdown Node bundle、Vite static assets |

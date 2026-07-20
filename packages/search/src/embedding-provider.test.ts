@@ -40,7 +40,7 @@ describe("createVoyageProvider", () => {
     expect(headers.Authorization).toBe(`Bearer ${SECRET}`);
     const body = JSON.parse(String(captured?.body));
     expect(body).toMatchObject({
-      model: "voyage-4",
+      model: "voyage-4-large",
       input_type: "document",
       output_dimension: 4,
       input: ["first", "second"],

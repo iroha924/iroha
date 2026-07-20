@@ -35,7 +35,7 @@ function embeddingConfig(overrides: Partial<EmbeddingConfig> = {}): EmbeddingCon
   return {
     enabled: true,
     provider: "voyage",
-    model: "voyage-4",
+    model: "voyage-4-large",
     dimension: 1024,
     api_key_env: "VOYAGE_API_KEY",
     ...overrides,
@@ -211,7 +211,7 @@ describe("runEmbeddingSync", () => {
         id: makeTypedId("job", CLOCK, new CryptoRandomSource()),
         searchDocumentId: doc.value.id,
         provider: "voyage",
-        model: "voyage-4",
+        model: "voyage-4-large",
         createdAt: CLOCK.now().toISOString(),
         updatedAt: CLOCK.now().toISOString(),
       });

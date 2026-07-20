@@ -530,7 +530,7 @@ describe("graph-search repositories", () => {
       id,
       searchDocumentId: sdoc,
       provider: "voyage",
-      model: "voyage-4",
+      model: "voyage-4-large",
       createdAt: NOW,
       updatedAt: NOW,
     });
@@ -574,7 +574,7 @@ describe("graph-search repositories", () => {
       id,
       searchDocumentId: sdoc,
       provider: "voyage",
-      model: "voyage-4",
+      model: "voyage-4-large",
       createdAt: NOW,
       updatedAt: NOW,
     });
@@ -584,7 +584,7 @@ describe("graph-search repositories", () => {
       id: jobId("i2"),
       searchDocumentId: sdoc,
       provider: "voyage",
-      model: "voyage-4",
+      model: "voyage-4-large",
       createdAt: NOW,
       updatedAt: NOW,
     });
@@ -624,7 +624,7 @@ describe("graph-search repositories", () => {
       id,
       searchDocumentId: sdoc,
       provider: "voyage",
-      model: "voyage-4",
+      model: "voyage-4-large",
       createdAt: NOW,
       updatedAt: NOW,
     });
@@ -640,7 +640,7 @@ describe("graph-search repositories", () => {
       id: jobId("i2b"),
       searchDocumentId: sdoc,
       provider: "voyage",
-      model: "voyage-4",
+      model: "voyage-4-large",
       createdAt: LATER,
       updatedAt: LATER,
     });
@@ -684,7 +684,7 @@ describe("graph-search repositories", () => {
       id,
       searchDocumentId: sdoc,
       provider: "voyage",
-      model: "voyage-4",
+      model: "voyage-4-large",
       createdAt: NOW,
       updatedAt: NOW,
     });
@@ -702,7 +702,7 @@ describe("graph-search repositories", () => {
       id: jobId("i3b"),
       searchDocumentId: sdoc,
       provider: "voyage",
-      model: "voyage-4",
+      model: "voyage-4-large",
       createdAt: LATER,
       updatedAt: LATER,
     });

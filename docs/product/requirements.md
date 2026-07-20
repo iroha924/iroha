@@ -361,7 +361,7 @@ MVP releaseには少なくとも以下を必要とする。
 | OQ-002 | Claude Code >=2.1.198、Codex >=0.144.5、capability detection併用 | [Compatibility](./implementation/compatibility.md) |
 | OQ-003 | macOS 14、Ubuntu 22.04、Windows 11、WSL2をTier 1 | [Compatibility](./implementation/compatibility.md) |
 | OQ-004 | Git metadataをP0、GitHubを最初のP1、GitLabはport/fixture | [Compatibility](./implementation/compatibility.md) |
-| OQ-005 | FTS-onlyを既定、任意でVoyage `voyage-4` / 1024次元 | [Compatibility](./implementation/compatibility.md) |
+| OQ-005 | FTS-onlyを既定、任意でVoyage `voyage-4-large` / 1024次元 | [Compatibility](./implementation/compatibility.md) |
 | OQ-006 | Checkpoint field、上限、guard条件をJSON Schemaで固定 | [Checkpoint Schema](./schemas/checkpoint-v1.schema.json) |
 | OQ-007 | 1 Agent Sessionにつき1 canonical Summary、修正は再承認とrevision増加 | [Canonical](./implementation/canonical-schema.md) |
 | OQ-008 | RRF初期式と60-query評価dataset/thresholdを固定 | [Database](./implementation/database-schema.md) |

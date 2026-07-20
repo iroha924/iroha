@@ -3,11 +3,11 @@ import { z } from "zod";
 
 /**
  * Voyage AI text-embeddings integration (docs.voyageai.com/reference/embeddings-api).
- * The provider/model/dimension are fixed by OQ-005 (`voyage`/`voyage-4`/1024);
+ * The provider/model/dimension are fixed by OQ-005 (`voyage`/`voyage-4-large`/1024);
  * the values here are defaults the caller (`@iroha/core`, which owns config)
  * may override to match `.iroha/config.yaml`.
  */
-const DEFAULT_MODEL = "voyage-4";
+const DEFAULT_MODEL = "voyage-4-large";
 const DEFAULT_DIMENSION = 1024;
 const DEFAULT_ENDPOINT = "https://api.voyageai.com/v1/embeddings";
 /** Voyage's hard per-request input cap. The caller batches below this. */

@@ -442,13 +442,13 @@ export async function listSearchDocumentHashes(
 // --- embeddings_1024 ---------------------------------------------------
 
 const EMBEDDING_PROVIDER = "voyage";
-const EMBEDDING_MODEL = "voyage-4";
+const EMBEDDING_MODEL = "voyage-4-large";
 const EMBEDDING_DIMENSION = 1024;
 
 export interface EmbeddingMetadataRow {
   searchDocumentId: TypedId<"sdoc">;
   provider: "voyage";
-  model: "voyage-4";
+  model: "voyage-4-large";
   dimension: 1024;
   contentHash: string;
   createdAt: string;
@@ -466,7 +466,7 @@ function rowToEmbeddingMetadata(row: Record<string, unknown>): EmbeddingMetadata
   return {
     searchDocumentId: row.search_document_id as TypedId<"sdoc">,
     provider: "voyage",
-    model: "voyage-4",
+    model: "voyage-4-large",
     dimension: 1024,
     contentHash: String(row.content_hash),
     createdAt: String(row.created_at),
