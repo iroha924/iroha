@@ -6,7 +6,21 @@
  * feed the adapters (decision-log ID-028(a)).
  */
 
-export type { Clock, ErrorCode, RandomSource, Result, TypedId } from "@iroha/domain";
-export { CryptoRandomSource, IrohaError, SystemClock } from "@iroha/domain";
+export type {
+  CheckpointInput,
+  Clock,
+  ErrorCode,
+  KnowledgeProposal,
+  RandomSource,
+  Result,
+  TypedId,
+} from "@iroha/domain";
+export {
+  CryptoRandomSource,
+  checkpointInputSchema,
+  IrohaError,
+  proposalSchema,
+  SystemClock,
+} from "@iroha/domain";
 export type { EntityType, RelationDirection, RelationType } from "@iroha/storage";
 export { ENTITY_TYPES, RELATION_TYPES } from "@iroha/storage";

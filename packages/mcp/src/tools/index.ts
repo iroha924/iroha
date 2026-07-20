@@ -1,7 +1,10 @@
+import { createCheckpointTool } from "./create-checkpoint.js";
 import { getActiveRulesTool } from "./get-active-rules.js";
 import { getContextTool } from "./get-context.js";
 import { getRelationsTool } from "./get-relations.js";
 import { getSessionStateTool } from "./get-session-state.js";
+import { linkEntitiesTool } from "./link-entities.js";
+import { proposeKnowledgeTool } from "./propose-knowledge.js";
 import { searchTool } from "./search.js";
 import type { AnyMcpTool } from "./types.js";
 
@@ -16,4 +19,7 @@ export const TOOLS: readonly AnyMcpTool[] = [
   getActiveRulesTool,
   getRelationsTool,
   getSessionStateTool,
+  createCheckpointTool,
+  proposeKnowledgeTool,
+  linkEntitiesTool,
 ];

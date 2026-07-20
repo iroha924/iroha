@@ -107,7 +107,7 @@ describe("dispatchTool", () => {
 });
 
 describe("tool registry", () => {
-  it("exposes the five read/state tools and no human-approval operation", () => {
+  it("exposes the eight agent tools and no human-approval operation", () => {
     const names = TOOLS.map((tool) => tool.name);
     for (const expected of [
       "search",
@@ -115,6 +115,9 @@ describe("tool registry", () => {
       "get_active_rules",
       "get_relations",
       "get_session_state",
+      "create_checkpoint",
+      "propose_knowledge",
+      "link_entities",
     ]) {
       expect(names).toContain(expected);
     }

@@ -78,7 +78,7 @@ const proposalRelationSchema = z.strictObject({
  * guardrail-requires-guard direction is enforced (unlike canonical's `rule`,
  * an advisory proposal may still carry a `guard` object).
  */
-const proposalSchema = z
+export const proposalSchema = z
   .strictObject({
     type: z.enum([
       "decision",
@@ -131,3 +131,10 @@ export const checkpointInputSchema = z.strictObject({
 });
 
 export type CheckpointInput = z.infer<typeof checkpointInputSchema>;
+
+/**
+ * A single knowledge proposal — the `create_checkpoint` `proposals[]` element
+ * and the `propose_knowledge` `proposal` field share one shape
+ * (mcp-contract.md §7 `KnowledgeProposal`).
+ */
+export type KnowledgeProposal = z.infer<typeof proposalSchema>;
