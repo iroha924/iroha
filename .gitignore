@@ -2,6 +2,7 @@ node_modules/
 dist/
 .turbo/
 packages/plugin/build/
+packages/plugin/release/
 coverage/
 test-results/
 playwright-report/
