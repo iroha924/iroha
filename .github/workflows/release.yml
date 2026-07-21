@@ -1,0 +1,110 @@
+# WP-11c release workflow. Human-initiated only (`workflow_dispatch`): plan §7
+# makes publishing npm / GitHub Release artifacts a human-authorized action, so
+# this never runs on push and never publishes automatically. The default is a
+# dry run — it builds the publishable package and produces the tarball,
+# checksums, SBOM, and build-provenance attestation, but does NOT publish. Set
+# `publish: true` to actually publish to npm and create the GitHub Release.
+#
+# Verified locally before merge: `pnpm build`, `pnpm --filter @iroha/plugin
+# build:release`, `npm pack`, and the version-consistency check all run and
+# produce the expected tarball (see release-pack.test.ts). The npm-publish and
+# GitHub-Release steps are gated behind `publish: true` and cannot be exercised
+# in CI (no real registry publish) — they run for the first time at a real,
+# human-authorized release (decision-log ID-040, ci-discipline).
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version, must equal the built package version (e.g. 0.1.0)"
+        required: true
+        type: string
+      publish:
+        description: "Publish to npm and create a GitHub Release (default: dry run only)"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write # create the GitHub Release
+  id-token: write # npm provenance + build-provenance attestation
+  attestations: write # actions/attest-build-provenance
+
+jobs:
+  release:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+      - run: corepack enable
+      - run: corepack pnpm install --frozen-lockfile
+      - run: pnpm build
+
+      - name: Assemble the publishable package
+        run: pnpm --filter @iroha/plugin build:release
+
+      - name: Verify version consistency
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          built="$(node -p "require('./packages/plugin/release/package.json').version")"
+          if [ "$built" != "$VERSION" ]; then
+            echo "::error::requested version $VERSION != built package version $built"
+            exit 1
+          fi
+
+      - name: Pack the tarball
+        working-directory: packages/plugin/release
+        run: npm pack
+
+      - name: Generate SHA-256 checksums
+        working-directory: packages/plugin/release
+        run: sha256sum *.tgz > checksums.txt
+
+      # SBOM via npm's built-in generator — no third-party action runs with this
+      # job's elevated (id-token/contents) permissions (ai-agent-security).
+      # `--ignore-scripts` avoids dependency postinstall execution.
+      - name: Generate SBOM
+        working-directory: packages/plugin/release
+        run: |
+          npm install --omit=dev --ignore-scripts --no-audit --no-fund
+          npm sbom --sbom-format cyclonedx --omit dev > sbom.cyclonedx.json
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: packages/plugin/release/*.tgz
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: iroha-release-${{ inputs.version }}
+          path: |
+            packages/plugin/release/*.tgz
+            packages/plugin/release/checksums.txt
+            packages/plugin/release/sbom.cyclonedx.json
+
+      - name: Publish to npm
+        if: ${{ inputs.publish }}
+        working-directory: packages/plugin/release
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub Release
+        if: ${{ inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh release create "v$VERSION" \
+            packages/plugin/release/*.tgz \
+            packages/plugin/release/checksums.txt \
+            packages/plugin/release/sbom.cyclonedx.json \
+            --title "iroha v$VERSION" \
+            --generate-notes

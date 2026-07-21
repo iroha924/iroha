@@ -26,10 +26,11 @@
   "scripts": {
     "build": "tsdown",
     "build:archive": "node dist/build-archive-cli.mjs",
+    "build:release": "node dist/build-release-cli.mjs",
     "lint": "biome check src",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run --passWithNoTests --exclude \"**/archive-smoke.test.ts\"",
-    "test:package": "vitest run archive-smoke"
+    "test": "vitest run --passWithNoTests --exclude \"**/archive-smoke.test.ts\" --exclude \"**/release-pack.test.ts\"",
+    "test:package": "vitest run archive-smoke release-pack"
   },
   "dependencies": {
     "@hono/node-server": "catalog:",

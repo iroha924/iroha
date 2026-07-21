@@ -1,7 +1,7 @@
 import { defineConfig } from "tsdown";
 
 export default defineConfig({
-  entry: ["src/index.ts", "src/bin.ts", "src/build-archive-cli.ts"],
+  entry: ["src/index.ts", "src/bin.ts", "src/build-archive-cli.ts", "src/build-release-cli.ts"],
   format: "esm",
   platform: "node",
   dts: true,

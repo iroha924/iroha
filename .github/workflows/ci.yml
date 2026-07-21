@@ -48,6 +48,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      - run: pnpm test:package
 
   # Uses the gitleaks CLI directly (not gitleaks-action, which requires a
   # paid GITLEAKS_LICENSE for organization-owned repositories). The core CLI

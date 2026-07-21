@@ -4,6 +4,7 @@
 export const packageName = "@iroha/plugin";
 
 export { assembleArchive, REPO_ROOT, writeMarketplaces } from "./build-archive.js";
+export { assembleRelease, DEFAULT_RELEASE_DIR } from "./build-release.js";
 export {
   buildClaudeHooks,
   buildClaudeManifest,

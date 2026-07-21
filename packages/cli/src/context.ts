@@ -1,19 +1,28 @@
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 /**
- * `packages/cli/dist/` and `packages/cli/src/` sit at the same depth under
- * the repo root, so this relative path resolves correctly whether run from
- * source (tests) or from the tsdown-built `dist/index.mjs`/`dist/bin.mjs`.
- * WP-11 (plugin packaging) is expected to replace this with a bundled
- * migrations path once `@iroha/cli` ships outside this monorepo.
+ * Resolve a runtime asset shipped both inside this monorepo and inside the
+ * published `@iroha-labs/iroha` package. The bundled code runs from two layouts:
+ * in the monorepo the asset sits at the repo root (`../../..` from
+ * `packages/cli/{src,dist}/…` or the plugin's `packages/plugin/dist/…`), while in
+ * the published package `build-release.ts` ships it at the package root (`..`
+ * from `<pkg>/dist/…`). Prefer the package-relative path, fall back to the
+ * repo-root path, and default to the repo-root path so a genuinely missing asset
+ * surfaces as the same downstream error rather than a wrong guess.
  */
-export const MIGRATIONS_DIR = fileURLToPath(new URL("../../../migrations", import.meta.url));
+function resolveRuntimeAsset(installed: string, dev: string): string {
+  for (const relative of [installed, dev]) {
+    const candidate = fileURLToPath(new URL(relative, import.meta.url));
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return fileURLToPath(new URL(dev, import.meta.url));
+}
 
-/**
- * The built dashboard SPA, served by `iroha dashboard`. Same depth reasoning as
- * `MIGRATIONS_DIR`. WP-11 (plugin packaging) will replace this with the bundled
- * asset path once `@iroha/cli` ships outside this monorepo.
- */
-export const DASHBOARD_DIST = fileURLToPath(
-  new URL("../../../apps/dashboard/dist", import.meta.url),
-);
+/** Forward-only SQL migrations, applied by `init`/`sync`/`doctor --repair`. */
+export const MIGRATIONS_DIR = resolveRuntimeAsset("../migrations", "../../../migrations");
+
+/** The built dashboard SPA, served by `iroha dashboard`. */
+export const DASHBOARD_DIST = resolveRuntimeAsset("../dashboard", "../../../apps/dashboard/dist");
