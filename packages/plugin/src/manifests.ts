@@ -20,9 +20,13 @@ import {
   MCP_SUBCOMMAND,
   PLUGIN_AUTHOR,
   PLUGIN_DESCRIPTION,
+  PLUGIN_HOMEPAGE,
   PLUGIN_KEYWORDS,
+  PLUGIN_LICENSE,
   PLUGIN_NAME,
+  PLUGIN_REPOSITORY,
   PLUGIN_VERSION,
+  PUBLISHED_PACKAGE_NAME,
 } from "./metadata.js";
 
 /** Relative archive paths the manifests point at (all start with `./`). */
@@ -83,6 +87,9 @@ export function buildClaudeManifest(): unknown {
     version: PLUGIN_VERSION,
     description: PLUGIN_DESCRIPTION,
     author: { name: PLUGIN_AUTHOR.name },
+    homepage: PLUGIN_HOMEPAGE,
+    repository: PLUGIN_REPOSITORY,
+    license: PLUGIN_LICENSE,
     keywords: [...PLUGIN_KEYWORDS],
     skills: SKILLS_DIR,
     hooks: CLAUDE_HOOKS_PATH,
@@ -130,6 +137,9 @@ export function buildCodexManifest(): unknown {
     version: PLUGIN_VERSION,
     description: PLUGIN_DESCRIPTION,
     author: { name: PLUGIN_AUTHOR.name },
+    homepage: PLUGIN_HOMEPAGE,
+    repository: PLUGIN_REPOSITORY,
+    license: PLUGIN_LICENSE,
     keywords: [...PLUGIN_KEYWORDS],
     skills: SKILLS_DIR,
     hooks: CODEX_HOOKS_PATH,
@@ -155,6 +165,9 @@ export const claudeManifestSchema = z.strictObject({
   version: z.string().regex(SEMVER),
   description: z.string().min(1),
   author: authorSchema,
+  homepage: z.url(),
+  repository: z.url(),
+  license: z.string().min(1),
   keywords: z.array(z.string().min(1)).min(1),
   skills: z.string().regex(RELATIVE_PATH),
   hooks: z.string().regex(RELATIVE_PATH),
@@ -167,6 +180,9 @@ export const codexManifestSchema = z.strictObject({
   version: z.string().regex(SEMVER),
   description: z.string().min(1),
   author: authorSchema,
+  homepage: z.url(),
+  repository: z.url(),
+  license: z.string().min(1),
   keywords: z.array(z.string().min(1)).min(1),
   skills: z.string().regex(RELATIVE_PATH),
   hooks: z.string().regex(RELATIVE_PATH),
@@ -211,4 +227,86 @@ export const claudeMcpConfigSchema = z.strictObject({
 /** Codex MCP config: `{ mcp_servers: { <name>: entry } }` (snake_case wrapper). */
 export const codexMcpConfigSchema = z.strictObject({
   mcp_servers: z.record(z.string(), mcpServerEntrySchema),
+});
+
+// --- Repository marketplaces -----------------------------------------------
+//
+// Hosted from the repository (compatibility.md §13). Both resolve the plugin
+// from the published npm package (Option A, ID-038): npm carries the `iroha`
+// binary, its native `@libsql/client`, and the plugin config, so an `npm` source
+// installs everything the manifests reference. No `version` is pinned on the
+// plugin entry — the npm package's own version applies — so these files need no
+// version bump. Written to their committed locations by `build-archive-cli.ts`.
+
+const npmSourceSchema = z.strictObject({
+  source: z.literal("npm"),
+  package: z.string().min(1),
+});
+
+/** Claude marketplace (`.claude-plugin/marketplace.json`). */
+export function buildClaudeMarketplace(): unknown {
+  return {
+    name: PLUGIN_NAME,
+    owner: { name: PLUGIN_AUTHOR.name },
+    description: PLUGIN_DESCRIPTION,
+    plugins: [
+      {
+        name: PLUGIN_NAME,
+        source: { source: "npm", package: PUBLISHED_PACKAGE_NAME },
+        description: PLUGIN_DESCRIPTION,
+        homepage: PLUGIN_HOMEPAGE,
+        repository: PLUGIN_REPOSITORY,
+        license: PLUGIN_LICENSE,
+        keywords: [...PLUGIN_KEYWORDS],
+      },
+    ],
+  };
+}
+
+/** Codex marketplace (`.agents/plugins/marketplace.json`). */
+export function buildCodexMarketplace(): unknown {
+  return {
+    name: PLUGIN_NAME,
+    interface: { displayName: PLUGIN_NAME },
+    plugins: [
+      {
+        name: PLUGIN_NAME,
+        source: { source: "npm", package: PUBLISHED_PACKAGE_NAME },
+        category: "Productivity",
+      },
+    ],
+  };
+}
+
+export const claudeMarketplaceSchema = z.strictObject({
+  name: z.string().regex(KEBAB_NAME),
+  owner: z.strictObject({ name: z.string().min(1), email: z.string().optional() }),
+  description: z.string().min(1).optional(),
+  plugins: z
+    .array(
+      z.strictObject({
+        name: z.string().regex(KEBAB_NAME),
+        source: npmSourceSchema,
+        description: z.string().min(1).optional(),
+        homepage: z.url().optional(),
+        repository: z.url().optional(),
+        license: z.string().min(1).optional(),
+        keywords: z.array(z.string().min(1)).optional(),
+      }),
+    )
+    .min(1),
+});
+
+export const codexMarketplaceSchema = z.strictObject({
+  name: z.string().regex(KEBAB_NAME),
+  interface: z.strictObject({ displayName: z.string().min(1) }).optional(),
+  plugins: z
+    .array(
+      z.strictObject({
+        name: z.string().regex(KEBAB_NAME),
+        source: npmSourceSchema,
+        category: z.string().min(1).optional(),
+      }),
+    )
+    .min(1),
 });
