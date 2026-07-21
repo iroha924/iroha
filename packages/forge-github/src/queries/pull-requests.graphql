@@ -1,0 +1,56 @@
+query PullRequests($owner: String!, $repo: String!, $cursor: String) {
+  repository(owner: $owner, name: $repo) {
+    pullRequests(first: 25, after: $cursor, orderBy: { field: UPDATED_AT, direction: DESC }) {
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+      nodes {
+        id
+        number
+        title
+        url
+        state
+        isDraft
+        baseRefName
+        headRefName
+        createdAt
+        updatedAt
+        mergedAt
+        author {
+          login
+          ... on Node {
+            id
+          }
+        }
+        closingIssuesReferences(first: 20) {
+          nodes {
+            id
+          }
+        }
+        reviewThreads(first: 50) {
+          nodes {
+            isResolved
+            isOutdated
+            comments(first: 20) {
+              nodes {
+                id
+                url
+                path
+                line
+                body
+                createdAt
+                author {
+                  login
+                  ... on Node {
+                    id
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
