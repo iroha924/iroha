@@ -30,6 +30,7 @@ export function serializeRepositoryConfig(config: RepositoryConfig): string {
     forge: {
       provider: config.forge.provider,
       enabled: config.forge.enabled,
+      api_token_env: config.forge.api_token_env,
     },
     privacy: {
       canonical_prompt_content: config.privacy.canonical_prompt_content,

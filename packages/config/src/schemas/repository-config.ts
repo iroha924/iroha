@@ -41,6 +41,10 @@ const canonicalConfigSchema = z.strictObject({
 const forgeConfigSchema = z.strictObject({
   provider: z.enum(["github", "gitlab"]),
   enabled: z.boolean(),
+  // Name of the env var holding the forge token; the value is read at sync time
+  // and never stored in config, the DB, or logs. Defaults so existing configs
+  // (written before this field) parse unchanged.
+  api_token_env: envVarNameSchema.default("GITHUB_TOKEN"),
 });
 
 const privacyConfigSchema = z.strictObject({

@@ -1,14 +1,20 @@
 import { CryptoRandomSource, type IrohaError, ok, type Result, SystemClock } from "@iroha/domain";
 import { type SearchTextHit, searchText } from "@iroha/search";
-import { closeDatabase, openDatabase, runMigrations } from "@iroha/storage";
+import { closeDatabase, type Database, openDatabase, runMigrations } from "@iroha/storage";
 import { type RunEmbeddingSyncResult, runEmbeddingSync } from "./embedding-sync.js";
+import {
+  type ForgeSyncOutcome,
+  resolveForgeProvider,
+  resolveGitHubRef,
+  runForgeSync,
+} from "./forge-sync.js";
 import {
   type InitRepositoryOptions,
   type InitRepositoryResult,
   initRepository,
 } from "./init-repository.js";
 import { type RebuildDatabaseResult, rebuildDatabase } from "./rebuild-database.js";
-import { resolveInitializedRepository } from "./resolve-repository.js";
+import { type ResolvedRepository, resolveInitializedRepository } from "./resolve-repository.js";
 import { type SyncCanonicalResult, syncCanonicalToDatabase } from "./sync-canonical.js";
 
 /**
@@ -70,7 +76,12 @@ export interface RunSyncOptions {
 
 export type RunSyncResult =
   | { rebuilt: true; rebuild: RebuildDatabaseResult }
-  | { rebuilt: false; sync: SyncCanonicalResult; embedding: RunEmbeddingSyncResult };
+  | {
+      rebuilt: false;
+      sync: SyncCanonicalResult;
+      embedding: RunEmbeddingSyncResult;
+      forge: ForgeSyncOutcome;
+    };
 
 /** `iroha sync` / `iroha sync --rebuild`. */
 export async function runSync(
@@ -139,10 +150,48 @@ export async function runSync(
     if (!embeddingResult.ok) {
       return embeddingResult;
     }
-    return ok({ rebuilt: false, sync: syncResult.value, embedding: embeddingResult.value });
+    // Forge sync is fully non-fatal (design.md §12: "Forge failure must not fail
+    // canonical/Git sync"). A disabled provider, a non-GitHub remote, a provider
+    // outage, or even a DB write error yields an outcome here — never an `err`
+    // that would fail the sync the canonical/embedding work already completed.
+    const forge = await syncForge(opened.value, cwd, resolvedResult.value, clock);
+    return ok({
+      rebuilt: false,
+      sync: syncResult.value,
+      embedding: embeddingResult.value,
+      forge,
+    });
   } finally {
     await closeDatabase(opened.value);
   }
+}
+
+/** Resolve the GitHub provider + remote ref and run the non-fatal forge sync. */
+async function syncForge(
+  db: Database,
+  cwd: string,
+  resolved: ResolvedRepository,
+  clock: SystemClock,
+): Promise<ForgeSyncOutcome> {
+  const provider = resolveForgeProvider(resolved.config.forge, process.env);
+  if (provider === null) {
+    return { status: "disabled" };
+  }
+  const refResult = await resolveGitHubRef(cwd);
+  if (!refResult.ok) {
+    return { status: "error", errorCode: refResult.error.code };
+  }
+  if (refResult.value === null) {
+    return { status: "skipped", reason: "remote is not a github.com repository" };
+  }
+  return runForgeSync(
+    db,
+    resolved.repositoryId,
+    refResult.value,
+    provider,
+    clock,
+    new CryptoRandomSource(),
+  );
 }
 
 export interface RunSearchOptions {

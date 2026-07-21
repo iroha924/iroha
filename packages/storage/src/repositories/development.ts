@@ -455,6 +455,23 @@ export async function getReviewCommentById(
   }
 }
 
+export async function getReviewCommentByExternalId(
+  db: Executor,
+  provider: ReviewCommentProvider,
+  externalId: string,
+): Promise<Result<ReviewCommentRow | null, IrohaError>> {
+  try {
+    const result = await db.execute({
+      sql: "SELECT * FROM review_comments WHERE provider = ? AND external_id = ?",
+      args: [provider, externalId],
+    });
+    const row = result.rows[0];
+    return ok(row === undefined ? null : rowToReviewComment(row));
+  } catch (cause) {
+    return err(mapLibsqlError(cause, "Failed to read review comment"));
+  }
+}
+
 export async function listReviewCommentsByPullRequest(
   db: Executor,
   pullRequestId: TypedId<"pr">,
