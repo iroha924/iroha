@@ -523,5 +523,49 @@ describe("runForgeSync", () => {
       expect(outcome).toMatchObject({ reviewLearnings: 1 });
       expect(await pendingReviewLearnings(database)).toHaveLength(1);
     });
+
+    it("strips tilde-fenced (~~~) code blocks, so code-only comments do not recur", async () => {
+      const database = await setup();
+      const body = "~~~\nconst x = 1;\n~~~";
+      const outcome = await run(
+        fakeProvider({
+          pullRequests: [
+            prWithComment("PR_1", 10, "C_1", body),
+            prWithComment("PR_2", 20, "C_2", body),
+            prWithComment("PR_3", 30, "C_3", body),
+          ],
+        }),
+        3,
+      );
+      expect(outcome).toMatchObject({ reviewLearnings: 0 });
+      expect(await pendingReviewLearnings(database)).toHaveLength(0);
+    });
+
+    it("does not leave a lone surrogate when truncation lands mid-emoji", async () => {
+      const database = await setup();
+      // 119 ASCII chars then 🎉 (a surrogate pair at UTF-16 indices 119-120): the
+      // 120-char excerpt boundary falls between the pair. A code-unit slice would
+      // store a lone high surrogate in the title.
+      const body = `${"a".repeat(119)}🎉 extract this`;
+      await run(
+        fakeProvider({
+          pullRequests: [
+            prWithComment("PR_1", 10, "C_1", body),
+            prWithComment("PR_2", 20, "C_2", body),
+            prWithComment("PR_3", 30, "C_3", body),
+          ],
+        }),
+        3,
+      );
+      const learnings = await pendingReviewLearnings(database);
+      const learning = learnings[0];
+      if (learning === undefined) {
+        throw new Error("no review_learning candidate");
+      }
+      const payload = JSON.parse(learning.payloadJson) as { title: string };
+      const loneSurrogate =
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+      expect(loneSurrogate.test(payload.title)).toBe(false);
+    });
   });
 });

@@ -573,15 +573,27 @@ export async function runForgeSync(
     }
 
     // Derive recurring-review-comment learnings from the comments just synced.
-    // Non-fatal: a failure here must not turn a successful sync into an error
-    // (the same fail-open invariant), so it only contributes a count.
-    const learnings = await detectReviewLearnings(
-      db,
-      repositoryId,
-      reviewLearningThreshold,
-      clock,
-      random,
-    );
+    // The sync's success is already committed on the cursor above, so this
+    // derived step must not be able to turn the completed sync into an error —
+    // the fail-open invariant. Enforce it structurally with a local guard rather
+    // than trusting every callee to always return a `Result`: an unexpected throw
+    // here (not just an `err`) still leaves the "synced" outcome intact, only
+    // zeroing the count.
+    let reviewLearnings = 0;
+    try {
+      const learnings = await detectReviewLearnings(
+        db,
+        repositoryId,
+        reviewLearningThreshold,
+        clock,
+        random,
+      );
+      if (learnings.ok) {
+        reviewLearnings = learnings.value;
+      }
+    } catch {
+      reviewLearnings = 0;
+    }
 
     return {
       status: "synced",
@@ -589,7 +601,7 @@ export async function runForgeSync(
       pullRequests: pullRequests.length,
       reviewComments: written.value.reviewComments,
       relations: written.value.relations,
-      reviewLearnings: learnings.ok ? learnings.value : 0,
+      reviewLearnings,
       truncated,
     };
   } catch (error) {

@@ -54,13 +54,16 @@ interface RecurrenceGroup {
  * map to the same key.
  */
 function normalizeCommentBody(body: string): string {
-  return body
-    .toLowerCase()
-    .replace(/```[\s\S]*?```/g, " ")
-    .replace(/`[^`]*`/g, " ")
-    .replace(/https?:\/\/\S+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return (
+    body
+      .toLowerCase()
+      // Strip fenced code blocks — CommonMark/GitHub accept both ``` and ~~~ fences.
+      .replace(/(?:```|~~~)[\s\S]*?(?:```|~~~)/g, " ")
+      .replace(/`[^`]*`/g, " ")
+      .replace(/https?:\/\/\S+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+  );
 }
 
 /** Stable, label-safe fingerprint (`[a-z0-9-]`) of a normalized body. */
@@ -74,7 +77,16 @@ function collapseWhitespace(value: string): string {
 }
 
 function truncate(value: string, max: number): string {
-  return value.length <= max ? value : value.slice(0, max);
+  if (value.length <= max) {
+    return value;
+  }
+  // Keep the result within `max` UTF-16 units (the proposal contract's `.max()`
+  // is measured in code units) while never cutting through a surrogate pair,
+  // which would leave a lone surrogate (a malformed emoji half) in the stored
+  // title/body. If the boundary char is a high surrogate, drop it.
+  const boundary = value.charCodeAt(max - 1);
+  const end = boundary >= 0xd800 && boundary <= 0xdbff ? max - 1 : max;
+  return value.slice(0, end);
 }
 
 /** Group comments by normalized body, keeping only groups recurring across ≥ `threshold` distinct PRs. */
