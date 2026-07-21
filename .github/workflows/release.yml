@@ -66,13 +66,14 @@ jobs:
         working-directory: packages/plugin/release
         run: sha256sum *.tgz > checksums.txt
 
+      # SBOM via npm's built-in generator — no third-party action runs with this
+      # job's elevated (id-token/contents) permissions (ai-agent-security).
+      # `--ignore-scripts` avoids dependency postinstall execution.
       - name: Generate SBOM
-        uses: anchore/sbom-action@v0
-        with:
-          path: packages/plugin/release
-          format: cyclonedx-json
-          output-file: packages/plugin/release/sbom.cyclonedx.json
-          upload-artifact: false
+        working-directory: packages/plugin/release
+        run: |
+          npm install --omit=dev --ignore-scripts --no-audit --no-fund
+          npm sbom --sbom-format cyclonedx --omit dev > sbom.cyclonedx.json
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v2
