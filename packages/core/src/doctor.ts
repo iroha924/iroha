@@ -11,7 +11,14 @@ import {
   type Result,
 } from "@iroha/domain";
 import { resolveGitLocation, resolveGitPath } from "@iroha/git";
-import { closeDatabase, openDatabase, probeCapabilities } from "@iroha/storage";
+import {
+  closeDatabase,
+  listApprovedRulesForRepository,
+  openDatabase,
+  probeCapabilities,
+} from "@iroha/storage";
+import { classifyGuardSpec } from "./hooks/guardrail.js";
+import { resolveInitializedRepository } from "./resolve-repository.js";
 import { readSchemaVersion } from "./schema-version.js";
 
 export type DoctorCheckStatus = "ok" | "warning" | "error" | "blocked";
@@ -199,6 +206,64 @@ async function checkStorageCapabilities(
 }
 
 /**
+ * Reports the active Guardrails and whether each is actually enforced at the
+ * Hook layer (vertical-slice.md §4). A Guardrail that fails open at PreToolUse —
+ * because its spec is unevaluable, or because it protects no paths (a
+ * command/`deny_commands`-scoped guard the Hook cannot enforce, ID-036) — is
+ * surfaced as a `warning`, so a silent no-op never reads as healthy. Any internal
+ * failure is a report entry, never a throw.
+ */
+async function checkGuardrails(cwd: string): Promise<DoctorCheckResult> {
+  const resolved = await resolveInitializedRepository(cwd);
+  if (!resolved.ok) {
+    return { name: "guardrails", status: "warning", message: "repository not resolved" };
+  }
+  const opened = await openDatabase(resolved.value.dbPath);
+  if (!opened.ok) {
+    return { name: "guardrails", status: "error", message: opened.error.message };
+  }
+  try {
+    const listed = await listApprovedRulesForRepository(opened.value, resolved.value.repositoryId);
+    if (!listed.ok) {
+      return { name: "guardrails", status: "error", message: listed.error.message };
+    }
+    const guardrails = listed.value.filter((rule) => rule.enforcement === "guardrail");
+    const invalid: string[] = [];
+    const notEnforceable: string[] = [];
+    for (const rule of guardrails) {
+      const kind = classifyGuardSpec(rule.guardSpecJson);
+      if (kind === "invalid") {
+        invalid.push(rule.id);
+      } else if (kind === "not_hook_enforceable") {
+        notEnforceable.push(rule.id);
+      }
+    }
+    const problems: string[] = [];
+    if (invalid.length > 0) {
+      problems.push(`unevaluable guard spec, will not enforce: ${invalid.join(", ")}`);
+    }
+    if (notEnforceable.length > 0) {
+      problems.push(
+        `no protected paths, not enforced at the hook layer (CI is the hard enforcement layer): ${notEnforceable.join(", ")}`,
+      );
+    }
+    if (problems.length > 0) {
+      return { name: "guardrails", status: "warning", message: problems.join("; ") };
+    }
+    return {
+      name: "guardrails",
+      status: "ok",
+      message:
+        guardrails.length === 0
+          ? "no active guardrails"
+          : `${guardrails.length} active guardrail(s), all enforceable`,
+    };
+  } finally {
+    await closeDatabase(opened.value);
+  }
+}
+
+/**
  * compatibility.md §9 point 9: "report Embedding and Forge providers
  * without printing secret values." `.iroha/config.yaml` never holds a
  * secret itself (only an environment-variable *name* — canonical-
@@ -288,6 +353,7 @@ export async function runDoctor(cwd: string): Promise<Result<DoctorReport, Iroha
   }
 
   checks.push(await checkStorageCapabilities(irohaStateDir, random));
+  checks.push(await checkGuardrails(cwd));
   checks.push(...(await checkProviders(irohaCanonicalDir)));
 
   return ok({ checks });

@@ -9,6 +9,7 @@ export * from "./docs-scan.js";
 export * from "./doctor.js";
 export * from "./hooks/context.js";
 export * from "./hooks/dispatch.js";
+export * from "./hooks/guardrail.js";
 export * from "./hooks/hook-entry.js";
 export * from "./hooks/normalization-context.js";
 export * from "./hooks/resolve-targets.js";
