@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "@/api/client.js";
+import { EmptyState, ErrorNote, Loading, PageTitle, Pill } from "@/components/ui.js";
 import { useI18n } from "@/i18n/index.js";
 
 /** Review queue list (dashboard-api.md §6): pending candidates awaiting human approval. */
@@ -12,27 +13,27 @@ export function ReviewQueue() {
     refetchInterval: 5000,
   });
 
-  if (q.isPending) return <p className="text-slate-500">{t("common.loading")}</p>;
-  if (q.isError || q.data === undefined) return <p className="text-red-600">{t("common.error")}</p>;
+  if (q.isPending) return <Loading />;
+  if (q.isError || q.data === undefined) return <ErrorNote />;
 
   return (
     <section>
-      <h1 className="mb-4 text-lg font-semibold">{t("review.title")}</h1>
+      <PageTitle>{t("review.title")}</PageTitle>
       {q.data.items.length === 0 ? (
-        <p className="text-slate-500">{t("review.empty")}</p>
+        <EmptyState message={t("review.empty")} />
       ) : (
-        <ul className="divide-y divide-slate-200 rounded border border-slate-200 bg-white">
+        <ul className="divide-y divide-hairline overflow-hidden rounded-2xl border border-hairline bg-paper-raised">
           {q.data.items.map((item) => (
             <li key={item.id}>
               <Link
                 to={`/review/${item.id}`}
-                className="flex items-center justify-between px-4 py-3 hover:bg-slate-50"
+                className="flex items-center gap-3 px-5 py-3.5 transition-colors hover:bg-paper-inset"
               >
-                <span>
-                  <span className="font-medium">{item.title}</span>
-                  <span className="ml-2 text-xs text-slate-500">{item.type}</span>
+                <Pill tone="pending">{item.type}</Pill>
+                <span className="flex-1 font-medium text-ink">{item.title}</span>
+                <span className="text-xs tabular-nums text-ink-faint">
+                  {item.createdAt.slice(0, 10)}
                 </span>
-                <span className="text-xs text-slate-400">{item.createdAt.slice(0, 10)}</span>
               </Link>
             </li>
           ))}

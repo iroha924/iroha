@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { Link, Route, Routes } from "react-router-dom";
+import { NavLink, Route, Routes } from "react-router-dom";
 import { ApiClientError, api } from "@/api/client.js";
+import { Card, Mark } from "@/components/ui.js";
 import { type Locale, useI18n } from "@/i18n/index.js";
 import { KnowledgeDetail } from "@/pages/KnowledgeDetail.js";
 import { KnowledgeList } from "@/pages/KnowledgeList.js";
@@ -20,14 +21,32 @@ function LanguageToggle() {
           key={l}
           onClick={() => setLocale(l)}
           aria-pressed={locale === l}
-          className={`rounded px-2 py-1 text-xs ${
-            locale === l ? "bg-slate-800 text-white" : "bg-slate-200 text-slate-700"
+          className={`rounded-full px-2.5 py-1 text-[11.5px] font-semibold transition-colors ${
+            locale === l ? "bg-matcha text-paper-raised" : "text-ink-faint hover:text-ink-muted"
           }`}
         >
           {l.toUpperCase()}
         </button>
       ))}
     </div>
+  );
+}
+
+function NavItem({ to, label }: { to: string; label: string }) {
+  return (
+    <NavLink
+      to={to}
+      end={to === "/"}
+      className={({ isActive }) =>
+        `border-b-2 pb-0.5 text-sm transition-colors ${
+          isActive
+            ? "border-matcha font-medium text-ink"
+            : "border-transparent text-ink-muted hover:text-ink"
+        }`
+      }
+    >
+      {label}
+    </NavLink>
   );
 }
 
@@ -46,35 +65,32 @@ export function App() {
     bootstrap.error.code === "INVALID_SESSION_TOKEN"
   ) {
     return (
-      <main className="mx-auto max-w-xl p-8 text-slate-700">
-        <p>{t("auth.required")}</p>
+      <main className="mx-auto flex min-h-screen max-w-md items-center px-6">
+        <Card className="w-full text-center">
+          <Mark className="mx-auto mb-4 h-12 w-12" />
+          <p className="text-ink-muted">{t("auth.required")}</p>
+        </Card>
       </main>
     );
   }
 
-  const navItems: [string, string][] = [
-    ["/", t("nav.overview")],
-    ["/review", t("nav.review")],
-    ["/knowledge", t("nav.knowledge")],
-    ["/search", t("nav.search")],
-  ];
-
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3">
-        <div className="flex items-center gap-6">
-          <span className="font-semibold">{t("app.title")}</span>
-          <nav className="flex gap-4 text-sm">
-            {navItems.map(([to, label]) => (
-              <Link key={to} to={to} className="text-slate-600 hover:text-slate-900">
-                {label}
-              </Link>
-            ))}
-          </nav>
+    <div className="min-h-screen">
+      <header className="border-b border-hairline bg-paper-raised">
+        <div className="mx-auto flex h-14 max-w-[1120px] items-center justify-between px-6">
+          <div className="flex items-center gap-8">
+            <img src="/iroha-lockup-horizontal.svg" alt="iroha" className="h-6 w-auto" />
+            <nav className="flex gap-5">
+              <NavItem to="/" label={t("nav.overview")} />
+              <NavItem to="/review" label={t("nav.review")} />
+              <NavItem to="/knowledge" label={t("nav.knowledge")} />
+              <NavItem to="/search" label={t("nav.search")} />
+            </nav>
+          </div>
+          <LanguageToggle />
         </div>
-        <LanguageToggle />
       </header>
-      <main className="mx-auto max-w-5xl p-6">
+      <main className="mx-auto max-w-[1120px] px-6 py-8">
         <Routes>
           <Route path="/" element={<Overview />} />
           <Route path="/review" element={<ReviewQueue />} />

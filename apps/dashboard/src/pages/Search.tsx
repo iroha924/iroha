@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { api } from "@/api/client.js";
+import { btnPrimary, EmptyState, ErrorNote, Loading, PageTitle } from "@/components/ui.js";
 import { useI18n } from "@/i18n/index.js";
 
 /** Natural-language search over approved knowledge (dashboard-api.md §6; FTS/hybrid via the API). */
@@ -22,32 +23,32 @@ export function Search() {
 
   return (
     <section>
-      <h1 className="mb-4 text-lg font-semibold">{t("search.title")}</h1>
-      <form onSubmit={onSubmit} className="mb-4 flex gap-2">
+      <PageTitle>{t("search.title")}</PageTitle>
+      <form onSubmit={onSubmit} className="mb-6 flex gap-2">
         <input
           type="search"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder={t("search.placeholder")}
           aria-label={t("search.title")}
-          className="flex-1 rounded border border-slate-300 px-3 py-2"
+          className="h-10 flex-1 rounded-xl border border-hairline bg-paper-raised px-3 text-ink placeholder:text-ink-faint focus:border-matcha focus:outline-none"
         />
-        <button type="submit" className="rounded bg-slate-800 px-4 py-2 text-white">
+        <button type="submit" className={btnPrimary}>
           {t("search.run")}
         </button>
       </form>
-      {q.isFetching && <p className="text-slate-500">{t("common.loading")}</p>}
-      {q.isError && <p className="text-red-600">{t("common.error")}</p>}
+      {q.isFetching && <Loading />}
+      {q.isError && <ErrorNote />}
       {q.data !== undefined && q.data.results.length === 0 && (
-        <p className="text-slate-500">{t("search.empty")}</p>
+        <EmptyState message={t("search.empty")} />
       )}
       {q.data !== undefined && q.data.results.length > 0 && (
-        <ul className="divide-y divide-slate-200 rounded border border-slate-200 bg-white">
+        <ul className="divide-y divide-hairline overflow-hidden rounded-2xl border border-hairline bg-paper-raised">
           {q.data.results.map((r) => (
-            <li key={r.id} className="px-4 py-3">
-              <div className="font-medium">{r.title}</div>
-              <div className="text-sm text-slate-600">{r.summary}</div>
-              <div className="mt-1 text-xs text-slate-400">
+            <li key={r.id} className="px-5 py-4">
+              <div className="font-medium text-ink">{r.title}</div>
+              <div className="mt-0.5 text-sm text-ink-muted">{r.summary}</div>
+              <div className="mt-1.5 text-xs text-ink-faint">
                 {r.type} · {t("knowledge.authority")} {r.authority}
               </div>
             </li>

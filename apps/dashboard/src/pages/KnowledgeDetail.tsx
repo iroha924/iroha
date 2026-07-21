@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "@/api/client.js";
+import { ErrorNote, Loading, Pill } from "@/components/ui.js";
 import { useI18n } from "@/i18n/index.js";
 
 /** Approved-knowledge detail with body, provenance, and relations (dashboard-api.md §6). */
@@ -9,30 +10,40 @@ export function KnowledgeDetail() {
   const { id = "" } = useParams();
   const q = useQuery({ queryKey: ["knowledge", id], queryFn: () => api.knowledgeDetail(id) });
 
-  if (q.isPending) return <p className="text-slate-500">{t("common.loading")}</p>;
-  if (q.isError || q.data === undefined) return <p className="text-red-600">{t("common.error")}</p>;
+  if (q.isPending) return <Loading />;
+  if (q.isError || q.data === undefined) return <ErrorNote />;
   const d = q.data;
 
   return (
     <section>
-      <Link to="/knowledge" className="text-sm text-slate-500 hover:underline">
+      <Link to="/knowledge" className="text-sm text-ink-muted hover:text-ink">
         ← {t("common.back")}
       </Link>
-      <h1 className="mt-2 text-lg font-semibold">{d.title}</h1>
-      <div className="mt-1 text-xs text-slate-500">
-        {d.type} · {t("common.status")}: {d.status} · {t("knowledge.authority")} {d.authority}
+      <h1 className="mt-3 font-display text-2xl font-semibold tracking-[-0.005em] text-ink">
+        {d.title}
+      </h1>
+      <div className="mt-2 flex items-center gap-2 text-xs text-ink-muted">
+        <Pill tone="neutral">{d.type}</Pill>
+        <span>
+          {t("common.status")}: {d.status}
+        </span>
+        <span>·</span>
+        <span className="tabular-nums">
+          {t("knowledge.authority")} {d.authority}
+        </span>
       </div>
       {d.body !== null && (
-        <pre className="mt-4 overflow-x-auto whitespace-pre-wrap rounded border border-slate-200 bg-white p-4 text-sm">
+        <pre className="mt-5 overflow-x-auto whitespace-pre-wrap rounded-xl border border-hairline bg-paper-inset p-4 font-mono text-[13px] leading-relaxed text-ink">
           {d.body}
         </pre>
       )}
       {d.relations.length > 0 && (
-        <ul className="mt-4 space-y-1 text-sm text-slate-600">
+        <ul className="mt-5 space-y-1.5 text-sm text-ink-muted">
           {d.relations.map((r) => (
             <li key={`${r.direction}-${r.relationType}-${r.entityId}`}>
-              {r.direction === "outgoing" ? "→" : "←"} {r.relationType}{" "}
-              <Link to={`/knowledge/${r.entityId}`} className="text-slate-800 hover:underline">
+              <span className="text-ink-faint">{r.direction === "outgoing" ? "→" : "←"}</span>{" "}
+              <span className="font-medium text-ink">{r.relationType}</span>{" "}
+              <Link to={`/knowledge/${r.entityId}`} className="text-matcha hover:underline">
                 {r.entityId}
               </Link>
             </li>
