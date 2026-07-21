@@ -7,20 +7,26 @@ import type {
 } from "./types.js";
 
 /**
- * Result of an incremental issue fetch. `issues` is the fully-paginated set of
- * items updated since the watermark (the adapter follows cursors internally and
- * stops early); `watermark` is the newest `updatedAt` observed this run (ISO
- * 8601, UTC `Z`), which the caller persists and passes back as `since` next time.
- * `watermark` is null when nothing was fetched.
+ * Result of an incremental issue fetch. `issues` is the set of items updated
+ * since the watermark (the adapter follows cursors internally and stops early);
+ * `watermark` is the newest `updatedAt` observed this run (ISO 8601, UTC `Z`),
+ * which the caller persists and passes back as `since` next time — null when
+ * nothing new was fetched, so the caller keeps its prior cursor. `truncated` is
+ * true when the adapter hit its page bound before draining the delta: the
+ * newest items were returned but an older tail was left unfetched, so the caller
+ * should surface an incomplete sync (the descending watermark alone cannot
+ * resume the gap).
  */
 export interface ForgeIssuesResult {
   issues: readonly NormalizedIssue[];
   watermark: string | null;
+  truncated: boolean;
 }
 
 export interface ForgePullRequestsResult {
   pullRequests: readonly NormalizedPullRequest[];
   watermark: string | null;
+  truncated: boolean;
 }
 
 /**

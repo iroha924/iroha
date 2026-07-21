@@ -104,8 +104,8 @@ export const pullRequestsResponseSchema = z.object({
     .nullable(),
 });
 
-type IssueNode = z.infer<typeof issueNodeSchema>;
-type PullRequestNode = z.infer<typeof pullRequestNodeSchema>;
+export type IssueNode = z.infer<typeof issueNodeSchema>;
+export type PullRequestNode = z.infer<typeof pullRequestNodeSchema>;
 type ReviewThreadNode = z.infer<typeof reviewThreadNodeSchema>;
 type ReviewCommentNode = z.infer<typeof reviewCommentNodeSchema>;
 

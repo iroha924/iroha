@@ -17,6 +17,14 @@ function gqlHttpError(status: number, body: unknown): Response {
   });
 }
 
+/** A GraphQL-level error envelope (HTTP 200 with an `errors` array). */
+function gqlErrors(errors: unknown[], data: unknown = null): Response {
+  return new Response(JSON.stringify({ data, errors }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+}
+
 function readCursor(init: RequestInit | undefined): string | null {
   if (typeof init?.body !== "string") {
     return null;
@@ -148,6 +156,7 @@ describe("createGitHubProvider.listIssues", () => {
       openedAt: "2026-03-01T00:00:00Z",
     });
     expect(result.value.watermark).toBe("2026-03-04T00:00:00Z");
+    expect(result.value.truncated).toBe(false);
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
@@ -256,6 +265,82 @@ describe("createGitHubProvider.listIssues", () => {
       result.error.stack ?? "",
     ].join(" | ");
     expect(serialized).not.toContain(TOKEN);
+  });
+
+  it("classifies a GraphQL NOT_FOUND as non-retryable and does not leak the token from the error envelope", async () => {
+    const TOKEN = `ghp_${"NotFoundLeakProbeTokenValue".padEnd(36, "0")}`;
+    const fetchImpl = vi.fn(async () =>
+      gqlErrors(
+        [{ type: "NOT_FOUND", message: `Could not resolve to a Repository. token=${TOKEN}` }],
+        { repository: null },
+      ),
+    );
+    const provider = createGitHubProvider({ token: TOKEN, fetchImpl, resilience: false });
+
+    const result = await provider.listIssues(REF, null);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      return;
+    }
+    // A missing/forbidden repo is permanent: it must not be retried forever.
+    expect(result.error.code).toBe("FORGE_UNAVAILABLE");
+    expect(result.error.retryable).toBe(false);
+    // The GraphqlResponseError message embeds the echoed token; it must not surface.
+    const serialized = [
+      result.error.message,
+      JSON.stringify(result.error),
+      String(result.error.cause),
+      result.error.stack ?? "",
+    ].join(" | ");
+    expect(serialized).not.toContain(TOKEN);
+  });
+
+  it("includes an item updated at the exact since second (strict early-stop, not <=)", async () => {
+    const fetchImpl = vi.fn(async () =>
+      gqlOk(
+        issuesPage(
+          [
+            issueNode({ id: "I_boundary", number: 5, updatedAt: "2026-03-05T00:00:00Z" }),
+            issueNode({ id: "I_old", number: 4, updatedAt: "2026-03-04T23:59:59Z" }),
+          ],
+          true,
+          "CURSOR1",
+        ),
+      ),
+    );
+    const provider = createGitHubProvider({ token: "t", fetchImpl, resilience: false });
+
+    const result = await provider.listIssues(REF, "2026-03-05T00:00:00Z");
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    // The boundary item (== since) is kept; only the strictly-older one stops the scan.
+    expect(result.value.issues.map((issue) => issue.externalId)).toEqual(["I_boundary"]);
+  });
+
+  it("flags truncated when the page bound is reached before draining", async () => {
+    const fetchImpl = vi.fn(async () =>
+      gqlOk(issuesPage([issueNode({ id: "I_1", number: 1 })], true, "CURSOR1")),
+    );
+    const provider = createGitHubProvider({
+      token: "t",
+      fetchImpl,
+      resilience: false,
+      maxPages: 1,
+    });
+
+    const result = await provider.listIssues(REF, null);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.value.truncated).toBe(true);
+    expect(result.value.issues).toHaveLength(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 });
 
