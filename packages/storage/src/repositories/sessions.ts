@@ -702,3 +702,128 @@ export async function listCheckpointsBySession(
     return err(mapLibsqlError(cause, "Failed to list checkpoints"));
   }
 }
+
+// --- dashboard list queries (WP-09) ---------------------------------------
+
+/**
+ * One row of the dashboard Session list (dashboard-api.md §6 "Session detail"
+ * header fields), an `agent_sessions` row enriched with per-Session Run
+ * aggregates so the list can show run count, the newest Run's status, and its
+ * branch without an N+1 query.
+ */
+export interface SessionListItemRow extends AgentSessionRow {
+  runCount: number;
+  latestRunStatus: SessionRunStatus | null;
+  latestBranch: string | null;
+}
+
+export interface ListSessionsFilter {
+  /** Page size; the caller passes `limit + 1` to detect a next page. */
+  limit: number;
+  /** Keyset cursor: return rows strictly older than this `(last_seen_at, id)` pair. */
+  beforeLastSeenAt?: string;
+  beforeId?: TypedId<"ses">;
+  platform?: SessionPlatform;
+  summaryStatus?: SessionSummaryStatus;
+  /** Inclusive `started_at` lower/upper bounds (RFC 3339 UTC). */
+  from?: string;
+  to?: string;
+}
+
+function rowToSessionListItem(row: Record<string, unknown>): SessionListItemRow {
+  return {
+    ...rowToAgentSession(row),
+    runCount: Number(row.run_count),
+    latestRunStatus:
+      row.latest_run_status === null ? null : (row.latest_run_status as SessionRunStatus),
+    latestBranch: nullableString(row.latest_branch),
+  };
+}
+
+/**
+ * Paginated Session list for the dashboard (`GET /api/v1/sessions`). Ordered
+ * `last_seen_at DESC, id DESC` — the deterministic ID tie-breaker
+ * dashboard-api.md §4 requires for stable cursor pagination — and filtered by
+ * the keyset cursor plus optional platform/summary-status/date-range. The Run
+ * aggregates are correlated subqueries rather than a GROUP BY so the outer
+ * keyset predicate and LIMIT stay simple and index-friendly.
+ */
+export async function listSessions(
+  db: Executor,
+  repositoryId: TypedId<"repo">,
+  filter: ListSessionsFilter,
+): Promise<Result<SessionListItemRow[], IrohaError>> {
+  const conditions = ["s.repository_id = ?"];
+  const args: Array<string | number> = [repositoryId];
+  if (filter.beforeLastSeenAt !== undefined && filter.beforeId !== undefined) {
+    conditions.push("(s.last_seen_at, s.id) < (?, ?)");
+    args.push(filter.beforeLastSeenAt, filter.beforeId);
+  }
+  if (filter.platform !== undefined) {
+    conditions.push("s.platform = ?");
+    args.push(filter.platform);
+  }
+  if (filter.summaryStatus !== undefined) {
+    conditions.push("s.summary_status = ?");
+    args.push(filter.summaryStatus);
+  }
+  if (filter.from !== undefined) {
+    conditions.push("s.started_at >= ?");
+    args.push(filter.from);
+  }
+  if (filter.to !== undefined) {
+    conditions.push("s.started_at <= ?");
+    args.push(filter.to);
+  }
+  args.push(filter.limit);
+  try {
+    const result = await db.execute({
+      sql: `SELECT s.*,
+          (SELECT COUNT(*) FROM session_runs r WHERE r.session_id = s.id) AS run_count,
+          (SELECT r.status FROM session_runs r WHERE r.session_id = s.id
+             ORDER BY r.started_at DESC, r.id DESC LIMIT 1) AS latest_run_status,
+          (SELECT r.git_branch FROM session_runs r WHERE r.session_id = s.id
+             ORDER BY r.started_at DESC, r.id DESC LIMIT 1) AS latest_branch
+        FROM agent_sessions s
+        WHERE ${conditions.join(" AND ")}
+        ORDER BY s.last_seen_at DESC, s.id DESC
+        LIMIT ?`,
+      args,
+    });
+    return ok(result.rows.map(rowToSessionListItem));
+  } catch (cause) {
+    return err(mapLibsqlError(cause, "Failed to list sessions"));
+  }
+}
+
+/** All Runs of a Session in execution order (`GET /api/v1/sessions/:id`). */
+export async function listRunsBySession(
+  db: Executor,
+  sessionId: TypedId<"ses">,
+): Promise<Result<SessionRunRow[], IrohaError>> {
+  try {
+    const result = await db.execute({
+      sql: "SELECT * FROM session_runs WHERE session_id = ? ORDER BY started_at, id",
+      args: [sessionId],
+    });
+    return ok(result.rows.map(rowToSessionRun));
+  } catch (cause) {
+    return err(mapLibsqlError(cause, "Failed to list session runs"));
+  }
+}
+
+/** All Turns of a Run in prompt order (`GET /api/v1/sessions/:id/runs/:runId`). */
+export async function listTurnsByRun(
+  db: Executor,
+  runId: TypedId<"run">,
+): Promise<Result<TurnRow[], IrohaError>> {
+  try {
+    const result = await db.execute({
+      sql: "SELECT * FROM turns WHERE run_id = ? ORDER BY started_at, id",
+      args: [runId],
+    });
+    return ok(result.rows.map(rowToTurn));
+  } catch (cause) {
+    return err(mapLibsqlError(cause, "Failed to list turns"));
+  }
+}

@@ -8,3 +8,12 @@ import { fileURLToPath } from "node:url";
  * migrations path once `@iroha/cli` ships outside this monorepo.
  */
 export const MIGRATIONS_DIR = fileURLToPath(new URL("../../../migrations", import.meta.url));
+
+/**
+ * The built dashboard SPA, served by `iroha dashboard`. Same depth reasoning as
+ * `MIGRATIONS_DIR`. WP-11 (plugin packaging) will replace this with the bundled
+ * asset path once `@iroha/cli` ships outside this monorepo.
+ */
+export const DASHBOARD_DIST = fileURLToPath(
+  new URL("../../../apps/dashboard/dist", import.meta.url),
+);

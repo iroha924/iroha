@@ -14,23 +14,33 @@ catalog:
   "@changesets/cli": 2.31.1
   "@commitlint/cli": 21.2.1
   "@commitlint/config-conventional": 21.2.0
+  "@hono/node-server": 2.0.10
   "@libsql/client": 0.17.4
   "@modelcontextprotocol/sdk": 1.29.0
+  "@playwright/test": 1.61.1
   "@secretlint/node": 13.0.2
   "@secretlint/secretlint-rule-preset-recommend": 13.0.2
+  "@tailwindcss/vite": 4.3.3
+  "@tanstack/react-query": 5.101.3
+  "@testing-library/jest-dom": 6.9.1
+  "@testing-library/react": 16.3.2
+  "@testing-library/user-event": 14.6.1
   "@types/node": 24.13.3
   "@types/react": 19.2.17
   "@types/react-dom": 19.2.3
   "@vitejs/plugin-react": 6.0.3
+  "@xyflow/react": 12.11.2
   gunshi: 0.37.1
   hono: 4.12.30
+  jsdom: 29.1.1
   lefthook: 2.1.10
   mdast-util-from-markdown: 2.0.3
   mdast-util-to-string: 4.0.0
-  playwright: 1.61.1
   react: 19.2.7
   react-dom: 19.2.7
+  react-router-dom: 7.18.1
   secretlint: 13.0.2
+  tailwindcss: 4.3.3
   tsdown: 0.22.9
   typescript: 7.0.2
   unist-util-visit: 5.1.0
@@ -48,3 +58,5 @@ allowBuilds:
 
 minimumReleaseAgeExclude:
   - gunshi@0.37.1
+  - '@tanstack/query-core@5.101.3'
+  - '@tanstack/react-query@5.101.3'

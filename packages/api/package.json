@@ -20,11 +20,17 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@hono/node-server": "catalog:",
     "@iroha/core": "workspace:*",
-    "hono": "catalog:"
+    "hono": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",
+    "@iroha/domain": "workspace:*",
+    "@iroha/git": "workspace:*",
+    "@iroha/storage": "workspace:*",
+    "@types/node": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"

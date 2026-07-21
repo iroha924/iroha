@@ -15,6 +15,7 @@ import {
 } from "@iroha/domain";
 import {
   type Database,
+  type Executor,
   enqueueEmbeddingJob,
   getEntityById,
   getSearchDocumentByEntityId,
@@ -50,8 +51,19 @@ export interface SyncCanonicalResult {
   unresolvedRelations: number;
 }
 
-async function upsertOneDocument(
-  db: Database,
+/**
+ * Imports one already-written canonical document into the local DB — the
+ * entity, `canonical_documents` row, `search_documents` row, and an enqueued
+ * embedding job — at authority 100 (`source_kind = 'canonical'`). Exported so
+ * the WP-09 approval transaction (design.md §10 / ID-025(2)) reuses the exact
+ * same import path `sync --rebuild` uses, guaranteeing that approving a
+ * candidate and rebuilding from `.iroha/` produce byte-identical DB rows
+ * (`path`/`hash` must be `computeCanonicalPath`/the file SHA-256, as the
+ * canonical scan produces). It does not populate `knowledge_items`, matching
+ * current sync behavior.
+ */
+export async function importCanonicalDocument(
+  db: Executor,
   repositoryId: TypedId<"repo">,
   path: string,
   hash: string,
@@ -151,8 +163,8 @@ async function upsertOneDocument(
  * file fails rebuild safely" — extended here to "one bad edge", not the
  * whole graph) and continues.
  */
-async function insertRelationsForDocument(
-  db: Database,
+export async function insertCanonicalDocumentRelations(
+  db: Executor,
   repositoryId: TypedId<"repo">,
   document: CanonicalDocument,
   clock: Clock,
@@ -248,7 +260,7 @@ export async function syncCanonicalToDatabase(
   const diff = diffCanonicalFiles(scan, baseline);
 
   for (const entry of [...diff.added, ...diff.changed]) {
-    const upserted = await upsertOneDocument(
+    const upserted = await importCanonicalDocument(
       db,
       repositoryId,
       entry.path,
@@ -264,7 +276,7 @@ export async function syncCanonicalToDatabase(
 
   let unresolvedRelations = 0;
   for (const entry of [...diff.added, ...diff.changed]) {
-    const relationsResult = await insertRelationsForDocument(
+    const relationsResult = await insertCanonicalDocumentRelations(
       db,
       repositoryId,
       entry.document,

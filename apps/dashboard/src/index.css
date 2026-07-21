@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+/*
+ * iroha brand tokens — the organic "生成り" palette from the logo (see
+ * .claude/rules/brand-and-design.md). Warm paper canvas, sumi-ink text, and the
+ * three earthy accents (matcha / clay / persimmon). Depth comes from tone, not
+ * shadow.
+ */
+@theme {
+  --color-paper: #f4efe5;
+  --color-paper-raised: #fbf7ee;
+  --color-paper-inset: #f0e8d8;
+  --color-hairline: #e6dcc8;
+  --color-hairline-strong: #d8cdb4;
+
+  --color-ink: #2e2a22;
+  --color-ink-muted: #6f675a;
+  --color-ink-faint: #968d7c;
+
+  --color-matcha: #6e7b57;
+  --color-matcha-hover: #5d6949;
+  --color-matcha-active: #515e3e;
+  --color-approve: #5f7048;
+  --color-approve-tint: #e9ebde;
+
+  --color-persimmon: #c26a3c;
+  --color-persimmon-hover: #a9572d;
+  --color-persimmon-tint: #f3e1d6;
+
+  --color-warn: #a8823f;
+  --color-warn-tint: #f0e7d6;
+
+  --color-clay: #bc9870;
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: ui-rounded, "SF Pro Rounded", system-ui, ui-sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, "Cascadia Mono", Consolas, monospace;
+}
+
+@layer base {
+  html {
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Warm matcha selection — the whole app feels lit by the one accent. */
+  ::selection {
+    background-color: var(--color-matcha);
+    color: var(--color-paper-raised);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-matcha);
+    outline-offset: 2px;
+  }
+}

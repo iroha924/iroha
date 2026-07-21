@@ -1,0 +1,23 @@
+{
+  "name": "@iroha/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "iroha — end-to-end dashboard tests (local opt-in; not run in CI)",
+  "scripts": {
+    "lint": "biome check tests playwright.config.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "catalog:",
+    "@iroha/cli": "workspace:*",
+    "@iroha/core": "workspace:*",
+    "@iroha/dashboard": "workspace:*",
+    "@iroha/domain": "workspace:*",
+    "@iroha/storage": "workspace:*",
+    "@playwright/test": "catalog:",
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  }
+}

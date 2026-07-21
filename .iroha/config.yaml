@@ -1,0 +1,19 @@
+schema_version: 1
+repository_id: repo_01KY12PJ3Z3ZJC685C0Z4486FC
+default_language: en
+canonical:
+  require_human_approval: true
+  session_auto_publish: false
+search:
+  embedding:
+    enabled: false
+    provider: voyage
+    model: voyage-4-large
+    dimension: 1024
+    api_key_env: VOYAGE_API_KEY
+forge:
+  provider: github
+  enabled: false
+privacy:
+  canonical_prompt_content: false
+  canonical_transcript_content: false

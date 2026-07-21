@@ -311,6 +311,45 @@ export async function listCandidatesByStatus(
   }
 }
 
+export interface ListCandidatesPageFilter {
+  status: CandidateStatus;
+  /** Page size; the caller passes `limit + 1` to detect a next page. */
+  limit: number;
+  /** Keyset cursor: return rows strictly older than this `(created_at, id)` pair. */
+  beforeCreatedAt?: string;
+  beforeId?: TypedId<"cand">;
+}
+
+/**
+ * Keyset-paginated candidate list for the dashboard review queue
+ * (`GET /api/v1/candidates`). Same deterministic `created_at DESC, id DESC`
+ * order as `listCandidatesByStatus`, plus a `(created_at, id)` cursor so paging
+ * stays stable across reloads (dashboard-api.md §4).
+ */
+export async function listCandidatesPage(
+  db: Executor,
+  repositoryId: TypedId<"repo">,
+  filter: ListCandidatesPageFilter,
+): Promise<Result<CandidateRow[], IrohaError>> {
+  const conditions = ["repository_id = ?", "status = ?"];
+  const args: Array<string | number> = [repositoryId, filter.status];
+  if (filter.beforeCreatedAt !== undefined && filter.beforeId !== undefined) {
+    conditions.push("(created_at, id) < (?, ?)");
+    args.push(filter.beforeCreatedAt, filter.beforeId);
+  }
+  args.push(filter.limit);
+  try {
+    const result = await db.execute({
+      sql: `SELECT * FROM candidates WHERE ${conditions.join(" AND ")}
+        ORDER BY created_at DESC, id DESC LIMIT ?`,
+      args,
+    });
+    return ok(result.rows.map(rowToCandidate));
+  } catch (cause) {
+    return err(mapLibsqlError(cause, "Failed to list candidates"));
+  }
+}
+
 export interface UpdateCandidateStatusInput {
   from: CandidateStatus;
   to: CandidateStatus;
