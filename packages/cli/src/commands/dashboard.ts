@@ -40,6 +40,7 @@ export const dashboardCommand = define({
   args: {
     json: { type: "boolean", description: "Output JSON" },
     "no-open": { type: "boolean", description: "Do not open the browser" },
+    port: { type: "number", description: "Bind a fixed port instead of a random one (dev)" },
   },
   run: async (ctx) => {
     const json = ctx.values.json ?? false;
@@ -50,9 +51,17 @@ export const dashboardCommand = define({
       return;
     }
 
+    // Loopback-only dev convenience: a fixed launch token so the Vite dev
+    // server (which proxies /api same-origin) can reuse one stable
+    // `#token=...`. Never set this in production — an unset env yields a fresh
+    // random 256-bit token per start, as designed.
+    const devToken = process.env.IROHA_DASHBOARD_DEV_TOKEN;
+
     const server = await startDashboardServer({
       cwd: process.cwd(),
       ...(existsSync(DASHBOARD_DIST) ? { staticRoot: DASHBOARD_DIST } : {}),
+      ...(ctx.values.port !== undefined ? { port: ctx.values.port } : {}),
+      ...(devToken !== undefined && devToken.length > 0 ? { launchToken: devToken } : {}),
     });
 
     if (json) {
