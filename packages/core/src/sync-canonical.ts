@@ -22,9 +22,11 @@ import {
   insertDirtyMarker,
   insertRelation,
   listCanonicalDocumentsByRepository,
+  type UpsertKnowledgeItemInput,
   updateEntityStatus,
   upsertCanonicalDocument,
   upsertEntity,
+  upsertKnowledgeItem,
   upsertSearchDocument,
   upsertSyncCursor,
 } from "@iroha/storage";
@@ -59,8 +61,11 @@ export interface SyncCanonicalResult {
  * same import path `sync --rebuild` uses, guaranteeing that approving a
  * candidate and rebuilding from `.iroha/` produce byte-identical DB rows
  * (`path`/`hash` must be `computeCanonicalPath`/the file SHA-256, as the
- * canonical scan produces). It does not populate `knowledge_items`, matching
- * current sync behavior.
+ * canonical scan produces). It also projects every knowledge-type document
+ * into `knowledge_items` (WP-10, closing decision-log ID-033), so approved
+ * Rules/Decisions are visible to `listApprovedRulesForRepository` (SessionStart
+ * context, MCP `get_active_rules`) and PreToolUse guardrail evaluation — for
+ * both `sync`/`--rebuild` and the approval transaction, keeping them equivalent.
  */
 export async function importCanonicalDocument(
   db: Executor,
@@ -103,6 +108,37 @@ export async function importCanonicalDocument(
   });
   if (!canonicalResult.ok) {
     return canonicalResult;
+  }
+
+  // Project knowledge-type documents (every canonical type except
+  // session_summary) into `knowledge_items`. A guardrail Rule carries its
+  // machine-evaluable guard spec (canonical-schema.md §7); every other item is
+  // advisory. The Zod-validated canonical document guarantees a guardrail Rule
+  // has a `guard` object, so the `guard !== undefined` check only satisfies the
+  // type-checker (the advisory fallback is unreachable for a guardrail Rule).
+  if (frontmatter.type !== "session_summary") {
+    const knowledgeCommon = {
+      id: frontmatter.id,
+      knowledgeType: frontmatter.type,
+      body,
+      scopeJson: JSON.stringify(frontmatter.scope),
+      approvedAt: frontmatter.approved_at,
+      canonicalPath: path,
+    };
+    const knowledgeInput: UpsertKnowledgeItemInput =
+      frontmatter.type === "rule" &&
+      frontmatter.rule.enforcement === "guardrail" &&
+      frontmatter.rule.guard !== undefined
+        ? {
+            ...knowledgeCommon,
+            enforcement: "guardrail",
+            guardSpecJson: JSON.stringify(frontmatter.rule.guard),
+          }
+        : { ...knowledgeCommon, enforcement: "advisory" };
+    const knowledgeResult = await upsertKnowledgeItem(db, knowledgeInput);
+    if (!knowledgeResult.ok) {
+      return knowledgeResult;
+    }
   }
 
   const searchResult = await upsertSearchDocument(db, {

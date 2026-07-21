@@ -7,7 +7,7 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!**/public", "!**/dist"]
+    "includes": ["**", "!**/public", "!**/dist", "!tests/fixtures"]
   },
   "css": {
     "parser": {
