@@ -15,15 +15,29 @@
   ],
   "scripts": {
     "build": "tsdown src/index.ts --dts",
+    "codegen": "graphql-codegen --config codegen.ts",
     "lint": "biome check src",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@iroha/forge": "workspace:*"
+    "@graphql-typed-document-node/core": "catalog:",
+    "@iroha/forge": "workspace:*",
+    "@octokit/core": "catalog:",
+    "@octokit/plugin-paginate-graphql": "catalog:",
+    "@octokit/plugin-retry": "catalog:",
+    "@octokit/plugin-throttling": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",
+    "@graphql-codegen/cli": "catalog:",
+    "@graphql-codegen/typed-document-node": "catalog:",
+    "@graphql-codegen/typescript": "catalog:",
+    "@graphql-codegen/typescript-operations": "catalog:",
+    "@octokit/graphql-schema": "catalog:",
+    "@types/node": "catalog:",
+    "graphql": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
