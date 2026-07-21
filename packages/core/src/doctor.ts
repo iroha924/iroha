@@ -2,6 +2,7 @@ import type { ExecFileException } from "node:child_process";
 import { execFile } from "node:child_process";
 import { access, constants, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseRepositoryConfig } from "@iroha/config";
 import {
   CryptoRandomSource,
@@ -312,13 +313,96 @@ async function checkProviders(irohaCanonicalDir: string): Promise<DoctorCheckRes
 }
 
 /**
+ * The plugin root to look for the platform manifests under. Codex sets both
+ * `PLUGIN_ROOT` and `CLAUDE_PLUGIN_ROOT`; when neither is set (a plain `iroha
+ * doctor` from a terminal) fall back to the package root, one level above this
+ * bundled module — under Option A (decision-log ID-038) the manifests ship in
+ * the same npm package as the binary (`<pkg>/dist/*.mjs` → `<pkg>/…`).
+ */
+function resolvePluginRoot(): string {
+  const fromEnv = process.env.CLAUDE_PLUGIN_ROOT ?? process.env.PLUGIN_ROOT;
+  if (fromEnv !== undefined && fromEnv.length > 0) {
+    return fromEnv;
+  }
+  return fileURLToPath(new URL("..", import.meta.url));
+}
+
+/** A structural (not schema) reason a manifest is invalid, or `null` if well-formed. */
+function manifestProblem(value: unknown): string | null {
+  if (typeof value !== "object" || value === null) {
+    return "is not a JSON object";
+  }
+  const manifest = value as Record<string, unknown>;
+  if (typeof manifest.name !== "string" || manifest.name.length === 0) {
+    return "is missing a name";
+  }
+  if (typeof manifest.version !== "string" || manifest.version.length === 0) {
+    return "is missing a version";
+  }
+  return null;
+}
+
+/**
+ * compatibility.md §9 step 3/4: validate the installed platform manifests. Since
+ * `@iroha/core` may not depend on `@iroha/plugin` (§4), this is a lightweight
+ * structural check (JSON parse + required `name`/`version`) against the
+ * platform-convention paths, not the plugin's own Zod schema — those validators
+ * run at build time (`@iroha/plugin`'s package smoke test). Reports `ok` when the
+ * manifests are absent (a terminal `iroha doctor` outside a plugin install) and
+ * `error` only when a present manifest is malformed.
+ */
+export async function checkPluginManifests(root: string): Promise<DoctorCheckResult> {
+  const manifests = [
+    { platform: "Claude", path: join(root, ".claude-plugin", "plugin.json") },
+    { platform: "Codex", path: join(root, ".codex-plugin", "plugin.json") },
+  ];
+  const valid: string[] = [];
+  for (const { platform, path } of manifests) {
+    let raw: string;
+    try {
+      raw = await readFile(path, "utf8");
+    } catch {
+      continue; // not present here — not running from an installed plugin
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return {
+        name: "plugin-manifests",
+        status: "error",
+        message: `${platform} plugin.json is not valid JSON`,
+      };
+    }
+    const problem = manifestProblem(parsed);
+    if (problem !== null) {
+      return {
+        name: "plugin-manifests",
+        status: "error",
+        message: `${platform} plugin.json ${problem}`,
+      };
+    }
+    const manifest = parsed as { name: string; version: string };
+    valid.push(`${platform} ${manifest.name}@${manifest.version}`);
+  }
+  if (valid.length === 0) {
+    return {
+      name: "plugin-manifests",
+      status: "ok",
+      message: "not running from an installed iroha plugin (manifests validated at build time)",
+    };
+  }
+  return { name: "plugin-manifests", status: "ok", message: `valid: ${valid.join(", ")}` };
+}
+
+/**
  * `iroha doctor` (implementation-plan.md WP-05, compatibility.md §9).
  * Every check degrades to a report entry rather than aborting — a doctor
  * command that itself crashes on a missing optional tool defeats its own
- * purpose. Checks that need capabilities this WP does not yet build (MCP
- * `initialize`, plugin manifest validation, Codex hook trust — WP-06/07/11)
- * report `warning`, not `error`: the capability is not yet part of this
- * build, not something the environment is missing.
+ * purpose. Checks for a capability this build does not yet exercise (the MCP
+ * `initialize` handshake — WP-07's server exists but doctor does not spawn it)
+ * report `warning`, not `error`: the capability is not yet part of doctor, not
+ * something the environment is missing.
  */
 export async function runDoctor(cwd: string): Promise<Result<DoctorReport, IrohaError>> {
   const random = new CryptoRandomSource();
@@ -334,11 +418,7 @@ export async function runDoctor(cwd: string): Promise<Result<DoctorReport, Iroha
     status: "warning",
     message: "not yet implemented in this build (WP-07)",
   });
-  checks.push({
-    name: "plugin-manifests",
-    status: "warning",
-    message: "not yet implemented in this build (WP-11)",
-  });
+  checks.push(await checkPluginManifests(resolvePluginRoot()));
 
   const { check: gitCheck, irohaCanonicalDir, irohaStateDir } = await checkGitRepository(cwd);
   checks.push(gitCheck);

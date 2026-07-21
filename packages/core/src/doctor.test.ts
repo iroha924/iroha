@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { CryptoRandomSource, FixedClock } from "@iroha/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parse, stringify } from "yaml";
-import { runDoctor } from "./doctor.js";
+import { checkPluginManifests, runDoctor } from "./doctor.js";
 import { initRepository } from "./init-repository.js";
 import { createTempGitRepo, removeTempDir } from "./test-helpers/tmp-repo.js";
 
@@ -114,5 +114,58 @@ describe("runDoctor", () => {
 
     const byName = new Map(result.value.checks.map((c) => [c.name, c]));
     expect(byName.get("config")?.status).toBe("error");
+  });
+});
+
+describe("checkPluginManifests", () => {
+  let root: string | undefined;
+
+  afterEach(async () => {
+    if (root) {
+      await rm(root, { recursive: true, force: true });
+      root = undefined;
+    }
+  });
+
+  async function writeManifest(dir: string, name: string, body: string): Promise<void> {
+    await mkdir(join(dir, name), { recursive: true });
+    await writeFile(join(dir, name, "plugin.json"), body, "utf8");
+  }
+
+  it("reports ok with the plugin names when both manifests are well-formed", async () => {
+    root = await mkdtemp(join(tmpdir(), "iroha-pm-"));
+    await writeManifest(
+      root,
+      ".claude-plugin",
+      JSON.stringify({ name: "iroha", version: "0.1.0" }),
+    );
+    await writeManifest(root, ".codex-plugin", JSON.stringify({ name: "iroha", version: "0.1.0" }));
+    const check = await checkPluginManifests(root);
+    expect(check.status).toBe("ok");
+    expect(check.message).toContain("Claude iroha@0.1.0");
+    expect(check.message).toContain("Codex iroha@0.1.0");
+  });
+
+  it("reports ok (not an error) when no manifest is present", async () => {
+    root = await mkdtemp(join(tmpdir(), "iroha-pm-"));
+    const check = await checkPluginManifests(root);
+    expect(check.status).toBe("ok");
+    expect(check.message).toContain("not running from an installed iroha plugin");
+  });
+
+  it("reports error when a present manifest is not valid JSON", async () => {
+    root = await mkdtemp(join(tmpdir(), "iroha-pm-"));
+    await writeManifest(root, ".claude-plugin", "{ not json");
+    const check = await checkPluginManifests(root);
+    expect(check.status).toBe("error");
+    expect(check.message).toContain("not valid JSON");
+  });
+
+  it("reports error when a present manifest is missing a required field", async () => {
+    root = await mkdtemp(join(tmpdir(), "iroha-pm-"));
+    await writeManifest(root, ".codex-plugin", JSON.stringify({ version: "0.1.0" }));
+    const check = await checkPluginManifests(root);
+    expect(check.status).toBe("error");
+    expect(check.message).toContain("missing a name");
   });
 });
