@@ -17,6 +17,23 @@ function formatSync(data: RunSyncResult): string {
       `Embeddings: ${embedding.processed} embedded, ${embedding.failed} retrying, ${embedding.dead} dead-lettered.`,
     );
   }
+  // Forge is non-fatal, so its outcome only surfaces here (never as a sync error).
+  // "disabled" (the default) prints nothing to keep the common case quiet.
+  const forge = data.forge;
+  if (forge.status === "skipped") {
+    lines.push(`Forge: skipped (${forge.reason}).`);
+  } else if (forge.status === "error") {
+    lines.push(`Forge: sync failed (${forge.errorCode}) — will retry on the next sync.`);
+  } else if (forge.status === "synced") {
+    lines.push(
+      `Forge: ${forge.issues} issue(s), ${forge.pullRequests} PR(s), ${forge.reviewComments} review comment(s), ${forge.relations} relation(s).`,
+    );
+    if (forge.truncated) {
+      lines.push(
+        "Forge sync was truncated — older history was not fetched; raise the page bound or re-run. See dirty markers.",
+      );
+    }
+  }
   return lines.join("\n");
 }
 

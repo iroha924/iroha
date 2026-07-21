@@ -175,7 +175,13 @@ async function syncForge(
 ): Promise<ForgeSyncOutcome> {
   const provider = resolveForgeProvider(resolved.config.forge, process.env);
   if (provider === null) {
-    return { status: "disabled" };
+    const forge = resolved.config.forge;
+    if (!forge.enabled || forge.provider !== "github") {
+      return { status: "disabled" };
+    }
+    // Enabled but unresolvable → the token env var is unset; distinguish from
+    // "disabled" so `iroha sync` can tell the user why forge did not run.
+    return { status: "skipped", reason: `forge is enabled but ${forge.api_token_env} is not set` };
   }
   const refResult = await resolveGitHubRef(cwd);
   if (!refResult.ok) {

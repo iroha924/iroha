@@ -27,6 +27,7 @@ import {
   getSyncCursor,
   getWorkItemByExternalId,
   insertActor,
+  insertDirtyMarker,
   insertRelation,
   type SyncCursorRow,
   upsertEntity,
@@ -529,18 +530,44 @@ export async function runForgeSync(
       return { status: "error", errorCode: written.error.code };
     }
 
+    const truncated = issuesResult.value.truncated || pullRequestsResult.value.truncated;
     // Advance watermarks; null (nothing new) keeps the prior value so a no-op
-    // sync never regresses the cursor.
+    // sync never regresses the cursor. On truncation, do NOT advance that
+    // resource's watermark either: the descending watermark cannot resume the
+    // unfetched older tail, so advancing it would drop that tail permanently.
+    // Keeping the prior watermark leaves the gap recoverable (raise maxPages and
+    // re-run) and the dirty marker below surfaces the incompleteness.
     const stateJson = JSON.stringify({
-      issues: issuesResult.value.watermark ?? watermarks.issues,
-      pullRequests: pullRequestsResult.value.watermark ?? watermarks.pullRequests,
+      issues: issuesResult.value.truncated
+        ? watermarks.issues
+        : (issuesResult.value.watermark ?? watermarks.issues),
+      pullRequests: pullRequestsResult.value.truncated
+        ? watermarks.pullRequests
+        : (pullRequestsResult.value.watermark ?? watermarks.pullRequests),
     });
-    await upsertSyncCursor(db, {
+    const cursorWrite = await upsertSyncCursor(db, {
       repositoryId,
       provider: FORGE_PROVIDER,
       stateJson,
       lastSuccessAt: attemptAt,
     });
+    if (!cursorWrite.ok) {
+      return { status: "error", errorCode: cursorWrite.error.code };
+    }
+    if (truncated) {
+      // Best-effort: record that an older tail was left unfetched.
+      await insertDirtyMarker(db, {
+        id: makeTypedId("dirty", clock, random),
+        repositoryId,
+        markerType: "sync_required",
+        detailsJson: JSON.stringify({
+          reason: "forge_incremental_truncated",
+          issues: issuesResult.value.truncated,
+          pullRequests: pullRequestsResult.value.truncated,
+        }),
+        createdAt: attemptAt,
+      });
+    }
 
     return {
       status: "synced",
@@ -548,7 +575,7 @@ export async function runForgeSync(
       pullRequests: pullRequests.length,
       reviewComments: written.value.reviewComments,
       relations: written.value.relations,
-      truncated: issuesResult.value.truncated || pullRequestsResult.value.truncated,
+      truncated,
     };
   } catch (error) {
     const errorCode = error instanceof IrohaError ? error.code : "INTERNAL_ERROR";

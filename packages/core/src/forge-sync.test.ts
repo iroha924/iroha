@@ -340,6 +340,26 @@ describe("runForgeSync", () => {
     expect(second.pullRequestsSince).toEqual(["2026-03-05T00:00:00Z"]);
   });
 
+  it("does not advance a truncated resource's watermark and records a dirty marker", async () => {
+    const database = await setup();
+    const outcome = await run(
+      fakeProvider({ issues: [issue()], issuesWatermark: "2026-03-02T00:00:00Z", truncated: true }),
+    );
+
+    expect(outcome).toMatchObject({ status: "synced", truncated: true });
+    const cursor = await getSyncCursor(database, REPOSITORY_ID, "github");
+    if (!cursor.ok || cursor.value === null) {
+      throw new Error("cursor not written");
+    }
+    // Truncated → the issues watermark is NOT advanced (stays at the prior null),
+    // so the unfetched older tail remains recoverable on a re-run.
+    expect(JSON.parse(cursor.value.stateJson).issues).toBeNull();
+    const markers = await database.execute({
+      sql: "SELECT COUNT(*) AS n FROM dirty_markers WHERE marker_type = 'sync_required'",
+    });
+    expect(markers.rows[0]?.n).toBe(1);
+  });
+
   it("is non-fatal on a provider failure: records the error, writes nothing, never throws", async () => {
     const database = await setup();
     const outcome = await run(fakeProvider({ issuesError: true }));
