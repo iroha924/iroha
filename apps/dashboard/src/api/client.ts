@@ -4,11 +4,23 @@ import type {
   CandidateDetailData,
   CandidateQueuePage,
   CandidateStatusChangeData,
+  CheckpointDetailData,
+  DoctorRepairData,
+  DoctorReport,
   EditCandidateData,
+  GraphData,
+  GraphPathData,
   KnowledgeDetailData,
   KnowledgeListPage,
   McpSearchData,
   OverviewData,
+  RepositoryConfig,
+  RunDetailData,
+  SessionDetailData,
+  SessionListPage,
+  SettingsData,
+  SyncCanonicalResult,
+  SyncStatusData,
 } from "@iroha/api";
 
 /** A failed API envelope surfaced as a throwable, preserving the stable code and field errors. */
@@ -93,4 +105,37 @@ export const api = {
   knowledgeDetail: (id: string) => request<KnowledgeDetailData>("GET", `/v1/knowledge/${id}`),
 
   search: (query: string) => request<McpSearchData>("POST", "/v1/search", { query }),
+
+  sessions: (cursor?: string) =>
+    request<SessionListPage>(
+      "GET",
+      `/v1/sessions${cursor !== undefined ? `?cursor=${encodeURIComponent(cursor)}` : ""}`,
+    ),
+  sessionDetail: (id: string) => request<SessionDetailData>("GET", `/v1/sessions/${id}`),
+  runDetail: (sessionId: string, runId: string) =>
+    request<RunDetailData>("GET", `/v1/sessions/${sessionId}/runs/${runId}`),
+  checkpoint: (id: string) => request<CheckpointDetailData>("GET", `/v1/checkpoints/${id}`),
+
+  settings: () => request<SettingsData>("GET", "/v1/settings"),
+  updateSharedConfig: (config: RepositoryConfig) =>
+    request<RepositoryConfig>("PATCH", "/v1/settings/shared", config),
+
+  doctor: () => request<DoctorReport>("GET", "/v1/doctor"),
+  doctorRepair: (operation: string) =>
+    request<DoctorRepairData>("POST", "/v1/doctor/repair", { operation }),
+
+  syncStatus: () => request<SyncStatusData>("GET", "/v1/sync/status"),
+  sync: () => request<SyncCanonicalResult>("POST", "/v1/sync"),
+
+  graphQuery: (roots: string[], depth?: number) =>
+    request<GraphData>("POST", "/v1/graph/query", {
+      roots,
+      ...(depth !== undefined ? { depth } : {}),
+    }),
+  entityRelations: (id: string) => request<GraphData>("GET", `/v1/entities/${id}/relations`),
+  graphPath: (from: string, to: string) =>
+    request<GraphPathData>(
+      "GET",
+      `/v1/graph/path?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+    ),
 };

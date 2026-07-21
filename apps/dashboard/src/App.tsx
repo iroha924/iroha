@@ -4,12 +4,17 @@ import { NavLink, Route, Routes } from "react-router-dom";
 import { ApiClientError, api } from "@/api/client.js";
 import { Card, Mark } from "@/components/ui.js";
 import { type Locale, useI18n } from "@/i18n/index.js";
+import { Doctor } from "@/pages/Doctor.js";
 import { KnowledgeDetail } from "@/pages/KnowledgeDetail.js";
 import { KnowledgeList } from "@/pages/KnowledgeList.js";
 import { Overview } from "@/pages/Overview.js";
 import { ReviewDetail } from "@/pages/ReviewDetail.js";
 import { ReviewQueue } from "@/pages/ReviewQueue.js";
+import { RunDetail } from "@/pages/RunDetail.js";
 import { Search } from "@/pages/Search.js";
+import { SessionDetail } from "@/pages/SessionDetail.js";
+import { Sessions } from "@/pages/Sessions.js";
+import { Settings } from "@/pages/Settings.js";
 
 function LanguageToggle() {
   const { locale, setLocale } = useI18n();
@@ -82,22 +87,34 @@ export function App() {
             <img src="/iroha-lockup-horizontal.svg" alt="iroha" className="h-6 w-auto" />
             <nav className="flex gap-5">
               <NavItem to="/" label={t("nav.overview")} />
+              <NavItem to="/sessions" label={t("nav.sessions")} />
               <NavItem to="/review" label={t("nav.review")} />
               <NavItem to="/knowledge" label={t("nav.knowledge")} />
               <NavItem to="/search" label={t("nav.search")} />
             </nav>
           </div>
-          <LanguageToggle />
+          <div className="flex items-center gap-4">
+            <nav className="flex gap-4 text-sm">
+              <NavItem to="/settings" label={t("nav.settings")} />
+              <NavItem to="/doctor" label={t("nav.doctor")} />
+            </nav>
+            <LanguageToggle />
+          </div>
         </div>
       </header>
       <main className="mx-auto max-w-[1120px] px-6 py-8">
         <Routes>
           <Route path="/" element={<Overview />} />
+          <Route path="/sessions" element={<Sessions />} />
+          <Route path="/sessions/:id" element={<SessionDetail />} />
+          <Route path="/sessions/:id/runs/:runId" element={<RunDetail />} />
           <Route path="/review" element={<ReviewQueue />} />
           <Route path="/review/:id" element={<ReviewDetail />} />
           <Route path="/knowledge" element={<KnowledgeList />} />
           <Route path="/knowledge/:id" element={<KnowledgeDetail />} />
           <Route path="/search" element={<Search />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/doctor" element={<Doctor />} />
         </Routes>
       </main>
     </div>
