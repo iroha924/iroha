@@ -10,6 +10,11 @@ export interface SyncStatusData {
     lastAttemptAt: string | null;
     lastErrorCode: string | null;
   } | null;
+  github: {
+    lastSuccessAt: string | null;
+    lastAttemptAt: string | null;
+    lastErrorCode: string | null;
+  } | null;
   dirtyMarkers: Array<{
     id: string;
     type: string;
@@ -35,6 +40,10 @@ export async function getSyncStatus(
       if (!cursor.ok) {
         return cursor;
       }
+      const github = await getSyncCursor(ctx.db, ctx.repo.repositoryId, "github");
+      if (!github.ok) {
+        return github;
+      }
       const dirty = await listOpenDirtyMarkers(ctx.db, ctx.repo.repositoryId);
       if (!dirty.ok) {
         return dirty;
@@ -47,6 +56,14 @@ export async function getSyncStatus(
                 lastSuccessAt: cursor.value.lastSuccessAt,
                 lastAttemptAt: cursor.value.lastAttemptAt,
                 lastErrorCode: cursor.value.lastErrorCode,
+              },
+        github:
+          github.value === null
+            ? null
+            : {
+                lastSuccessAt: github.value.lastSuccessAt,
+                lastAttemptAt: github.value.lastAttemptAt,
+                lastErrorCode: github.value.lastErrorCode,
               },
         dirtyMarkers: dirty.value.map((marker) => ({
           id: marker.id,

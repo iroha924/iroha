@@ -38,6 +38,7 @@ import {
   withTransaction,
 } from "@iroha/storage";
 import { z } from "zod";
+import { detectReviewLearnings } from "./forge-review-learning.js";
 
 type ForgeConfig = RepositoryConfig["forge"];
 
@@ -111,6 +112,7 @@ export type ForgeSyncOutcome =
       pullRequests: number;
       reviewComments: number;
       relations: number;
+      reviewLearnings: number;
       truncated: boolean;
     }
   | { status: "error"; errorCode: string };
@@ -493,6 +495,7 @@ export async function runForgeSync(
   provider: ForgeProvider,
   clock: Clock,
   random: RandomSource,
+  reviewLearningThreshold: number,
 ): Promise<ForgeSyncOutcome> {
   const attemptAt = clock.now().toISOString();
   try {
@@ -569,12 +572,24 @@ export async function runForgeSync(
       });
     }
 
+    // Derive recurring-review-comment learnings from the comments just synced.
+    // Non-fatal: a failure here must not turn a successful sync into an error
+    // (the same fail-open invariant), so it only contributes a count.
+    const learnings = await detectReviewLearnings(
+      db,
+      repositoryId,
+      reviewLearningThreshold,
+      clock,
+      random,
+    );
+
     return {
       status: "synced",
       issues: issues.length,
       pullRequests: pullRequests.length,
       reviewComments: written.value.reviewComments,
       relations: written.value.relations,
+      reviewLearnings: learnings.ok ? learnings.value : 0,
       truncated,
     };
   } catch (error) {

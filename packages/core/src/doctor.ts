@@ -14,6 +14,7 @@ import {
 import { resolveGitLocation, resolveGitPath } from "@iroha/git";
 import {
   closeDatabase,
+  getSyncCursor,
   listApprovedRulesForRepository,
   openDatabase,
   probeCapabilities,
@@ -269,7 +270,8 @@ async function checkGuardrails(cwd: string): Promise<DoctorCheckResult> {
  * without printing secret values." `.iroha/config.yaml` never holds a
  * secret itself (only an environment-variable *name* — canonical-
  * schema.md §9), so the only additional care this needs is to report
- * *whether* the named variable is set, never its value.
+ * *whether* the named variable is set, never its value. The forge provider is
+ * reported separately by `checkForge`, which also reads the sync cursor.
  */
 async function checkProviders(irohaCanonicalDir: string): Promise<DoctorCheckResult[]> {
   let content: string;
@@ -294,7 +296,7 @@ async function checkProviders(irohaCanonicalDir: string): Promise<DoctorCheckRes
   if (!parsed.ok) {
     return [{ name: "config", status: "error", message: parsed.error.message }];
   }
-  const { search, forge } = parsed.value;
+  const { search } = parsed.value;
   const embeddingKeySet = process.env[search.embedding.api_key_env] !== undefined;
   return [
     {
@@ -304,12 +306,84 @@ async function checkProviders(irohaCanonicalDir: string): Promise<DoctorCheckRes
         ? `${search.embedding.provider}/${search.embedding.model} (key ${embeddingKeySet ? "set" : "not set"})`
         : "disabled",
     },
-    {
+  ];
+}
+
+/**
+ * Reports the forge provider. When forge is enabled this checks the token env
+ * var is set (`warning` if not — a silent no-op sync would otherwise read as
+ * healthy) and reads the `github` sync cursor to surface the last sync's error
+ * code. The token *value* is never read or printed — only whether the named
+ * variable is set (compatibility.md §9). Any internal failure is a report
+ * entry, never a throw.
+ */
+async function checkForge(cwd: string): Promise<DoctorCheckResult> {
+  const resolved = await resolveInitializedRepository(cwd);
+  if (!resolved.ok) {
+    return { name: "forge-provider", status: "warning", message: "repository not resolved" };
+  }
+  const forge = resolved.value.config.forge;
+  if (!forge.enabled) {
+    return { name: "forge-provider", status: "ok", message: "disabled" };
+  }
+  const tokenSet = process.env[forge.api_token_env] !== undefined;
+  if (!tokenSet) {
+    return {
+      name: "forge-provider",
+      status: "warning",
+      message: `${forge.provider} enabled but ${forge.api_token_env} is not set`,
+    };
+  }
+  const opened = await openDatabase(resolved.value.dbPath);
+  if (!opened.ok) {
+    return { name: "forge-provider", status: "error", message: opened.error.message };
+  }
+  try {
+    const cursor = await getSyncCursor(opened.value, resolved.value.repositoryId, "github");
+    if (!cursor.ok) {
+      // The DB file may exist but not be built yet — a fresh clone before the
+      // first `iroha sync --rebuild` (the DB lives in gitignored `.git/iroha/`,
+      // so `sync_cursors` is absent). Forge health is diagnostic and fail-open
+      // everywhere else, so a cursor read failure degrades to "token set" rather
+      // than a hard error that sends the operator chasing a DB fault instead of
+      // just syncing. A genuine DB fault is surfaced by the storage/guardrail
+      // checks that ran before this one.
+      return {
+        name: "forge-provider",
+        status: "ok",
+        message: `${forge.provider} (token set; sync status unavailable — run \`iroha sync\`)`,
+      };
+    }
+    const row = cursor.value;
+    // Cursor semantics (upsertSyncCursor): the success-path write omits
+    // lastAttemptAt/lastErrorCode, and those two columns are written
+    // unconditionally (no COALESCE), so a success resets both to NULL while
+    // COALESCE preserves lastSuccessAt; a failure leaves lastAttemptAt set with
+    // lastErrorCode. So a non-null lastAttemptAt means the most recent run did
+    // not reach the success write. The timestamp comparison is a belt-and-braces
+    // guard for the rare failure paths that return before recording an error.
+    const lastAttemptFailed =
+      row !== null &&
+      row.lastAttemptAt !== null &&
+      (row.lastSuccessAt === null || row.lastAttemptAt > row.lastSuccessAt);
+    if (lastAttemptFailed) {
+      return {
+        name: "forge-provider",
+        status: "warning",
+        message: `${forge.provider} last sync failed${row.lastErrorCode !== null ? ` (${row.lastErrorCode})` : ""}`,
+      };
+    }
+    return {
       name: "forge-provider",
       status: "ok",
-      message: forge.enabled ? forge.provider : "disabled",
-    },
-  ];
+      message:
+        row?.lastSuccessAt != null
+          ? `${forge.provider} (token set, last sync ok)`
+          : `${forge.provider} (token set, not yet synced)`,
+    };
+  } finally {
+    await closeDatabase(opened.value);
+  }
 }
 
 /**
@@ -435,6 +509,7 @@ export async function runDoctor(cwd: string): Promise<Result<DoctorReport, Iroha
   checks.push(await checkStorageCapabilities(irohaStateDir, random));
   checks.push(await checkGuardrails(cwd));
   checks.push(...(await checkProviders(irohaCanonicalDir)));
+  checks.push(await checkForge(cwd));
 
   return ok({ checks });
 }

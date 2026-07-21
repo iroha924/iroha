@@ -96,6 +96,49 @@ describe("runDoctor", () => {
     expect(serialized).not.toContain(secretValue);
   });
 
+  async function enableForge(irohaCanonicalDir: string): Promise<void> {
+    const configPath = join(irohaCanonicalDir, "config.yaml");
+    const config = parse(await readFile(configPath, "utf8")) as { forge: { enabled: boolean } };
+    config.forge.enabled = true;
+    await writeFile(configPath, stringify(config), "utf8");
+  }
+
+  it("warns when forge is enabled but its token env var is not set", async () => {
+    repoDir = await createTempGitRepo();
+    const init = await initRepository(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR);
+    expect(init.ok).toBe(true);
+    if (!init.ok) return;
+    vi.stubEnv("GITHUB_TOKEN", undefined);
+    await enableForge(init.value.irohaCanonicalDir);
+
+    const result = await runDoctor(repoDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const forge = new Map(result.value.checks.map((c) => [c.name, c])).get("forge-provider");
+    expect(forge?.status).toBe("warning");
+    expect(forge?.message).toContain("GITHUB_TOKEN is not set");
+  });
+
+  it("reports ok (and never leaks the token) when forge is enabled with its token set", async () => {
+    repoDir = await createTempGitRepo();
+    const init = await initRepository(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR);
+    expect(init.ok).toBe(true);
+    if (!init.ok) return;
+    const tokenValue = "forge-token-do-not-leak-9876";
+    vi.stubEnv("GITHUB_TOKEN", tokenValue);
+    await enableForge(init.value.irohaCanonicalDir);
+
+    const result = await runDoctor(repoDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const forge = new Map(result.value.checks.map((c) => [c.name, c])).get("forge-provider");
+    expect(forge?.status).toBe("ok");
+    expect(forge?.message).toContain("token set");
+    expect(JSON.stringify(result.value)).not.toContain(tokenValue);
+  });
+
   it("reports a config error (not a silent 'nothing to check') when config.yaml cannot be read for a reason other than being absent", async () => {
     repoDir = await createTempGitRepo();
     const init = await initRepository(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR);

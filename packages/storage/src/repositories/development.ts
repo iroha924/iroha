@@ -487,6 +487,29 @@ export async function listReviewCommentsByPullRequest(
   }
 }
 
+/**
+ * Every review comment in a repository, joined through `pull_requests`
+ * (`review_comments` carries no `repository_id`). Deterministically ordered so
+ * recurrence grouping is stable. Backs `detectReviewLearnings`.
+ */
+export async function listReviewCommentsByRepository(
+  db: Executor,
+  repositoryId: TypedId<"repo">,
+): Promise<Result<ReviewCommentRow[], IrohaError>> {
+  try {
+    const result = await db.execute({
+      sql: `SELECT c.* FROM review_comments c
+        JOIN pull_requests p ON p.id = c.pull_request_id
+        WHERE p.repository_id = ?
+        ORDER BY c.created_at, c.id`,
+      args: [repositoryId],
+    });
+    return ok(result.rows.map(rowToReviewComment));
+  } catch (cause) {
+    return err(mapLibsqlError(cause, "Failed to list review comments"));
+  }
+}
+
 // --- files ---------------------------------------------------
 
 export interface FileRow {
