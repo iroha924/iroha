@@ -1,0 +1,29 @@
+{
+  "name": "@iroha/vertical-slice",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "iroha — first vertical slice integration harness (init → checkpoint → approve → rebuild → recovery)",
+  "scripts": {
+    "lint": "biome check src",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "catalog:",
+    "@iroha/adapter-claude": "workspace:*",
+    "@iroha/adapter-codex": "workspace:*",
+    "@iroha/api": "workspace:*",
+    "@iroha/canonical": "workspace:*",
+    "@iroha/config": "workspace:*",
+    "@iroha/core": "workspace:*",
+    "@iroha/domain": "workspace:*",
+    "@iroha/git": "workspace:*",
+    "@iroha/mcp": "workspace:*",
+    "@iroha/platform": "workspace:*",
+    "@iroha/storage": "workspace:*",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

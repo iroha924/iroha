@@ -7,8 +7,10 @@ import {
   type Database,
   getCanonicalDocumentByEntityId,
   getEntityById,
+  getKnowledgeItemById,
   getSearchDocumentByEntityId,
   insertRepository,
+  listApprovedRulesForRepository,
   listOpenDirtyMarkers,
 } from "@iroha/storage";
 import { afterEach, describe, expect, it } from "vitest";
@@ -53,6 +55,53 @@ function decisionCandidate(id: string, title: string, revision: number, relation
       "",
       "Consequences.",
       "## Alternatives considered",
+      "",
+      "None.",
+    ].join("\n\n"),
+  };
+}
+
+interface RuleSpec {
+  enforcement: "advisory" | "guardrail";
+  severity: "info" | "warning" | "error";
+  guard?: { tools: string[]; paths: string[]; deny_commands?: string[] };
+}
+
+function ruleCandidate(id: string, title: string, rule: RuleSpec) {
+  return {
+    frontmatter: {
+      schema_version: 1,
+      id,
+      type: "rule",
+      title,
+      status: "approved",
+      revision: 1,
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+      created_by: { provider: "git", display_name: "Example Developer" },
+      approved_by: { provider: "git", display_name: "Example Reviewer" },
+      approved_at: "2026-01-01T00:00:00.000Z",
+      labels: [],
+      scope: { repository: REPOSITORY_ID, paths: rule.guard?.paths ?? [], symbols: [] },
+      sources: [{ type: "url", ref: "https://example.com" }],
+      relations: [],
+      rule,
+    },
+    body: [
+      `# ${title}`,
+      "## Rule",
+      "",
+      "Do not edit generated files by hand.",
+      "## Scope",
+      "",
+      "Applies under src/generated/**.",
+      "## Rationale",
+      "",
+      "Generated files are overwritten on the next build.",
+      "## Examples",
+      "",
+      "None.",
+      "## Exceptions",
       "",
       "None.",
     ].join("\n\n"),
@@ -131,6 +180,74 @@ describe("syncCanonicalToDatabase", () => {
     expect(searchDoc.ok).toBe(true);
     if (searchDoc.ok) {
       expect(searchDoc.value?.codeTerms).toBe("fooBar");
+    }
+  });
+
+  it("projects approved rules and decisions into knowledge_items (WP-10, ID-033)", async () => {
+    await setup();
+    if (!db || !canonicalDir) return;
+    const advisoryId = makeTypedId("rul", CLOCK, new CryptoRandomSource());
+    const guardrailId = makeTypedId("rul", CLOCK, new CryptoRandomSource());
+    const decisionId = makeTypedId("dec", CLOCK, new CryptoRandomSource());
+
+    await writeCanonicalDocument(
+      ruleCandidate(advisoryId, "Prefer the repository pattern", {
+        enforcement: "advisory",
+        severity: "warning",
+      }),
+      canonicalDir,
+      new CryptoRandomSource(),
+    );
+    await writeCanonicalDocument(
+      ruleCandidate(guardrailId, "Do not edit generated files", {
+        enforcement: "guardrail",
+        severity: "error",
+        guard: { tools: ["Edit", "Write"], paths: ["src/generated/**"] },
+      }),
+      canonicalDir,
+      new CryptoRandomSource(),
+    );
+    await writeCanonicalDocument(
+      decisionCandidate(decisionId, "Use libSQL", 1),
+      canonicalDir,
+      new CryptoRandomSource(),
+    );
+
+    const result = await syncCanonicalToDatabase(
+      db,
+      repositoryId,
+      canonicalDir,
+      CLOCK,
+      new CryptoRandomSource(),
+    );
+    expect(result.ok).toBe(true);
+
+    // A Decision projects as an advisory knowledge item (no guard).
+    const decisionItem = await getKnowledgeItemById(db, decisionId);
+    expect(decisionItem.ok).toBe(true);
+    if (decisionItem.ok && decisionItem.value) {
+      expect(decisionItem.value.enforcement).toBe("advisory");
+      expect(decisionItem.value.guardSpecJson).toBeNull();
+    }
+
+    // A guardrail Rule carries its machine-evaluable guard spec verbatim.
+    const guardrailItem = await getKnowledgeItemById(db, guardrailId);
+    expect(guardrailItem.ok).toBe(true);
+    if (guardrailItem.ok && guardrailItem.value) {
+      expect(guardrailItem.value.enforcement).toBe("guardrail");
+      expect(guardrailItem.value.guardSpecJson).not.toBeNull();
+      expect(JSON.parse(guardrailItem.value.guardSpecJson as string)).toEqual({
+        tools: ["Edit", "Write"],
+        paths: ["src/generated/**"],
+      });
+      expect(guardrailItem.value.canonicalPath).toContain(`${guardrailId}.md`);
+    }
+
+    // Both rules are visible as approved rules (SessionStart / get_active_rules).
+    const rules = await listApprovedRulesForRepository(db, repositoryId);
+    expect(rules.ok).toBe(true);
+    if (rules.ok) {
+      expect(rules.value.map((row) => row.id).sort()).toEqual([advisoryId, guardrailId].sort());
     }
   });
 

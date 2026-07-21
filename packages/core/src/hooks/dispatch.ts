@@ -161,7 +161,12 @@ async function handleSessionStart(
   const checkpoints = await listCheckpointsBySession(ctx.db, sessionId, 1);
   if (checkpoints.ok && checkpoints.value[0]) {
     const latest = checkpoints.value[0];
-    recentCheckpoint = { id: latest.id, summary: latest.summary };
+    const unresolved = formatUnresolvedItems(latest.unresolvedJson);
+    recentCheckpoint = {
+      id: latest.id,
+      summary: latest.summary,
+      ...(unresolved === undefined ? {} : { unresolved }),
+    };
   }
 
   const approvedKnowledge = await buildApprovedKnowledge(ctx.db, repositoryId);
@@ -175,6 +180,39 @@ async function handleSessionStart(
       ...(recentCheckpoint === undefined ? {} : { recentCheckpoint }),
     }),
   );
+}
+
+/** Bounds on the recovery `unresolved:` line so a large list cannot crowd out the rest of the context block. */
+const MAX_UNRESOLVED_ITEMS = 10;
+const MAX_UNRESOLVED_CHARS = 800;
+
+/**
+ * The last Checkpoint's unresolved items, rendered as a single bounded line for
+ * the recovery context (hooks-contract.md §9). Returns `undefined` when there
+ * are none, so a resumed session only shows work that actually remained open —
+ * no summary is fabricated (vertical-slice.md §5). The output is length-capped
+ * because `create_checkpoint` permits up to 100 items × 1000 chars, which would
+ * otherwise truncate the whole 8,000-char block (`formatSessionContext`).
+ */
+function formatUnresolvedItems(unresolvedJson: string): string | undefined {
+  try {
+    const parsed = JSON.parse(unresolvedJson) as unknown;
+    if (!Array.isArray(parsed)) {
+      return undefined;
+    }
+    const items = parsed.filter(
+      (item): item is string => typeof item === "string" && item.length > 0,
+    );
+    if (items.length === 0) {
+      return undefined;
+    }
+    const joined = items.slice(0, MAX_UNRESOLVED_ITEMS).join("; ");
+    return joined.length > MAX_UNRESOLVED_CHARS
+      ? `${joined.slice(0, MAX_UNRESOLVED_CHARS)}…`
+      : joined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Approved Rules shown at SessionStart, oldest→newest (hooks-contract.md §9). No embedding — a direct list. */
