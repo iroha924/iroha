@@ -5,6 +5,7 @@ import { ApiClientError, api } from "@/api/client.js";
 import { Card, Mark } from "@/components/ui.js";
 import { type Locale, useI18n } from "@/i18n/index.js";
 import { Doctor } from "@/pages/Doctor.js";
+import { Graph } from "@/pages/Graph.js";
 import { KnowledgeDetail } from "@/pages/KnowledgeDetail.js";
 import { KnowledgeList } from "@/pages/KnowledgeList.js";
 import { Overview } from "@/pages/Overview.js";
@@ -90,6 +91,7 @@ export function App() {
               <NavItem to="/sessions" label={t("nav.sessions")} />
               <NavItem to="/review" label={t("nav.review")} />
               <NavItem to="/knowledge" label={t("nav.knowledge")} />
+              <NavItem to="/graph" label={t("nav.graph")} />
               <NavItem to="/search" label={t("nav.search")} />
             </nav>
           </div>
@@ -112,6 +114,7 @@ export function App() {
           <Route path="/review/:id" element={<ReviewDetail />} />
           <Route path="/knowledge" element={<KnowledgeList />} />
           <Route path="/knowledge/:id" element={<KnowledgeDetail />} />
+          <Route path="/graph" element={<Graph />} />
           <Route path="/search" element={<Search />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/doctor" element={<Doctor />} />
