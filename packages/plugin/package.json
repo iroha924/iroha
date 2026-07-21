@@ -10,23 +10,41 @@
       "default": "./dist/index.mjs"
     }
   },
+  "bin": {
+    "iroha": "./dist/bin.mjs"
+  },
   "files": [
-    "dist"
+    "dist",
+    "skills"
   ],
   "scripts": {
-    "build": "tsdown src/index.ts --dts",
+    "build": "tsdown",
+    "build:archive": "node dist/build-archive-cli.mjs",
     "lint": "biome check src",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests --exclude \"**/archive-smoke.test.ts\"",
+    "test:package": "vitest run archive-smoke"
   },
   "dependencies": {
+    "@hono/node-server": "catalog:",
     "@iroha/cli": "workspace:*",
     "@iroha/mcp": "workspace:*",
-    "@iroha/adapter-claude": "workspace:*",
-    "@iroha/adapter-codex": "workspace:*"
+    "@libsql/client": "catalog:",
+    "@modelcontextprotocol/sdk": "catalog:",
+    "@secretlint/node": "catalog:",
+    "@secretlint/secretlint-rule-preset-recommend": "catalog:",
+    "gunshi": "catalog:",
+    "hono": "catalog:",
+    "mdast-util-from-markdown": "catalog:",
+    "mdast-util-to-string": "catalog:",
+    "secretlint": "catalog:",
+    "unist-util-visit": "catalog:",
+    "yaml": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",
+    "@types/node": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"

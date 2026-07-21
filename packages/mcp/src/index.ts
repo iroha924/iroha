@@ -20,5 +20,6 @@ export {
   SERVER_NAME,
   SERVER_VERSION,
 } from "./server.js";
+export { startStdioServer } from "./start.js";
 export { TOOLS } from "./tools/index.js";
 export type { AnyMcpTool, McpToolContext } from "./tools/types.js";

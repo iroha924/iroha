@@ -213,7 +213,9 @@ Unknown newer agent versions produce a warning, not an automatic failure. Contra
 - MCP config: `.mcp.json` or manifest field
 - Skills: `skills/<name>/SKILL.md`
 - Explicit invocation: `/iroha:<skill>`
-- Hook commands use exec form with `node` and `args`.
+- Hook commands invoke the installed `iroha` binary in exec form with `args`
+  (`iroha __hook claude`); the plugin archive ships no `dist` (WP-11 Option A,
+  decision-log ID-038).
 - Persistent data must not be stored under `${CLAUDE_PLUGIN_ROOT}`.
 
 ### Codex

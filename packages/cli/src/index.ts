@@ -34,4 +34,10 @@ export async function runCli(argv: readonly string[]): Promise<void> {
   });
 }
 
+/**
+ * Re-exported so `@iroha/plugin` — which may depend on `@iroha/cli` but not
+ * `@iroha/core` (compatibility.md §4) — can run the hook through the shared
+ * `iroha` binary as `iroha __hook <platform>` (WP-11, Option A).
+ */
+export { runHookMain } from "@iroha/core";
 export { dashboardCommand, doctorCommand, initCommand, searchCommand, syncCommand };

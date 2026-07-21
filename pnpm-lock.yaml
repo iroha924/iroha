@@ -673,22 +673,58 @@ importers:
 
   packages/plugin:
     dependencies:
-      '@iroha/adapter-claude':
-        specifier: workspace:*
-        version: link:../adapter-claude
-      '@iroha/adapter-codex':
-        specifier: workspace:*
-        version: link:../adapter-codex
+      '@hono/node-server':
+        specifier: 'catalog:'
+        version: 2.0.10(hono@4.12.30)
       '@iroha/cli':
         specifier: workspace:*
         version: link:../cli
       '@iroha/mcp':
         specifier: workspace:*
         version: link:../mcp
+      '@libsql/client':
+        specifier: 'catalog:'
+        version: 0.17.4
+      '@modelcontextprotocol/sdk':
+        specifier: 'catalog:'
+        version: 1.29.0(zod@4.4.3)
+      '@secretlint/node':
+        specifier: 'catalog:'
+        version: 13.0.2
+      '@secretlint/secretlint-rule-preset-recommend':
+        specifier: 'catalog:'
+        version: 13.0.2
+      gunshi:
+        specifier: 'catalog:'
+        version: 0.37.1
+      hono:
+        specifier: 'catalog:'
+        version: 4.12.30
+      mdast-util-from-markdown:
+        specifier: 'catalog:'
+        version: 2.0.3
+      mdast-util-to-string:
+        specifier: 'catalog:'
+        version: 4.0.0
+      secretlint:
+        specifier: 'catalog:'
+        version: 13.0.2
+      unist-util-visit:
+        specifier: 'catalog:'
+        version: 5.1.0
+      yaml:
+        specifier: 'catalog:'
+        version: 2.9.0
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
     devDependencies:
       '@biomejs/biome':
         specifier: 'catalog:'
         version: 2.5.4
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.13.3
       tsdown:
         specifier: 'catalog:'
         version: 0.22.9(typescript@7.0.2)
@@ -697,7 +733,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: 'catalog:'
-        version: 4.1.10(@types/node@26.1.1)(jsdom@29.1.1)(vite@8.1.5(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
+        version: 4.1.10(@types/node@24.13.3)(jsdom@29.1.1)(vite@8.1.5(@types/node@24.13.3)(jiti@2.7.0)(yaml@2.9.0))
 
   packages/search:
     dependencies:

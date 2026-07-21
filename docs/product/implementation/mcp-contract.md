@@ -20,10 +20,11 @@ The iroha MCP server is the stable agent-facing API shared by Claude Code and Co
 - SIGINT/SIGTERM closes DB connections and flushes local events within 500ms.
 - A missing/uninitialized repository returns a typed error; it does not initialize implicitly.
 
-Plugin config launches:
+Plugin config launches the stdio MCP server through the installed `iroha`
+binary (WP-11 Option A — see decision-log ID-038):
 
 ```text
-node <plugin-root>/dist/mcp.mjs
+iroha __mcp
 ```
 
 No API key is passed as a command-line argument.

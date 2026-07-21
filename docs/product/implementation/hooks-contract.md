@@ -10,10 +10,13 @@ Hooks provide low-latency lifecycle observation, context injection, and approved
 
 ## 2. Entrypoint
 
-One bundled entrypoint serves both platforms:
+One entrypoint serves both platforms, invoked through the installed `iroha`
+binary (WP-11 Option A — see decision-log ID-038; the native `@libsql/client`
+binding cannot be inlined into a standalone plugin `.mjs`, so the plugin archive
+ships no runtime `dist` and the hook shares the npm-installed binary):
 
 ```text
-node <plugin-root>/dist/hook.mjs <claude|codex>
+iroha __hook <claude|codex>
 ```
 
 The process:
@@ -35,13 +38,26 @@ Raw platform schemas are forward-compatible: known required fields are validated
 
 ### Claude Code command form
 
-Use exec form on all platforms:
+Both platforms invoke the `iroha` binary. Claude uses exec form; Codex uses a
+single command string (it runs only `type: "command"` handlers):
+
+Claude (`hooks/claude.json`):
 
 ```json
 {
   "type": "command",
-  "command": "node",
-  "args": ["${CLAUDE_PLUGIN_ROOT}/dist/hook.mjs", "claude"],
+  "command": "iroha",
+  "args": ["__hook", "claude"],
+  "timeout": 1
+}
+```
+
+Codex (`hooks/codex.json`):
+
+```json
+{
+  "type": "command",
+  "command": "iroha __hook codex",
   "timeout": 1
 }
 ```
