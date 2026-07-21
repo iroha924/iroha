@@ -20,7 +20,7 @@
     "dashboard": "pnpm build && node packages/cli/dist/bin.mjs dashboard",
     "dashboard:api": "pnpm build && IROHA_DASHBOARD_DEV_TOKEN=iroha-dev node packages/cli/dist/bin.mjs dashboard --port 5178 --no-open",
     "dashboard:web": "pnpm --filter @iroha/dashboard dev",
-    "link:global": "pnpm build && cd packages/cli && pnpm link --global"
+    "link:global": "pnpm build && cd packages/plugin && pnpm link --global"
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",

@@ -13,9 +13,6 @@
   "files": [
     "dist"
   ],
-  "bin": {
-    "iroha": "./dist/bin.mjs"
-  },
   "scripts": {
     "build": "tsdown src/index.ts src/bin.ts --dts",
     "lint": "biome check src",

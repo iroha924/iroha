@@ -67,13 +67,15 @@ async function readStdinBounded(max: number): Promise<string> {
 }
 
 /**
- * Process entrypoint: read stdin, run the hook, write at most one JSON object to
- * stdout, and let the process exit 0. WP-11 bundles this into the plugin's
- * `dist/hook.mjs`.
+ * Process-side hook runner: read stdin, run the hook for the given platform
+ * (`claude`/`codex`), write at most one JSON object to stdout, and return so the
+ * process can exit 0. The `iroha` binary reaches this through `iroha __hook
+ * <platform>` (WP-11): the plugin archive ships no standalone `hook.mjs`, so the
+ * hook shares the npm-installed binary and its resolved native dependencies.
  */
-export async function main(): Promise<void> {
+export async function runHookMain(platform: string | undefined): Promise<void> {
   const stdin = await readStdinBounded(MAX_STDIN_BYTES + 1);
-  const output = await runHookEntry({ arg: process.argv[2], stdin, cwd: process.cwd() });
+  const output = await runHookEntry({ arg: platform, stdin, cwd: process.cwd() });
   if (output !== undefined) {
     process.stdout.write(output);
   }
