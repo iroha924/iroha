@@ -38,12 +38,15 @@ import { z } from "zod";
 import { type Auth, SESSION_COOKIE } from "./auth.js";
 import { failureBody, httpStatusForCode, newRequestId, successBody } from "./envelope.js";
 import { securityHeaders } from "./security.js";
+import { createStaticHandler } from "./static.js";
 
 export interface AppConfig {
   cwd: string;
   clock: Clock;
   random: RandomSource;
   auth: Auth;
+  /** Absolute path to the built SPA (`apps/dashboard/dist`); when set, non-API GETs serve it. */
+  staticRoot?: string;
 }
 
 interface Variables {
@@ -449,6 +452,11 @@ export function createApp(config: AppConfig) {
       if (!body.ok) return body.res;
       return respond(c, doctorRepair({ ...useCaseCtx, operation: body.value.operation }));
     });
+
+  // Serve the built SPA (+ SPA fallback) for everything that is not an API route.
+  if (config.staticRoot !== undefined) {
+    app.get("*", createStaticHandler(config.staticRoot));
+  }
 
   return routes;
 }

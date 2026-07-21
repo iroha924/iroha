@@ -17,6 +17,8 @@ export interface StartDashboardOptions {
   port?: number;
   /** Fixed launch token for tests; otherwise a fresh 256-bit token per start. */
   launchToken?: string;
+  /** Absolute path to the built SPA to serve; API-only when omitted. */
+  staticRoot?: string;
 }
 
 /**
@@ -31,7 +33,13 @@ export async function startDashboardServer(
   const random = new CryptoRandomSource();
   const clock = new SystemClock();
   const auth = createAuth(random, options.launchToken);
-  const app = createApp({ cwd: options.cwd, clock, random, auth });
+  const app = createApp({
+    cwd: options.cwd,
+    clock,
+    random,
+    auth,
+    ...(options.staticRoot !== undefined ? { staticRoot: options.staticRoot } : {}),
+  });
 
   const server = await new Promise<ServerType>((resolve) => {
     const s = serve({ fetch: app.fetch, hostname: "127.0.0.1", port: options.port ?? 0 }, () =>

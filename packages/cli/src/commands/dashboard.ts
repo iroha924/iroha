@@ -1,7 +1,9 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { startDashboardServer } from "@iroha/api";
 import { resolveInitializedRepository } from "@iroha/core";
 import { define } from "gunshi";
+import { DASHBOARD_DIST } from "../context.js";
 import { printError } from "../output.js";
 
 /** Best-effort open of the loopback URL in the default browser; never fails the command. */
@@ -48,7 +50,10 @@ export const dashboardCommand = define({
       return;
     }
 
-    const server = await startDashboardServer({ cwd: process.cwd() });
+    const server = await startDashboardServer({
+      cwd: process.cwd(),
+      ...(existsSync(DASHBOARD_DIST) ? { staticRoot: DASHBOARD_DIST } : {}),
+    });
 
     if (json) {
       process.stdout.write(`${JSON.stringify({ ok: true, url: server.url, port: server.port })}\n`);
