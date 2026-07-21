@@ -122,24 +122,39 @@ describe("assembled release is self-contained", () => {
 });
 
 describe("the published binary runs from an installed layout", () => {
-  it("runs `iroha init` — migrations ship and resolve at the package-relative path", async () => {
+  it("runs `iroha init` and `doctor` — shipped assets resolve at package-relative paths", async () => {
     // A fresh staging package plus a `node_modules` linked to the plugin's own
     // (it declares exactly the runtime deps, including the native
     // `@libsql/client`) reproduces what `npm i -g @iroha-labs/iroha` provides,
     // WITHOUT the monorepo layout that masked the shipped-asset gap. Proves the
-    // bundled CLI finds `migrations/` at `../migrations` (context.ts), which is
-    // the check that would have caught `iroha init` being dead on arrival.
+    // bundled CLI finds `migrations/` at `../migrations` (`iroha init`) and the
+    // shipped platform manifests (`iroha doctor`) — the checks that would have
+    // caught `iroha init` being dead on arrival in the published package.
     const stage = await mkdtemp(join(tmpdir(), "iroha-installed-"));
     const repo = await mkdtemp(join(tmpdir(), "iroha-init-"));
     const link = join(stage, "node_modules");
+    const bin = join(stage, "dist", "bin.mjs");
     try {
       await assembleRelease(stage);
       await symlink(fileURLToPath(new URL("../node_modules", import.meta.url)), link);
       await execFileAsync("git", ["init", "-q"], { cwd: repo });
       await execFileAsync("git", ["config", "user.email", "t@example.com"], { cwd: repo });
       await execFileAsync("git", ["config", "user.name", "iroha test"], { cwd: repo });
-      await execFileAsync("node", [join(stage, "dist", "bin.mjs"), "init"], { cwd: repo });
+      await execFileAsync("node", [bin, "init"], { cwd: repo });
       expect(existsSync(join(repo, ".iroha", "config.yaml"))).toBe(true);
+
+      // `iroha doctor` validates the shipped platform manifests from the same
+      // installed layout (doctor exits non-zero only on an `error` check, so
+      // capture stdout either way).
+      const { stdout } = await execFileAsync("node", [bin, "doctor", "--json"], {
+        cwd: repo,
+      }).catch((error: { stdout?: string }) => ({ stdout: error.stdout ?? "" }));
+      const report = JSON.parse(stdout) as {
+        doctor: { checks: { name: string; status: string; message: string }[] };
+      };
+      const manifests = report.doctor.checks.find((c) => c.name === "plugin-manifests");
+      expect(manifests?.status).toBe("ok");
+      expect(manifests?.message).toContain("iroha@0.1.0");
     } finally {
       await rm(link, { force: true }); // unlink the symlink only, never its target
       await rm(stage, { recursive: true, force: true });
