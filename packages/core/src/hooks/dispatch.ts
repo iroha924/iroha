@@ -2,6 +2,7 @@ import { type Clock, makeTypedId, type RandomSource, type TypedId } from "@iroha
 import {
   contextOutput,
   continuationOutput,
+  denyOutput,
   type HookOutput,
   type NormalizedEvent,
   noOutput,
@@ -32,6 +33,7 @@ import {
   formatSessionContext,
   type RecentCheckpoint,
 } from "./context.js";
+import { evaluateActiveGuardrails } from "./guardrail.js";
 import { resolveTargets } from "./resolve-targets.js";
 import { issueSessionToken } from "./session-token.js";
 
@@ -292,7 +294,17 @@ async function handleToolStarted(
     return noOutput;
   }
   const targets = await resolveTargets(event.payload.targets, ctx.repo.gitLocation.root, ctx.cwd);
-  const primary = targets[0];
+
+  // Evaluate approved Guardrails over the resolved targets (hooks-contract.md
+  // §6.3). Fail-open: a query failure or a corrupt spec yields no denial. A
+  // matching Guardrail records the Tool Event as denied and returns a
+  // deterministic deny with the Rule id and reason.
+  const denial = await evaluateActiveGuardrails(ctx.db, ctx.repo.repositoryId, targets);
+
+  // On a denial, record the target that actually violated the Guardrail (a patch
+  // can touch several files); otherwise the first resolved target is representative.
+  const auditTarget = denial === null ? targets[0] : denial.target;
+
   await insertToolEvent(ctx.db, {
     id: makeTypedId("evt", ctx.clock, ctx.random),
     turnId: turn.id,
@@ -300,19 +312,15 @@ async function handleToolStarted(
       ? {}
       : { externalToolUseId: event.payload.toolUseId }),
     toolName: event.payload.toolName,
-    phase: "pre",
-    ...(primary === undefined ? {} : { targetKind: primary.kind as ToolEventTargetKind }),
-    ...(primary === undefined ? {} : { targetSummary: primary.value }),
+    phase: denial === null ? "pre" : "denied",
+    ...(auditTarget === undefined ? {} : { targetKind: auditTarget.kind as ToolEventTargetKind }),
+    ...(auditTarget === undefined ? {} : { targetSummary: auditTarget.value }),
     ...(event.payload.inputDigest === undefined ? {} : { inputDigest: event.payload.inputDigest }),
-    status: "started",
+    status: denial === null ? "started" : "denied",
     occurredAt: event.occurredAt,
   });
 
-  // Guardrail evaluation seam: no active Guardrail can match yet — a machine
-  // guard spec has no schema in this repository (decision-log ID-024(6)), so no
-  // Guardrail is authorable/active. When one exists, a deterministic scope match
-  // over `targets` returns `denyOutput(ruleId, reason)` here.
-  return noOutput;
+  return denial === null ? noOutput : denyOutput(denial.ruleId, denial.reason);
 }
 
 /** A tool use is "meaningful" (checkpoint-worthy) when it mutates files or runs a command. */
