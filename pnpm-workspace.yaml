@@ -17,6 +17,7 @@ catalog:
   "@hono/node-server": 2.0.10
   "@libsql/client": 0.17.4
   "@modelcontextprotocol/sdk": 1.29.0
+  "@playwright/test": 1.61.1
   "@secretlint/node": 13.0.2
   "@secretlint/secretlint-rule-preset-recommend": 13.0.2
   "@tailwindcss/vite": 4.3.3
@@ -35,7 +36,6 @@ catalog:
   lefthook: 2.1.10
   mdast-util-from-markdown: 2.0.3
   mdast-util-to-string: 4.0.0
-  playwright: 1.61.1
   react: 19.2.7
   react-dom: 19.2.7
   react-router-dom: 7.18.1

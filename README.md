@@ -62,3 +62,14 @@ pnpm dashboard:web   # terminal 2 — Vite dev server (HMR), proxying /api to :5
 Then open `http://localhost:5173/#token=iroha-dev`.
 
 `IROHA_DASHBOARD_DEV_TOKEN` (used by `pnpm dashboard:api`) is a loopback-development convenience only; when it is unset, each start mints a fresh random 256-bit token, as in production.
+
+## End-to-end tests
+
+The dashboard has a Playwright end-to-end test (`apps/e2e`) that launches the real `iroha dashboard` binary, seeds a candidate, and drives the full approve flow in a browser. It is **opt-in and local only** — it is not part of the CI verify matrix, so `pnpm test` never downloads a browser. Run it explicitly:
+
+```bash
+pnpm exec playwright install chromium   # once, downloads the browser
+pnpm test:e2e
+```
+
+The package's `lint` and `typecheck` (both browser-free) do run in CI, so the harness stays current even though the browser run does not.
