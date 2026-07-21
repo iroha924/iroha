@@ -27,10 +27,12 @@
     "@iroha/search": "workspace:*",
     "@iroha/git": "workspace:*",
     "@iroha/forge": "workspace:*",
+    "@iroha/forge-github": "workspace:*",
     "@iroha/platform": "workspace:*",
     "@iroha/adapter-claude": "workspace:*",
     "@iroha/adapter-codex": "workspace:*",
-    "yaml": "catalog:"
+    "yaml": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",

@@ -73,6 +73,7 @@ function buildDefaultConfig(repositoryId: TypedId<"repo">): RepositoryConfig {
     forge: {
       provider: "github",
       enabled: false,
+      api_token_env: "GITHUB_TOKEN",
     },
     privacy: {
       canonical_prompt_content: false,
