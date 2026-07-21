@@ -1,6 +1,7 @@
 {
   "name": "iroha",
   "private": true,
+  "license": "Apache-2.0",
   "packageManager": "pnpm@11.14.0",
   "engines": {
     "node": ">=24.0.0 <25"

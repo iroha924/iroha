@@ -8,6 +8,9 @@
 /** Product name; also the plugin identifier and the npm binary (ID-011). */
 export const PLUGIN_NAME = "iroha";
 
+/** Published npm package the marketplaces resolve the plugin from (ID-011). */
+export const PUBLISHED_PACKAGE_NAME = "@iroha-labs/iroha";
+
 /**
  * Product version. Kept in lockstep with `packages/plugin/package.json` — a unit
  * test asserts equality, and WP-11b's release workflow additionally gates
@@ -19,6 +22,13 @@ export const PLUGIN_DESCRIPTION = "Local-first Engineering Memory Graph for Clau
 
 /** Publisher (product invariant). */
 export const PLUGIN_AUTHOR = { name: "iroha labs" } as const;
+
+/** SPDX license id (decision-log ID-019, chosen before first release). */
+export const PLUGIN_LICENSE = "Apache-2.0";
+
+/** Canonical source repository (also the homepage in the absence of a docs site). */
+export const PLUGIN_REPOSITORY = "https://github.com/iroha924/iroha";
+export const PLUGIN_HOMEPAGE = "https://github.com/iroha924/iroha";
 
 export const PLUGIN_KEYWORDS = [
   "memory",

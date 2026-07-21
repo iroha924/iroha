@@ -1,0 +1,16 @@
+{
+  "name": "iroha",
+  "interface": {
+    "displayName": "iroha"
+  },
+  "plugins": [
+    {
+      "name": "iroha",
+      "source": {
+        "source": "npm",
+        "package": "@iroha-labs/iroha"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

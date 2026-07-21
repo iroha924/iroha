@@ -1,0 +1,21 @@
+{
+  "name": "iroha",
+  "owner": {
+    "name": "iroha labs"
+  },
+  "description": "Local-first Engineering Memory Graph for Claude Code and Codex.",
+  "plugins": [
+    {
+      "name": "iroha",
+      "source": {
+        "source": "npm",
+        "package": "@iroha-labs/iroha"
+      },
+      "description": "Local-first Engineering Memory Graph for Claude Code and Codex.",
+      "homepage": "https://github.com/iroha924/iroha",
+      "repository": "https://github.com/iroha924/iroha",
+      "license": "Apache-2.0",
+      "keywords": ["memory", "knowledge-graph", "engineering", "claude-code", "codex"]
+    }
+  ]
+}

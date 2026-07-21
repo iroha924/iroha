@@ -12,9 +12,11 @@ import { fileURLToPath } from "node:url";
 import {
   buildClaudeHooks,
   buildClaudeManifest,
+  buildClaudeMarketplace,
   buildClaudeMcpConfig,
   buildCodexHooks,
   buildCodexManifest,
+  buildCodexMarketplace,
   buildCodexMcpConfig,
 } from "./manifests.js";
 
@@ -47,4 +49,19 @@ export async function assembleArchive(destDir: string): Promise<void> {
   await writeJson(destDir, "mcp.codex.json", buildCodexMcpConfig());
 
   await cp(SKILLS_SOURCE, join(destDir, "skills"), { recursive: true });
+}
+
+/** `<repo>` root, resolved identically from `src/` or the built `dist/`. */
+export const REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
+
+/**
+ * (Re)generate the two repository marketplaces at their committed locations
+ * (compatibility.md §13): Claude reads `.claude-plugin/marketplace.json`, Codex
+ * reads `.agents/plugins/marketplace.json`. These are checked-in generated files
+ * — `marketplaces.test.ts` asserts the committed copies match this output, so a
+ * `metadata.ts` change that is not regenerated fails CI (implementation-plan §4).
+ */
+export async function writeMarketplaces(): Promise<void> {
+  await writeJson(REPO_ROOT, ".claude-plugin/marketplace.json", buildClaudeMarketplace());
+  await writeJson(REPO_ROOT, ".agents/plugins/marketplace.json", buildCodexMarketplace());
 }

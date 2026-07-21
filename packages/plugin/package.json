@@ -4,6 +4,12 @@
   "private": true,
   "type": "module",
   "description": "iroha — manifests, hooks, skills, packaged dist",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/iroha924/iroha.git"
+  },
+  "homepage": "https://github.com/iroha924/iroha",
   "exports": {
     ".": {
       "types": "./dist/index.d.mts",
