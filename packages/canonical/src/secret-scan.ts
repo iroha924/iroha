@@ -61,21 +61,28 @@ async function getEngine(): Promise<Awaited<ReturnType<typeof createEngine>>> {
         {
           id: "@secretlint/secretlint-rule-pattern",
           options: {
-            // Anchored on both sides with token-charset boundaries so it matches
-            // ONLY a standalone `ist_<43>` token, never `ist_` embedded in an
-            // ordinary identifier. A naive `/ist_[A-Za-z0-9_-]{43}/` is unanchored
-            // and `{43}` is a *minimum*, so it false-positives on `list_of_…`,
-            // `artist_…`, `persist_…` and file paths like `src/list_….ts` (any
-            // word with 43+ trailing `[A-Za-z0-9_-]` after an `ist_`), which the
-            // canonical write path would then falsely REJECT — exactly the
-            // operability cost this targeted rule exists to avoid. The
-            // lookbehind/lookahead require a non-token boundary on each side,
-            // making `{43}` effectively exact; mirrors `sessionTokenSchema`'s
-            // `^ist_[A-Za-z0-9_-]{43}$` for detection inside surrounding text.
+            // Bounded so it matches ONLY a discrete `ist_<43>` token, not an
+            // `ist_` substring inside an ordinary word. A naive
+            // `/ist_[A-Za-z0-9_-]{43}/` is unanchored and its `{43}` is a
+            // *minimum*, so it false-positives on `list_of_…`, `artist_…`,
+            // `blacklist_…` and paths like `src/list_….ts`, which the canonical
+            // write path would then falsely REJECT — the operability cost this
+            // targeted rule exists to avoid. The two boundaries are deliberately
+            // asymmetric:
+            // - Leading `(?<![A-Za-z0-9])` excludes a preceding letter/digit. The
+            //   false-positive words all have a LETTER right before `ist`, so this
+            //   kills them; but a preceding *separator* (`-`, `_`, `/`, space, `:`)
+            //   is a genuine token boundary, so a real token glued after one
+            //   (`token-ist_…`, `ENV_ist_…`) is still detected. Excluding `_`/`-`
+            //   here would miss those real leaks.
+            // - Trailing `(?![A-Za-z0-9_-])` excludes any following token char so
+            //   the `{43}` is effectively exact and it won't match a longer base64
+            //   run that merely starts with `ist_`.
+            // Mirrors `sessionTokenSchema`'s `^ist_[A-Za-z0-9_-]{43}$` for text.
             patterns: [
               {
                 name: "iroha session token",
-                patterns: ["/(?<![A-Za-z0-9_-])ist_[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])/"],
+                patterns: ["/(?<![A-Za-z0-9])ist_[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])/"],
               },
             ],
           },

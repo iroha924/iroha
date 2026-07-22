@@ -216,14 +216,29 @@ export async function redactProposal(
   if (proposal.relations !== undefined) {
     const relations: NonNullable<KnowledgeProposal["relations"]> = [];
     for (const [index, relation] of proposal.relations.entries()) {
-      const type = await redactField(`${prefix}.relations[${index}].type`, relation.type);
+      // Per-edge placeholder, matching `redactStringArray`: two edges whose
+      // secret-bearing `type`/`target` both redact would otherwise collapse to
+      // identical `{type, target}` objects. Canonical `relations` has no
+      // `uniqueItems` (unlike `scope.paths`/`guard.paths`), so this is not an
+      // approval blocker like the array case — but keeping distinct edges
+      // distinct is the consistent, information-preserving behavior.
+      const placeholder = `${REDACTED_PLACEHOLDER} #${index}`;
+      const type = await redactField(
+        `${prefix}.relations[${index}].type`,
+        relation.type,
+        placeholder,
+      );
       if (!type.ok) {
         return err(type.error);
       }
       if (type.value.redaction) {
         redactions.push(type.value.redaction);
       }
-      const target = await redactField(`${prefix}.relations[${index}].target`, relation.target);
+      const target = await redactField(
+        `${prefix}.relations[${index}].target`,
+        relation.target,
+        placeholder,
+      );
       if (!target.ok) {
         return err(target.error);
       }

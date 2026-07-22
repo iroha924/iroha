@@ -63,6 +63,28 @@ describe("redactProposal — previously-unscanned free-text fields", () => {
     }
   });
 
+  it("gives distinct placeholders to two secret-bearing relation edges", async () => {
+    // Two edges whose type carries a secret must not collapse to identical
+    // `{type, target}` objects. Red on the pre-fix constant placeholder.
+    const result = await redactProposal(
+      {
+        ...baseProposal,
+        relations: [
+          { type: SECRET, target: "dec_01ABC" },
+          { type: SECRET, target: "dec_01ABC" },
+        ],
+      },
+      "p",
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const relations = result.value.proposal.relations;
+      expect(relations?.[0]?.type).toContain("[redacted");
+      expect(relations?.[1]?.type).toContain("[redacted");
+      expect(relations?.[0]?.type).not.toBe(relations?.[1]?.type);
+    }
+  });
+
   it("gives distinct placeholders to two secret-bearing array entries (no uniqueItems collision)", async () => {
     // Two DISTINCT paths, each carrying a secret, must not collapse to one
     // placeholder: canonical `scope.paths` is `unique()`, so identical

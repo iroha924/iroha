@@ -75,6 +75,23 @@ describe("published package.json", () => {
     // (this assembled package.json) proves it is actually shipped.
     expect(publishManifest.dependencies.picomatch).toBeDefined();
   });
+
+  it("declares every secretlint rule package the runtime scanner resolves by name", () => {
+    // `@iroha/canonical`'s secret scanner references its rule packages only as
+    // string ids in the secretlint config (`createEngine({ configFileJSON: {
+    // rules: [{ id: "@secretlint/…" }] } })`), never via an `import`. tsdown
+    // therefore cannot see them, so they are NOT bundled and MUST be declared in
+    // the published manifest — otherwise `createEngine()` throws in a clean
+    // install and every `scanForSecrets` caller (checkpoint/proposal redaction,
+    // canonical write reject, dashboard approval/preview) returns INTERNAL_ERROR.
+    for (const rule of [
+      "@secretlint/node",
+      "@secretlint/secretlint-rule-preset-recommend",
+      "@secretlint/secretlint-rule-pattern",
+    ]) {
+      expect(publishManifest.dependencies[rule], `missing runtime dep: ${rule}`).toBeDefined();
+    }
+  });
 });
 
 describe("tarball contents", () => {

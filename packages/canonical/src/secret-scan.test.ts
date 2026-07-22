@@ -59,6 +59,21 @@ describe("scanForSecrets", () => {
     }
   });
 
+  it("detects a token glued after a separator (token-ist_ / ENV_ist_)", async () => {
+    // The leading boundary excludes a preceding letter/digit (to reject
+    // `list_of_…`) but NOT a separator, so a real token leaked right after a
+    // `-`/`_`/`/` is still caught. Red on a `(?<![A-Za-z0-9_-])` boundary that
+    // wrongly treats those separators as token characters.
+    const token = `ist_${"A".repeat(43)}`;
+    for (const content of [`token-${token}`, `SESSION_${token}`, `path/to/${token}`]) {
+      const result = await scanForSecrets(`# Notes\n\n${content}\n`);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.clean, `expected "${content}" to be flagged`).toBe(false);
+      }
+    }
+  });
+
   it("does not flag ordinary snake_case identifiers that merely contain ist_", async () => {
     // The token-charset boundaries stop `ist_` from matching inside a longer
     // word: `list_of_…`, `artist_…`, `persist_…`, and file paths like

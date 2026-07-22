@@ -788,6 +788,9 @@ importers:
       '@secretlint/node':
         specifier: 'catalog:'
         version: 13.0.2
+      '@secretlint/secretlint-rule-pattern':
+        specifier: 'catalog:'
+        version: 13.0.2
       '@secretlint/secretlint-rule-preset-recommend':
         specifier: 'catalog:'
         version: 13.0.2
