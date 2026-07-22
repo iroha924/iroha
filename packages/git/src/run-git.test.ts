@@ -19,6 +19,7 @@ describe("stripKnownDangerousEnvVars", () => {
       GIT_CONFIG_GLOBAL: "/some/other/gitconfig",
       git_config_system: "/etc/other/gitconfig",
       GIT_CONFIG_NOSYSTEM: "1",
+      XDG_CONFIG_HOME: "/some/other/xdg",
       language: "ja_JP.UTF-8",
       PATH: "/usr/bin",
     });
@@ -231,6 +232,46 @@ describe("runGit", () => {
         process.env.GIT_CONFIG_GLOBAL = previousConfigGlobal;
       }
       await removeTempDir(configDir);
+    }
+  });
+
+  it("ignores an inherited XDG_CONFIG_HOME pointing at a malformed global config", async () => {
+    const xdgDir = await mkdtemp(join(tmpdir(), "iroha-git-xdg-test-"));
+    const gitConfigDir = join(xdgDir, "git");
+    await mkdir(gitConfigDir);
+    const badConfigFile = join(gitConfigDir, "config");
+    const previousXdg = process.env.XDG_CONFIG_HOME;
+    const previousConfigGlobal = process.env.GIT_CONFIG_GLOBAL;
+    try {
+      // Confirmed by manual reproduction: Git reads its global config from
+      // `$XDG_CONFIG_HOME/git/config`, so an ambient XDG_CONFIG_HOME is the
+      // same "parent environment chooses Git's global config" vector as
+      // GIT_CONFIG_GLOBAL — and once GIT_CONFIG_GLOBAL is cleared Git falls
+      // back to exactly this file. A malformed one makes `git rev-parse
+      // --show-toplevel` fail; runGit must strip XDG_CONFIG_HOME too, or the
+      // GIT_CONFIG_GLOBAL fix is bypassable via this pivot. GIT_CONFIG_GLOBAL
+      // is cleared here so that, on the pre-fix code, Git actually falls back
+      // to XDG instead of an ambient GIT_CONFIG_GLOBAL masking it. This goes
+      // red on code that strips only GIT_CONFIG_GLOBAL.
+      await writeFile(badConfigFile, "[bad\n", "utf8");
+      process.env.XDG_CONFIG_HOME = xdgDir;
+      delete process.env.GIT_CONFIG_GLOBAL;
+
+      const result = await runGit(["rev-parse", "--show-toplevel"], { cwd: repoDir });
+
+      expect(result.ok).toBe(true);
+    } finally {
+      if (previousXdg === undefined) {
+        delete process.env.XDG_CONFIG_HOME;
+      } else {
+        process.env.XDG_CONFIG_HOME = previousXdg;
+      }
+      if (previousConfigGlobal === undefined) {
+        delete process.env.GIT_CONFIG_GLOBAL;
+      } else {
+        process.env.GIT_CONFIG_GLOBAL = previousConfigGlobal;
+      }
+      await removeTempDir(xdgDir);
     }
   });
 
