@@ -37,7 +37,7 @@ export function Sessions() {
       api.sessions({
         ...(pageParam !== undefined ? { cursor: pageParam } : {}),
         ...(platform !== "" ? { platform } : {}),
-        // `to` is compared with `started_at <= ?`, so widen the bare date to the
+        // `to` is compared with `last_seen_at <= ?`, so widen the bare date to the
         // end of that UTC day; otherwise the selected day is excluded entirely.
         ...(from !== "" ? { from: `${from}T00:00:00.000Z` } : {}),
         ...(to !== "" ? { to: `${to}T23:59:59.999Z` } : {}),
