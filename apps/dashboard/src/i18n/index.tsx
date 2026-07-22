@@ -86,6 +86,10 @@ const ja: Dict = {
   "session.branch": "ブランチ",
   "settings.title": "設定",
   "settings.language": "既定の表示言語",
+  "settings.languageHint":
+    "このリポジトリの起動時ロケール（.iroha/config.yaml）。ヘッダの切り替えは現在の表示のみを変更します。",
+  "settings.embeddingHint": "無効化するとベクトル検索は語彙検索へフォールバックします。",
+  "settings.forgeHint": "GitHub の Issue / PR / レビューを同期します。",
   "settings.embeddingEnabled": "Embedding を有効化",
   "settings.embeddingKey": "API キー（環境変数）の設定状況",
   "settings.forge": "Forge を有効化",
@@ -194,6 +198,10 @@ const en: Dict = {
   "session.branch": "Branch",
   "settings.title": "Settings",
   "settings.language": "Default UI language",
+  "settings.languageHint":
+    "The startup locale for this repository (.iroha/config.yaml). The header toggle only changes the current view.",
+  "settings.embeddingHint": "When disabled, vector search falls back to lexical search.",
+  "settings.forgeHint": "Sync GitHub issues, pull requests, and reviews.",
   "settings.embeddingEnabled": "Enable embedding",
   "settings.embeddingKey": "API key (env var) status",
   "settings.forge": "Enable Forge",

@@ -1,9 +1,50 @@
 import type { RepositoryConfig } from "@iroha/api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
+import { toast } from "sonner";
 import { api } from "@/api/client.js";
-import { btnPrimary, Card, ErrorNote, Loading } from "@/components/ui.js";
+import { ErrorState, Loading, PageHeader } from "@/components/brand.js";
+import { Badge } from "@/components/ui/badge.js";
+import { Button } from "@/components/ui/button.js";
+import { Card, CardContent } from "@/components/ui/card.js";
+import { Label } from "@/components/ui/label.js";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select.js";
+import { Switch } from "@/components/ui/switch.js";
 import { useI18n } from "@/i18n/index.js";
+
+function SettingRow({
+  htmlFor,
+  label,
+  hint,
+  children,
+}: {
+  htmlFor?: string;
+  label: string;
+  hint?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-6 py-4 first:pt-0 last:pb-0">
+      <div className="min-w-0">
+        {htmlFor !== undefined ? (
+          <Label htmlFor={htmlFor} className="text-ink">
+            {label}
+          </Label>
+        ) : (
+          <span className="text-sm font-medium text-ink">{label}</span>
+        )}
+        {hint !== undefined && <p className="mt-1 text-xs text-ink-muted">{hint}</p>}
+      </div>
+      <div className="shrink-0">{children}</div>
+    </div>
+  );
+}
 
 /** Shared config editor + redacted local status (dashboard-api.md §6/§8). */
 export function Settings() {
@@ -11,7 +52,6 @@ export function Settings() {
   const queryClient = useQueryClient();
   const q = useQuery({ queryKey: ["settings"], queryFn: api.settings });
   const [config, setConfig] = useState<RepositoryConfig | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     if (q.data !== undefined) setConfig(q.data.shared);
@@ -23,79 +63,88 @@ export function Settings() {
       return api.updateSharedConfig(config);
     },
     onSuccess: () => {
-      setNotice(t("common.saved"));
+      toast.success(t("common.saved"));
       void queryClient.invalidateQueries({ queryKey: ["settings"] });
       void queryClient.invalidateQueries({ queryKey: ["bootstrap"] });
     },
-    onError: () => setNotice(t("common.error")),
+    onError: () => toast.error(t("common.error")),
   });
 
   if (q.isPending) return <Loading />;
-  if (q.isError || q.data === undefined || config === null) return <ErrorNote />;
+  if (q.isError || q.data === undefined || config === null) return <ErrorState />;
+  const local = q.data.local;
 
   return (
-    <section className="max-w-xl">
-      <h1 className="mb-6 font-display text-[30px] font-semibold tracking-[-0.01em] text-ink">
-        {t("settings.title")}
-      </h1>
-      {notice !== null && (
-        <p className="mb-4 rounded-xl bg-approve-tint px-3 py-2 text-sm text-approve">{notice}</p>
-      )}
-      <Card className="space-y-5">
-        <label className="flex items-center justify-between gap-4">
-          <span className="text-sm text-ink">{t("settings.language")}</span>
-          <select
-            value={config.default_language}
-            onChange={(e) =>
-              setConfig({ ...config, default_language: e.target.value as "ja" | "en" })
-            }
-            className="h-9 rounded-xl border border-hairline bg-paper-raised px-2 text-ink"
+    <section className="max-w-2xl">
+      <PageHeader eyebrow={t("nav.settings")} title={t("settings.title")} />
+
+      <Card>
+        <CardContent className="divide-y divide-hairline">
+          <SettingRow
+            htmlFor="cfg-language"
+            label={t("settings.language")}
+            hint={t("settings.languageHint")}
           >
-            <option value="en">English</option>
-            <option value="ja">日本語</option>
-          </select>
-        </label>
+            <Select
+              value={config.default_language}
+              onValueChange={(value) =>
+                setConfig({ ...config, default_language: value as "ja" | "en" })
+              }
+            >
+              <SelectTrigger id="cfg-language" className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="en">English</SelectItem>
+                <SelectItem value="ja">日本語</SelectItem>
+              </SelectContent>
+            </Select>
+          </SettingRow>
 
-        <label className="flex items-center justify-between gap-4">
-          <span className="text-sm text-ink">{t("settings.embeddingEnabled")}</span>
-          <input
-            type="checkbox"
-            checked={config.search.embedding.enabled}
-            onChange={(e) =>
-              setConfig({
-                ...config,
-                search: {
-                  embedding: { ...config.search.embedding, enabled: e.target.checked },
-                },
-              })
-            }
-            className="h-4 w-4 accent-matcha"
-          />
-        </label>
+          <SettingRow
+            htmlFor="cfg-embedding"
+            label={t("settings.embeddingEnabled")}
+            hint={t("settings.embeddingHint")}
+          >
+            <Switch
+              id="cfg-embedding"
+              checked={config.search.embedding.enabled}
+              onCheckedChange={(checked) =>
+                setConfig({
+                  ...config,
+                  search: { embedding: { ...config.search.embedding, enabled: checked } },
+                })
+              }
+            />
+          </SettingRow>
 
-        <div className="flex items-center justify-between gap-4 text-sm">
-          <span className="text-ink">{t("settings.embeddingKey")}</span>
-          <span className="text-ink-muted">
-            {q.data.local.embeddingKeyPresent ? t("settings.present") : t("settings.absent")}
-          </span>
-        </div>
+          <SettingRow label={t("settings.embeddingKey")}>
+            <Badge variant={local.embeddingKeyPresent ? "approve" : "neutral"}>
+              {local.embeddingKeyPresent ? t("settings.present") : t("settings.absent")}
+            </Badge>
+          </SettingRow>
 
-        <label className="flex items-center justify-between gap-4">
-          <span className="text-sm text-ink">{t("settings.forge")}</span>
-          <input
-            type="checkbox"
-            checked={config.forge.enabled}
-            onChange={(e) =>
-              setConfig({ ...config, forge: { ...config.forge, enabled: e.target.checked } })
-            }
-            className="h-4 w-4 accent-matcha"
-          />
-        </label>
-
-        <button type="button" onClick={() => save.mutate()} className={btnPrimary}>
-          {t("common.save")}
-        </button>
+          <SettingRow
+            htmlFor="cfg-forge"
+            label={t("settings.forge")}
+            hint={t("settings.forgeHint")}
+          >
+            <Switch
+              id="cfg-forge"
+              checked={config.forge.enabled}
+              onCheckedChange={(checked) =>
+                setConfig({ ...config, forge: { ...config.forge, enabled: checked } })
+              }
+            />
+          </SettingRow>
+        </CardContent>
       </Card>
+
+      <div className="mt-6">
+        <Button onClick={() => save.mutate()} disabled={save.isPending}>
+          {t("common.save")}
+        </Button>
+      </div>
     </section>
   );
 }
