@@ -4,6 +4,7 @@ import {
   type CandidateStatus,
   type Clock,
   doctorRepair,
+  ENTITY_TYPES,
   editCandidate,
   getBootstrap,
   getCandidateDetail,
@@ -89,7 +90,23 @@ const searchSchema = z.strictObject({
   mode: z.enum(["hybrid", "lexical", "vector", "graph"]).optional(),
   limit: z.number().int().min(1).max(50).optional(),
   includeBody: z.boolean().optional(),
-  filters: z.record(z.string(), z.unknown()).optional(),
+  // Mirrors the MCP `search` tool's filter schema (packages/mcp/src/tools/search.ts)
+  // so the dashboard reaches the same hybrid-retrieval filters. A strict object,
+  // not `z.record(...)`: the value flows straight into the typed `McpSearchFilters`
+  // param, so unvalidated keys must not pass this boundary.
+  filters: z
+    .strictObject({
+      entityTypes: z.array(z.enum(ENTITY_TYPES)).optional(),
+      labels: z.array(z.string()).optional(),
+      statuses: z.array(z.enum(["approved", "active", "resolved"])).optional(),
+      paths: z.array(z.string()).optional(),
+      symbols: z.array(z.string()).optional(),
+      issueRefs: z.array(z.string()).optional(),
+      from: z.string().optional(),
+      to: z.string().optional(),
+      minimumAuthority: z.number().min(0).max(100).optional(),
+    })
+    .optional(),
 });
 const graphQuerySchema = z.strictObject({
   roots: z.array(z.string().min(1)).min(1).max(20),
@@ -421,12 +438,10 @@ export function createApp(config: AppConfig) {
           ...(body.value.mode !== undefined ? { mode: body.value.mode } : {}),
           ...(body.value.limit !== undefined ? { limit: body.value.limit } : {}),
           ...(body.value.includeBody !== undefined ? { includeBody: body.value.includeBody } : {}),
+          ...(body.value.filters !== undefined ? { filters: body.value.filters } : {}),
         }),
       );
     })
-    .get("/api/v1/search/suggestions", (c) =>
-      c.json(successBody(c.get("requestId"), { suggestions: [] as string[] })),
-    )
     .post("/api/v1/sync", (c) => respond(c, runDashboardSync(useCaseCtx)))
     .get("/api/v1/sync/status", (c) => respond(c, getSyncStatus(useCaseCtx)))
     .get("/api/v1/settings", (c) => respond(c, getSettings(useCaseCtx)))

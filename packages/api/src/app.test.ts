@@ -317,4 +317,50 @@ describe("dashboard API", () => {
     const raw = await get(app, "/api/v1/sessions/ses_x/raw", cookie);
     expect(raw.status).toBe(404);
   });
+
+  it("forwards search filters to hybrid retrieval, rejects unknown filter keys, and has no suggestions route", async () => {
+    const repo = await setupApiRepo();
+    dir = repo.dir;
+    const { app } = makeApp(repo.dir);
+    const cookie = await exchange(app);
+
+    // Approve a decision so it lands in `search_documents` (approve imports the
+    // canonical doc, which projects the search document) and becomes searchable.
+    const { candidateId, revisionToken } = await seedDecision(repo.dbPath, repo.repositoryId);
+    const approved = await post(app, `/api/v1/candidates/${candidateId}/approve`, cookie, {
+      revisionToken,
+      actor: { provider: "git", displayName: "Example Reviewer" },
+      comment: "ok",
+    });
+    expect(approved.status).toBe(200);
+
+    // The `entityTypes` filter is a hard filter, forwarded into `mcpSearch`.
+    const asDecision = await post(app, "/api/v1/search", cookie, {
+      query: "libSQL",
+      filters: { entityTypes: ["decision"] },
+    });
+    const decisionJson = (await asDecision.json()) as { data: { results: { type: string }[] } };
+    expect(decisionJson.data.results.length).toBeGreaterThan(0);
+    expect(decisionJson.data.results.every((r) => r.type === "decision")).toBe(true);
+
+    // Filtering to a type the corpus does not contain excludes the decision —
+    // proof the filter is forwarded and applied, not dropped.
+    const asRule = await post(app, "/api/v1/search", cookie, {
+      query: "libSQL",
+      filters: { entityTypes: ["rule"] },
+    });
+    const ruleJson = (await asRule.json()) as { data: { results: unknown[] } };
+    expect(ruleJson.data.results.length).toBe(0);
+
+    // The tightened schema rejects an unknown filter key (was a loose record before).
+    const bogus = await post(app, "/api/v1/search", cookie, {
+      query: "libSQL",
+      filters: { bogus: true },
+    });
+    expect(bogus.status).toBe(400);
+
+    // The unused `search/suggestions` stub has been removed.
+    const suggestions = await get(app, "/api/v1/search/suggestions", cookie);
+    expect(suggestions.status).toBe(404);
+  });
 });
