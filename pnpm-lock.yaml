@@ -33,9 +33,6 @@ catalogs:
     '@graphql-typed-document-node/core':
       specifier: 3.2.0
       version: 3.2.0
-    '@hono/node-server':
-      specifier: 2.0.10
-      version: 2.0.10
     '@libsql/client':
       specifier: 0.17.4
       version: 0.17.4
@@ -159,6 +156,10 @@ catalogs:
     zod:
       specifier: 4.4.3
       version: 4.4.3
+
+overrides:
+  fast-uri: 3.1.4
+  '@hono/node-server': 2.0.10
 
 importers:
 
@@ -369,7 +370,7 @@ importers:
   packages/api:
     dependencies:
       '@hono/node-server':
-        specifier: 'catalog:'
+        specifier: 2.0.10
         version: 2.0.10(hono@4.12.30)
       '@iroha/core':
         specifier: workspace:*
@@ -752,7 +753,7 @@ importers:
   packages/plugin:
     dependencies:
       '@hono/node-server':
-        specifier: 'catalog:'
+        specifier: 2.0.10
         version: 2.0.10(hono@4.12.30)
       '@iroha/cli':
         specifier: workspace:*
@@ -1491,12 +1492,6 @@ packages:
     resolution: {integrity: sha512-mB9oAsNCm9aM3/SOv4YtBMqZbYj10R7dkq8byBqxGY/ncFwhf2oQzMV+LCRlWoDSEBJ3COiR1yeDvMtsoOsuFQ==}
     peerDependencies:
       graphql: ^0.8.0 || ^0.9.0 || ^0.10.0 || ^0.11.0 || ^0.12.0 || ^0.13.0 || ^14.0.0 || ^15.0.0 || ^16.0.0 || ^17.0.0
-
-  '@hono/node-server@1.19.14':
-    resolution: {integrity: sha512-GwtvgtXxnWsucXvbQXkRgqksiH2Qed37H9xHZocE5sA3N8O8O8/8FA3uclQXxXVzc9XBZuEOMK7+r02FmSpHtw==}
-    engines: {node: '>=18.14.1'}
-    peerDependencies:
-      hono: ^4
 
   '@hono/node-server@2.0.10':
     resolution: {integrity: sha512-ZcnNVhKTmyDJeg0UlnZjvM73JBsTAuhrH/J4fjwGOw59PwOW51r4J+p6CsKZWXdKSme4MFqU62CZMOsdDrU4CA==}
@@ -3175,8 +3170,8 @@ packages:
   fast-string-width@3.0.2:
     resolution: {integrity: sha512-gX8LrtNEI5hq8DVUfRQMbr5lpaS4nMIWV+7XEbXk2b8kiQIizgnlr12B4dA3ZEx3308ze0O4Q1R+cHts8kyUJg==}
 
-  fast-uri@3.1.3:
-    resolution: {integrity: sha512-i70LwGWUduXqzicKXWshooq+sWL1K3WUU5rKZNG/0i3a1OSoX3HqhH5WbWwTmqWfor4urUakGPiRQcleRZTwOg==}
+  fast-uri@3.1.4:
+    resolution: {integrity: sha512-8JnbkQ4juDyvYs4mgFGQqg4yCYtFDtUtmp2QIQq11ZZe5CFQ5wcqm1rqDgAh/QdMySuBnPzMUiJUNZG5N/AiQw==}
 
   fast-wrap-ansi@0.2.2:
     resolution: {integrity: sha512-7F2Fl+TjRSenLqlU3UjSH0iyqopqoZIu7eZVpEirP2g1GtWa2G/ecEmBdgz31+Mxr+ELclgg6sokpSFIQiZ02Q==}
@@ -5718,10 +5713,6 @@ snapshots:
     dependencies:
       graphql: 16.14.2
 
-  '@hono/node-server@1.19.14(hono@4.12.30)':
-    dependencies:
-      hono: 4.12.30
-
   '@hono/node-server@2.0.10(hono@4.12.30)':
     dependencies:
       hono: 4.12.30
@@ -5947,7 +5938,7 @@ snapshots:
 
   '@modelcontextprotocol/sdk@1.29.0(zod@4.4.3)':
     dependencies:
-      '@hono/node-server': 1.19.14(hono@4.12.30)
+      '@hono/node-server': 2.0.10(hono@4.12.30)
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
       content-type: 1.0.5
@@ -6721,7 +6712,7 @@ snapshots:
   ajv@8.20.0:
     dependencies:
       fast-deep-equal: 3.1.3
-      fast-uri: 3.1.3
+      fast-uri: 3.1.4
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
 
@@ -7186,7 +7177,7 @@ snapshots:
     dependencies:
       fast-string-truncated-width: 3.0.3
 
-  fast-uri@3.1.3: {}
+  fast-uri@3.1.4: {}
 
   fast-wrap-ansi@0.2.2:
     dependencies:
