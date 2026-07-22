@@ -8,6 +8,7 @@ import {
   getEmbeddingMetadataBySearchDocumentId,
   getEmbeddingVectorByContentHash,
   getNeighbors,
+  getNeighborsForNodes,
   getPath,
   getSearchDocumentByEntityId,
   getSearchDocumentById,
@@ -113,6 +114,96 @@ describe("graph-search repositories", () => {
     expect(neighbors.ok).toBe(true);
     if (neighbors.ok) {
       expect(neighbors.value.length).toBe(1);
+    }
+  });
+
+  it("getNeighborsForNodes returns [] for empty input without querying", async () => {
+    const opened = await openMigratedTestDb();
+    tempDir = opened.dir;
+    db = opened.db;
+    // Empty input must NOT build `IN ()` (a SQL syntax error) — it short-circuits.
+    const result = await getNeighborsForNodes(db, []);
+    expect(result).toEqual({ ok: true, value: [] });
+  });
+
+  it("getNeighborsForNodes returns every edge incident to any frontier node, including a shared edge once", async () => {
+    const opened = await openMigratedTestDb();
+    tempDir = opened.dir;
+    db = opened.db;
+    const repositoryId = await seedRepository(db, "gnfn");
+    const a = "dec_0000000000000000000000gna";
+    const b = "dec_0000000000000000000000gnb";
+    const c = "dec_0000000000000000000000gnc";
+    for (const id of [a, b, c]) {
+      await seedEntity(db, id, repositoryId);
+    }
+    // a—b connects two frontier nodes (must appear ONCE, batched); a—c and b—? are
+    // one-sided; ids ordered so we can assert ORDER BY id.
+    await insertRelation(db, {
+      id: relId("gn1"),
+      repositoryId,
+      fromEntityId: a,
+      relationType: "RELATED_TO",
+      toEntityId: b,
+      sourceKind: "inferred",
+      createdAt: NOW,
+    });
+    await insertRelation(db, {
+      id: relId("gn2"),
+      repositoryId,
+      fromEntityId: a,
+      relationType: "RELATED_TO",
+      toEntityId: c,
+      sourceKind: "inferred",
+      createdAt: NOW,
+    });
+
+    // Frontier {a, b}: the a—b edge matches once (from OR to), the a—c edge once.
+    const both = await getNeighborsForNodes(db, [a, b]);
+    expect(both.ok).toBe(true);
+    if (both.ok) {
+      const ids = both.value.map((r) => r.id);
+      expect(ids).toEqual([relId("gn1"), relId("gn2")]); // ORDER BY id, a—b not duplicated
+    }
+
+    // Direction filter is honoured: incoming to c is just the a—c edge.
+    const incoming = await getNeighborsForNodes(db, [c], { direction: "incoming" });
+    expect(incoming.ok).toBe(true);
+    if (incoming.ok) {
+      expect(incoming.value.map((r) => r.id)).toEqual([relId("gn2")]);
+    }
+    const outgoingFromC = await getNeighborsForNodes(db, [c], { direction: "outgoing" });
+    expect(outgoingFromC.ok).toBe(true);
+    if (outgoingFromC.ok) {
+      expect(outgoingFromC.value).toEqual([]);
+    }
+  });
+
+  it("getSubgraph collects an edge between two roots exactly once (batched grouping dedup)", async () => {
+    const opened = await openMigratedTestDb();
+    tempDir = opened.dir;
+    db = opened.db;
+    const repositoryId = await seedRepository(db, "sgd");
+    const a = "dec_0000000000000000000000sga";
+    const b = "dec_0000000000000000000000sgb";
+    await seedEntity(db, a, repositoryId);
+    await seedEntity(db, b, repositoryId);
+    // A single a—b edge; both are roots, so the level query returns it once and
+    // the grouping puts it under both a and b — the `collectedRelations.has`
+    // check must keep it from being collected twice.
+    await insertRelation(db, {
+      id: relId("sg1"),
+      repositoryId,
+      fromEntityId: a,
+      relationType: "RELATED_TO",
+      toEntityId: b,
+      sourceKind: "inferred",
+      createdAt: NOW,
+    });
+    const subgraph = await getSubgraph(db, [a, b], 2, 200);
+    expect(subgraph.ok).toBe(true);
+    if (subgraph.ok) {
+      expect(subgraph.value.map((r) => r.id)).toEqual([relId("sg1")]);
     }
   });
 

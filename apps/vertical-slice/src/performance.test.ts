@@ -20,6 +20,21 @@ const SESSION = "perf-sess-1";
 
 let repo: SliceRepo;
 
+/**
+ * Seeds the full 10k corpus so the perf gates actually EXERCISE the hot paths
+ * (not just measure a short-circuit). Per entity, on top of the `entities` +
+ * `search_documents` row it seeds:
+ * - a `canonical_documents` row — so `rankCandidates`' facet load
+ *   (`getCanonicalDocumentsByEntityIds`) reads a real frontmatter/body instead
+ *   of short-circuiting on a missing doc (the #24 gate gap);
+ * - a `relations` edge to the previous entity — so `buildRelations` returns
+ *   neighbours and its (batched) title lookups run, and graph traversal has a
+ *   real graph to walk;
+ * - a `knowledge_items` row — so the SessionStart context build and the
+ *   PreToolUse guardrail evaluation, which read `knowledge_items`, stress a 10k
+ *   table rather than the handful of rows they saw before (an un-exercised N+1
+ *   / full scan on those paths would now show up).
+ */
 async function seedSearchEntities(
   dbPath: string,
   repositoryId: string,
@@ -31,7 +46,8 @@ async function seedSearchEntities(
   if (!opened.ok) throw new Error(`db open failed: ${opened.error.code}`);
   const db = opened.value;
   try {
-    const chunk = 500;
+    const chunk = 250;
+    let previousEntityId: string | null = null;
     for (let start = 0; start < ENTITY_COUNT; start += chunk) {
       const statements = [];
       for (let index = start; index < Math.min(start + chunk, ENTITY_COUNT); index += 1) {
@@ -66,6 +82,45 @@ async function seedSearchEntities(
             now,
           ],
         });
+        statements.push({
+          sql: "INSERT INTO canonical_documents (entity_id, canonical_path, schema_version, revision, frontmatter_json, body, file_hash, approved_at, imported_at) VALUES (?, ?, 1, 1, ?, ?, ?, ?, ?)",
+          args: [
+            entityId,
+            `knowledge/decisions/${entityId}.md`,
+            JSON.stringify({
+              scope: { paths: [`src/module-${index % 100}.ts`], symbols: [] },
+              labels: ["benchmark"],
+              sources: [{ type: "commit", ref: `commit-${index}` }],
+            }),
+            `Body of synthetic benchmark decision ${index} about the repository pattern and payments.`,
+            CONTENT_HASH,
+            now,
+            now,
+          ],
+        });
+        statements.push({
+          sql: "INSERT INTO knowledge_items (id, knowledge_type, body, scope_json, enforcement, approved_at, canonical_path) VALUES (?, 'decision', ?, ?, 'advisory', ?, ?)",
+          args: [
+            entityId,
+            `Body of synthetic benchmark decision ${index}.`,
+            JSON.stringify({ paths: [`src/module-${index % 100}.ts`], symbols: [] }),
+            now,
+            `knowledge/decisions/${entityId}.md`,
+          ],
+        });
+        if (previousEntityId !== null) {
+          statements.push({
+            sql: "INSERT INTO relations (id, repository_id, from_entity_id, relation_type, to_entity_id, source_kind, created_at) VALUES (?, ?, ?, 'RELATED_TO', ?, 'inferred', ?)",
+            args: [
+              makeTypedId("rel", clock, random),
+              repositoryId,
+              entityId,
+              previousEntityId,
+              now,
+            ],
+          });
+        }
+        previousEntityId = entityId;
       }
       const result = await db.batch(statements, "write");
       expect(result.length).toBe(statements.length);

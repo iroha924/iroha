@@ -21,20 +21,25 @@ export async function getOverviewCounts(
   repositoryId: TypedId<"repo">,
 ): Promise<Result<OverviewCounts, IrohaError>> {
   try {
-    const pending = await db.execute({
-      sql: "SELECT COUNT(*) AS c, MIN(created_at) AS oldest FROM candidates WHERE repository_id = ? AND status = 'pending'",
-      args: [repositoryId],
-    });
-    const knowledge = await db.execute({
-      sql: `SELECT COUNT(*) AS c FROM entities
+    // Three independent aggregates over different tables — run concurrently
+    // rather than as three sequential round-trips. This is a plain read
+    // executor (not a transaction), so concurrent `execute` is safe.
+    const [pending, knowledge, sessions] = await Promise.all([
+      db.execute({
+        sql: "SELECT COUNT(*) AS c, MIN(created_at) AS oldest FROM candidates WHERE repository_id = ? AND status = 'pending'",
+        args: [repositoryId],
+      }),
+      db.execute({
+        sql: `SELECT COUNT(*) AS c FROM entities
         WHERE repository_id = ? AND status = 'approved'
           AND entity_type IN ('decision', 'rule', 'concept', 'insight', 'incident', 'pattern', 'review_learning')`,
-      args: [repositoryId],
-    });
-    const sessions = await db.execute({
-      sql: "SELECT COUNT(*) AS c FROM agent_sessions WHERE repository_id = ?",
-      args: [repositoryId],
-    });
+        args: [repositoryId],
+      }),
+      db.execute({
+        sql: "SELECT COUNT(*) AS c FROM agent_sessions WHERE repository_id = ?",
+        args: [repositoryId],
+      }),
+    ]);
     return ok({
       pendingCandidates: Number(pending.rows[0]?.c ?? 0),
       oldestPendingCreatedAt: nullableString(pending.rows[0]?.oldest),
