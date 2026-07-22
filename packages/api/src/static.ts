@@ -1,6 +1,7 @@
 import { readFile, realpath } from "node:fs/promises";
 import { join, sep } from "node:path";
 import type { MiddlewareHandler } from "hono";
+import { cspNonce } from "./security.js";
 
 const CONTENT_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -20,6 +21,24 @@ function contentType(path: string): string {
   const dot = path.lastIndexOf(".");
   const ext = dot === -1 ? "" : path.slice(dot).toLowerCase();
   return CONTENT_TYPES[ext] ?? "application/octet-stream";
+}
+
+const NONCE_META = `<meta name="csp-nonce" content="${cspNonce}">`;
+
+/**
+ * Builds the SPA response, stamping the per-process CSP nonce into the served
+ * HTML so the client can read it (`<meta name="csp-nonce">`) and apply it to the
+ * UI library's runtime `<style>` elements. `cspNonce` is base64url, so it is
+ * safe to embed verbatim in the attribute. Non-HTML assets pass through
+ * untouched.
+ */
+function spaResponse(file: { body: Uint8Array; type: string }): Response {
+  const headers = { "Content-Type": file.type };
+  if (!file.type.startsWith("text/html")) {
+    return new Response(file.body, { status: 200, headers });
+  }
+  const html = new TextDecoder().decode(file.body).replace("</head>", `  ${NONCE_META}\n</head>`);
+  return new Response(html, { status: 200, headers });
 }
 
 /**
@@ -75,11 +94,11 @@ export function createStaticHandler(root: string): MiddlewareHandler {
     }
     const file = await readWithin(root, c.req.path);
     if (file !== null) {
-      return new Response(file.body, { status: 200, headers: { "Content-Type": file.type } });
+      return spaResponse(file);
     }
     const index = await readWithin(root, "/index.html");
     if (index !== null) {
-      return new Response(index.body, { status: 200, headers: { "Content-Type": index.type } });
+      return spaResponse(index);
     }
     return c.notFound();
   };
