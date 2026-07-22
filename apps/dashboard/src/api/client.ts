@@ -23,6 +23,27 @@ import type {
   SyncStatusData,
 } from "@iroha/api";
 
+export type SearchMode = "hybrid" | "lexical" | "vector" | "graph";
+
+/** Hybrid-retrieval filters accepted by `POST /v1/search` (mirrors the API's `searchSchema.filters`). */
+export interface SearchFilters {
+  entityTypes?: string[];
+  statuses?: string[];
+  labels?: string[];
+  minimumAuthority?: number;
+  from?: string;
+  to?: string;
+  paths?: string[];
+  symbols?: string[];
+  issueRefs?: string[];
+}
+
+export interface SearchOptions {
+  mode?: SearchMode;
+  limit?: number;
+  filters?: SearchFilters;
+}
+
 /** A failed API envelope surfaced as a throwable, preserving the stable code and field errors. */
 export class ApiClientError extends Error {
   readonly code: string;
@@ -104,7 +125,8 @@ export const api = {
     ),
   knowledgeDetail: (id: string) => request<KnowledgeDetailData>("GET", `/v1/knowledge/${id}`),
 
-  search: (query: string) => request<McpSearchData>("POST", "/v1/search", { query }),
+  search: (query: string, options: SearchOptions = {}) =>
+    request<McpSearchData>("POST", "/v1/search", { query, ...options }),
 
   sessions: (cursor?: string) =>
     request<SessionListPage>(

@@ -176,7 +176,6 @@ Graph query limits: depth 4, 200 edges, 200 nodes. UI must show truncation.
 | Method | Path | Purpose |
 |---|---|---|
 | `POST` | `/api/v1/search` | hybrid/lexical/vector/graph search |
-| `GET` | `/api/v1/search/suggestions` | labels, entity IDs, file/symbol completions |
 
 Search request mirrors MCP `search` without session token. Pending Candidate search requires `scope=review` and is limited to the Review Queue UI.
 
