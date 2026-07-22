@@ -77,6 +77,11 @@ function stringField(input: Record<string, unknown>, key: string): string | unde
 // (§8). Matched against the untrimmed line so a `+`/`-`/space-prefixed body line
 // that merely *contains* header-shaped text is not mistaken for a real header.
 const APPLY_PATCH_HEADER = /^\*\*\* (Add|Update|Delete) File: (.+?)\s*$/;
+// A `*** Move to: <dest>` line follows an `*** Update File:` header to rename the
+// file. The destination is a write the Guardrail must see — without it a move
+// INTO a protected path bypasses enforcement (Codex-only, since every Codex edit
+// is apply_patch). Same untrimmed-line / trailing-CR handling as the header.
+const APPLY_PATCH_MOVE = /^\*\*\* Move to: (.+?)\s*$/;
 
 /**
  * Extract file targets from an apply_patch command by reading only its section
@@ -90,10 +95,23 @@ function extractApplyPatchTargets(command: string | undefined): ToolTarget[] {
   }
   const targets: ToolTarget[] = [];
   for (const line of command.split("\n")) {
-    const match = APPLY_PATCH_HEADER.exec(line);
-    if (match) {
-      const operation = match[1] === "Delete" ? "delete" : "write";
-      targets.push({ kind: "file", value: match[2] as string, operation });
+    const header = APPLY_PATCH_HEADER.exec(line);
+    if (header) {
+      const operation = header[1] === "Delete" ? "delete" : "write";
+      targets.push({ kind: "file", value: header[2] as string, operation });
+      continue;
+    }
+    const move = APPLY_PATCH_MOVE.exec(line);
+    if (move) {
+      // The rename moves the file away from the preceding `Update File:` source,
+      // so reclassify that source as a delete and emit the destination as a
+      // write. A `Move to:` with no preceding write source (malformed) still
+      // surfaces the destination write — fail-safe for the security concern.
+      const previous = targets[targets.length - 1];
+      if (previous !== undefined && previous.kind === "file" && previous.operation === "write") {
+        previous.operation = "delete";
+      }
+      targets.push({ kind: "file", value: move[1] as string, operation: "write" });
     }
   }
   return targets.length > 0

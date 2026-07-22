@@ -31,12 +31,14 @@
     "@iroha/platform": "workspace:*",
     "@iroha/adapter-claude": "workspace:*",
     "@iroha/adapter-codex": "workspace:*",
+    "picomatch": "catalog:",
     "yaml": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",
     "@types/node": "catalog:",
+    "@types/picomatch": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"

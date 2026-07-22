@@ -139,6 +139,43 @@ describe("parseCodexEvent — apply_patch and Bash targets", () => {
     expect(targetValues.some((v) => v.includes("sk-live-123"))).toBe(false);
   });
 
+  it("extracts a `Move to:` rename as a delete of the source and a write to the destination", () => {
+    const { ctx } = makeFakeCtx();
+    // A move INTO a protected path — the destination write must be surfaced so
+    // the Guardrail sees it (was silently dropped, a Codex-only bypass).
+    const patch = [
+      "*** Begin Patch",
+      "*** Update File: src/scratch/tmp.ts",
+      "*** Move to: src/generated/client.ts",
+      "@@",
+      "-x",
+      "+y",
+      "*** End Patch",
+    ].join("\n");
+    const event = unwrap(
+      parseCodexEvent(
+        {
+          ...common,
+          hook_event_name: "PreToolUse",
+          turn_id: "t-1",
+          tool_name: "apply_patch",
+          tool_input: { command: patch },
+        },
+        ctx,
+      ),
+    );
+    expect(event).toMatchObject({
+      kind: "TOOL_STARTED",
+      payload: {
+        toolName: "apply_patch",
+        targets: [
+          { kind: "file", value: "src/scratch/tmp.ts", operation: "delete" },
+          { kind: "file", value: "src/generated/client.ts", operation: "write" },
+        ],
+      },
+    });
+  });
+
   it("falls back to an opaque write target when apply_patch has no headers", () => {
     const { ctx } = makeFakeCtx();
     const event = unwrap(

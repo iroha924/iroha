@@ -39,6 +39,7 @@ catalog:
   "@testing-library/react": 16.3.2
   "@testing-library/user-event": 14.6.1
   "@types/node": 24.13.3
+  "@types/picomatch": 4.0.3
   "@types/react": 19.2.17
   "@types/react-dom": 19.2.3
   "@vitejs/plugin-react": 6.0.3
@@ -50,6 +51,7 @@ catalog:
   lefthook: 2.1.10
   mdast-util-from-markdown: 2.0.3
   mdast-util-to-string: 4.0.0
+  picomatch: 4.0.5
   react: 19.2.7
   react-dom: 19.2.7
   react-router-dom: 7.18.1

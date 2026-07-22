@@ -81,6 +81,9 @@ catalogs:
     '@types/node':
       specifier: 24.13.3
       version: 24.13.3
+    '@types/picomatch':
+      specifier: 4.0.3
+      version: 4.0.3
     '@types/react':
       specifier: 19.2.17
       version: 19.2.17
@@ -120,6 +123,9 @@ catalogs:
     mdast-util-to-string:
       specifier: 4.0.0
       version: 4.0.0
+    picomatch:
+      specifier: 4.0.5
+      version: 4.0.5
     react:
       specifier: 19.2.7
       version: 19.2.7
@@ -553,6 +559,9 @@ importers:
       '@iroha/storage':
         specifier: workspace:*
         version: link:../storage
+      picomatch:
+        specifier: 'catalog:'
+        version: 4.0.5
       yaml:
         specifier: 'catalog:'
         version: 2.9.0
@@ -566,6 +575,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.3
+      '@types/picomatch':
+        specifier: 'catalog:'
+        version: 4.0.3
       tsdown:
         specifier: 'catalog:'
         version: 0.22.9(typescript@7.0.2)
@@ -2295,6 +2307,9 @@ packages:
 
   '@types/normalize-package-data@2.4.4':
     resolution: {integrity: sha512-37i+OaWTh9qeK4LSHPsyRC7NahnGotNuZvjLSgcPzblpHB3rrCJxAOgI5gCdKm7coonsaX1Of0ILiTcnZjbfxA==}
+
+  '@types/picomatch@4.0.3':
+    resolution: {integrity: sha512-iG0T6+nYJ9FAPmx9SsUlnwcq1ZVRuCXcVEvWnntoPlrOpwtSTKNDC9uVAxTsC3PUvJ+99n4RpAcNgBbHX3JSnQ==}
 
   '@types/react-dom@19.2.3':
     resolution: {integrity: sha512-jp2L/eY6fn+KgVVQAOqYItbF0VY/YApe5Mz2F0aykSO8gx31bYCZyvSeYxCHKvzHG5eZjc+zyaS5BrBWya2+kQ==}
@@ -6457,6 +6472,8 @@ snapshots:
       undici-types: 8.3.0
 
   '@types/normalize-package-data@2.4.4': {}
+
+  '@types/picomatch@4.0.3': {}
 
   '@types/react-dom@19.2.3(@types/react@19.2.17)':
     dependencies:
