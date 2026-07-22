@@ -210,8 +210,14 @@ export async function getNeighbors(
  * level in a single round-trip instead of one query per frontier node. There is
  * deliberately no per-node `limit` (the BFS callers never pass one, and a SQL
  * `LIMIT` here would be global rather than per node). Empty input → empty
- * result with no query (never `IN ()`). Frontier sets are bounded (getSubgraph
- * caps at `maxEdges` visited nodes), well under SQLite's 999-variable limit.
+ * result with no query (never `IN ()`). In the `both` direction this binds
+ * 2×`entityIds.length` variables. `getSubgraph`'s frontier is capped by
+ * `maxEdges` (≤200), so it stays well under libSQL's ~32766-variable limit
+ * (SQLite ≥3.32; verified against @libsql/client 0.17.4 — not the older 999).
+ * `getPath`'s frontier is NOT capped, so a single BFS level reaching >16383
+ * not-yet-visited nodes would exceed the limit and error — where the pre-batch
+ * per-node loop could not. Unreachable at iroha v0.1's graph scale; chunk the
+ * `IN` list here (deduping relations by id before grouping) if it is approached.
  */
 export async function getNeighborsForNodes(
   db: Executor,

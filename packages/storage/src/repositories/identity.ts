@@ -375,7 +375,8 @@ export async function getEntityById(
  * `IN ()`. Missing ids are simply absent from the Map, exactly like a `null`
  * from `getEntityById`. Callers pass bounded id sets (search ranking: ≤90
  * candidates / ≤50 top-result neighbours; dashboard graph read: ≤200 nodes),
- * all well under SQLite's 999-bound-variable limit, so no chunking is needed.
+ * all well under libSQL's ~32766-bound-variable limit (SQLite ≥3.32; verified
+ * against @libsql/client 0.17.4 — not the older 999), so no chunking is needed.
  */
 export async function getEntitiesByIds(
   db: Executor,
