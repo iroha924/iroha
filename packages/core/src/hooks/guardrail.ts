@@ -1,7 +1,39 @@
 import type { TypedId } from "@iroha/domain";
 import type { ToolTarget } from "@iroha/platform";
 import { type ActiveRuleRow, type Database, listApprovedRulesForRepository } from "@iroha/storage";
-import { pathMatches } from "../mcp/ranking.js";
+import picomatch from "picomatch";
+
+const GUARD_MATCH_OPTIONS = { dot: true, windows: false } as const;
+
+/**
+ * Match a guard-protected `guard.paths` glob against an already-canonicalized,
+ * repo-relative POSIX target path (the Hook feeds realpath-resolved paths via
+ * `resolveTargets`; CI callers pass normalized diff paths). Full glob semantics
+ * via `picomatch` — a pure, ReDoS-resistant, string-only matcher that never
+ * touches the filesystem, so it does not re-introduce the "fold `..` before
+ * resolving symlinks" hazard (path-and-symlink-safety.md).
+ *
+ * A guard path protects the path itself AND its whole subtree, so a
+ * bare-directory or single-star entry still protects the files under it — the
+ * safe, least-surprising semantics for a protect-from-writes matcher, and it
+ * preserves the pre-picomatch behavior (a bare `src/generated` guard covered
+ * `src/generated/client.ts`). That is the `glob` OR `glob/**` test below.
+ *
+ * Options: `dot: true` is mandatory for a security matcher — without it a
+ * globstar would skip dotfiles (a root `.env`, anything under `.github` or
+ * `.iroha`). `windows: false` keeps matching POSIX-deterministic regardless of
+ * host OS, since targets and guard paths are always repo-relative POSIX strings.
+ * Unlike the simplified prefix matcher in `ranking.ts` (search scope only), this
+ * correctly handles a leading globstar, a mid-path globstar, and an extension
+ * glob — the shapes whose silent no-op was the enforcement bypass this fixes.
+ */
+function guardPathMatches(glob: string, target: string): boolean {
+  const subtree = `${glob.replace(/\/+$/, "")}/**`;
+  return (
+    picomatch.isMatch(target, glob, GUARD_MATCH_OPTIONS) ||
+    picomatch.isMatch(target, subtree, GUARD_MATCH_OPTIONS)
+  );
+}
 
 export interface GuardrailDenial {
   ruleId: string;
@@ -32,7 +64,10 @@ function parseGuardSpec(json: string): GuardSpec | null {
   try {
     const parsed = JSON.parse(json) as Record<string, unknown>;
     const tools = toStringArray(parsed.tools);
-    const paths = toStringArray(parsed.paths);
+    // Drop blank/whitespace-only path entries: they match nothing, so a guard
+    // whose only paths are blank protects nothing — it must not read as
+    // `enforceable` in `iroha doctor` (that was the false-healthy signal).
+    const paths = toStringArray(parsed.paths).filter((path) => path.trim().length > 0);
     return tools.length > 0 ? { tools, paths } : null;
   } catch {
     return null;
@@ -76,7 +111,8 @@ export function evaluateGuardrails(
     }
     const match = targets.find(
       (target) =>
-        isProtectedMutation(target) && guard.paths.some((glob) => pathMatches(glob, target.value)),
+        isProtectedMutation(target) &&
+        guard.paths.some((glob) => guardPathMatches(glob, target.value)),
     );
     if (match !== undefined) {
       return { ruleId: rule.id, reason: rule.summary ?? rule.title, target: match };
@@ -153,7 +189,7 @@ export function guardrailPathViolations(
       continue;
     }
     for (const path of changedPaths) {
-      if (guard.paths.some((glob) => pathMatches(glob, path))) {
+      if (guard.paths.some((glob) => guardPathMatches(glob, path))) {
         violations.push({ ruleId: rule.id, path });
       }
     }

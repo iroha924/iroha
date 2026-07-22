@@ -131,7 +131,9 @@ const decisionFrontmatter = commonFrontmatterBase
 
 const guardSchema = z.strictObject({
   tools: unique(z.array(z.string().max(100))).min(1),
-  paths: unique(z.array(z.string().max(500))),
+  paths: unique(z.array(z.string().max(500))).describe(
+    "Repo-relative POSIX path globs (picomatch). A guard path protects itself and its whole subtree, so `src/generated` and `src/generated/**` are equivalent; use a globstar to cross directories, e.g. `**/*.env`.",
+  ),
   deny_commands: unique(z.array(z.string().max(500))).optional(),
 });
 

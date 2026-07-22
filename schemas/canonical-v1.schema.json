@@ -340,6 +340,7 @@
                 },
                 "paths": {
                   "type": "array",
+                  "description": "Repo-relative POSIX path globs (picomatch). A guard path protects itself and its whole subtree, so `src/generated` and `src/generated/**` are equivalent; use a globstar to cross directories, e.g. `**/*.env`.",
                   "items": { "type": "string", "maxLength": 500 },
                   "uniqueItems": true
                 },

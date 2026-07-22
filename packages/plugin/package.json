@@ -44,6 +44,7 @@
     "hono": "catalog:",
     "mdast-util-from-markdown": "catalog:",
     "mdast-util-to-string": "catalog:",
+    "picomatch": "catalog:",
     "secretlint": "catalog:",
     "unist-util-visit": "catalog:",
     "yaml": "catalog:",
