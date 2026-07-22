@@ -28,7 +28,9 @@ export function Search() {
   const [types, setTypes] = useState<string[]>([]);
 
   const q = useQuery({
-    queryKey: ["search", submitted, types.join(",")],
+    // Sorted so the same set of chips keys the same cache entry regardless of
+    // click order (the filter itself is order-insensitive).
+    queryKey: ["search", submitted, [...types].sort().join(",")],
     queryFn: () =>
       api.search(submitted, types.length > 0 ? { filters: { entityTypes: types } } : {}),
     enabled: submitted.length > 0,

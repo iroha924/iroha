@@ -359,6 +359,14 @@ describe("dashboard API", () => {
     });
     expect(bogus.status).toBe(400);
 
+    // A non-RFC3339 date filter is rejected rather than silently mis-windowing
+    // results (mcpSearch compares `from`/`to` lexicographically against updated_at).
+    const badDate = await post(app, "/api/v1/search", cookie, {
+      query: "libSQL",
+      filters: { from: "zzzz" },
+    });
+    expect(badDate.status).toBe(400);
+
     // The unused `search/suggestions` stub has been removed.
     const suggestions = await get(app, "/api/v1/search/suggestions", cookie);
     expect(suggestions.status).toBe(404);

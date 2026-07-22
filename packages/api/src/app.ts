@@ -93,7 +93,10 @@ const searchSchema = z.strictObject({
   // Mirrors the MCP `search` tool's filter schema (packages/mcp/src/tools/search.ts)
   // so the dashboard reaches the same hybrid-retrieval filters. A strict object,
   // not `z.record(...)`: the value flows straight into the typed `McpSearchFilters`
-  // param, so unvalidated keys must not pass this boundary.
+  // param, so unvalidated keys must not pass this boundary. `from`/`to` are
+  // validated as RFC3339/UTC datetimes here (stricter than the MCP tool's plain
+  // string) because `mcpSearch` compares them lexicographically against
+  // `entities.updated_at` — a non-datetime would silently mis-window results.
   filters: z
     .strictObject({
       entityTypes: z.array(z.enum(ENTITY_TYPES)).optional(),
@@ -102,8 +105,8 @@ const searchSchema = z.strictObject({
       paths: z.array(z.string()).optional(),
       symbols: z.array(z.string()).optional(),
       issueRefs: z.array(z.string()).optional(),
-      from: z.string().optional(),
-      to: z.string().optional(),
+      from: z.iso.datetime().optional(),
+      to: z.iso.datetime().optional(),
       minimumAuthority: z.number().min(0).max(100).optional(),
     })
     .optional(),
