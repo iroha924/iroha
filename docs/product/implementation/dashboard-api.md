@@ -129,6 +129,8 @@ Rules:
 
 Session filters: platform, actor, status, label, Issue/PR ref, date range, unresolved-only.
 
+`GET /api/v1/sessions` query parameters: `cursor`, `limit`, `platform` (`claude_code`|`codex`), `summaryStatus` (`none`|`draft`|`approved`), `from`, `to` (RFC 3339 datetime; the inclusive date range is compared against `last_seen_at` — the column the list is ordered and cursored by and the date each row shows). Unknown, out-of-enum, or non-RFC-3339 filter values are ignored.
+
 Raw prompt, transcript, assistant message, and full tool payload endpoints do not exist.
 
 ### Candidate review
@@ -141,6 +143,8 @@ Raw prompt, transcript, assistant message, and full tool payload endpoints do no
 | `POST` | `/api/v1/candidates/:id/approve` | human approval + canonical publish |
 | `POST` | `/api/v1/candidates/:id/reject` | reject with optional reason |
 | `POST` | `/api/v1/candidates/:id/supersede` | replace pending/approved candidate relation |
+
+`GET /api/v1/candidates` query parameters: `cursor`, `limit`, `status` (`pending`|`approved`|`rejected`|`superseded`, default `pending`).
 
 Candidate reads return `revisionToken`. PATCH/approve/reject/supersede require the same token. A mismatch returns HTTP 409 `CONFLICT` with no automatic merge.
 
@@ -168,6 +172,8 @@ Approval invokes the exact transaction in `canonical-schema.md`. The API does no
 | `GET` | `/api/v1/entities/:id/relations` | bounded neighbors/subgraph |
 | `POST` | `/api/v1/graph/query` | graph roots, types, direction, depth |
 | `GET` | `/api/v1/graph/path` | bounded path between two IDs |
+
+`GET /api/v1/knowledge` query parameters: `cursor`, `limit`, `status` (repeatable; `approved`|`superseded`|`archived`, default `approved`), `type` (repeatable; one of the seven knowledge `entity_type`s). Values outside these sets are ignored, and `type` never widens beyond the knowledge set.
 
 Graph query limits: depth 4, 200 edges, 200 nodes. UI must show truncation.
 

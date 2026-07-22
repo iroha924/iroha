@@ -85,3 +85,41 @@ export function EmptyState({ message }: { message: string }) {
     </div>
   );
 }
+
+/** A pill-shaped toggle chip (matcha when active) — the shared control for list filters. */
+export function FilterChip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+        active
+          ? "border-matcha bg-matcha text-paper-raised"
+          : "border-hairline bg-paper-raised text-ink-muted hover:bg-paper-inset"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** "Load more" affordance for cursor-paginated lists (dashboard-api.md §4). */
+export function LoadMore({ onClick, loading }: { onClick: () => void; loading: boolean }) {
+  const { t } = useI18n();
+  return (
+    <div className="mt-4 flex justify-center">
+      <button type="button" onClick={onClick} disabled={loading} className={btnSecondary}>
+        {loading ? t("common.loading") : t("common.loadMore")}
+      </button>
+    </div>
+  );
+}

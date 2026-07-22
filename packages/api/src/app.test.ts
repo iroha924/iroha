@@ -9,7 +9,9 @@ import {
   closeDatabase,
   getCandidateById,
   getEntityById,
+  insertAgentSession,
   insertCandidate,
+  insertEntity,
   openDatabase,
 } from "@iroha/storage";
 import type { Hono } from "hono";
@@ -94,6 +96,42 @@ async function seedDecision(
   await closeDatabase(db.value);
   if (!inserted.ok) throw new Error(inserted.error.code);
   return { candidateId, revisionToken };
+}
+
+async function seedSession(
+  dbPath: string,
+  repositoryId: TypedId<"repo">,
+  opts: { platform: "claude_code" | "codex"; startedAt: string; lastSeenAt: string },
+): Promise<TypedId<"ses">> {
+  const db = await openDatabase(dbPath);
+  if (!db.ok) throw new Error(db.error.code);
+  const id = makeTypedId("ses", clock, random);
+  const entity = await insertEntity(db.value, {
+    id,
+    repositoryId,
+    entityType: "session",
+    title: "session",
+    status: "active",
+    authority: 60,
+    sourceKind: "hook",
+    createdAt: opts.startedAt,
+    updatedAt: opts.lastSeenAt,
+  });
+  if (!entity.ok) {
+    await closeDatabase(db.value);
+    throw new Error(entity.error.code);
+  }
+  const ses = await insertAgentSession(db.value, {
+    id,
+    repositoryId,
+    platform: opts.platform,
+    platformSessionId: id,
+    startedAt: opts.startedAt,
+    lastSeenAt: opts.lastSeenAt,
+  });
+  await closeDatabase(db.value);
+  if (!ses.ok) throw new Error(ses.error.code);
+  return id;
 }
 
 function makeApp(cwd: string): { app: Hono; launchToken: string } {
@@ -316,6 +354,86 @@ describe("dashboard API", () => {
     // No raw transcript / conversation endpoint exists.
     const raw = await get(app, "/api/v1/sessions/ses_x/raw", cookie);
     expect(raw.status).toBe(404);
+  });
+
+  it("filters the knowledge list by type and status, and the candidate queue by status", async () => {
+    const repo = await setupApiRepo();
+    dir = repo.dir;
+    const { app } = makeApp(repo.dir);
+    const cookie = await exchange(app);
+    const { candidateId, revisionToken } = await seedDecision(repo.dbPath, repo.repositoryId);
+
+    const items = async (res: Response): Promise<{ id: string; type?: string }[]> =>
+      ((await res.json()) as { data: { items: { id: string; type?: string }[] } }).data.items;
+
+    // Pending by default; the approved status tab is empty until approval.
+    expect((await items(await get(app, "/api/v1/candidates?status=pending", cookie))).length).toBe(
+      1,
+    );
+    expect((await items(await get(app, "/api/v1/candidates?status=approved", cookie))).length).toBe(
+      0,
+    );
+
+    const approved = await post(app, `/api/v1/candidates/${candidateId}/approve`, cookie, {
+      revisionToken,
+      actor: { provider: "git", displayName: "Example Reviewer" },
+    });
+    expect(approved.status).toBe(200);
+
+    // Review history: the approved status tab now surfaces the candidate.
+    const approvedNow = await items(await get(app, "/api/v1/candidates?status=approved", cookie));
+    expect(approvedNow.map((i) => i.id)).toContain(candidateId);
+
+    // Knowledge default lists the approved decision.
+    const all = await items(await get(app, "/api/v1/knowledge", cookie));
+    expect(all.length).toBe(1);
+    expect(all[0]?.type).toBe("decision");
+
+    // `type` narrows: the matching type includes, a non-matching type excludes.
+    expect((await items(await get(app, "/api/v1/knowledge?type=decision", cookie))).length).toBe(1);
+    expect((await items(await get(app, "/api/v1/knowledge?type=rule", cookie))).length).toBe(0);
+
+    // `status` narrows: archived excludes the approved decision.
+    expect((await items(await get(app, "/api/v1/knowledge?status=archived", cookie))).length).toBe(
+      0,
+    );
+
+    // An out-of-enum `type` is ignored (never applied, never widened to non-knowledge).
+    expect((await items(await get(app, "/api/v1/knowledge?type=session", cookie))).length).toBe(1);
+  });
+
+  it("filters the session list by last_seen_at range and ignores a non-RFC-3339 bound", async () => {
+    const repo = await setupApiRepo();
+    dir = repo.dir;
+    const { app } = makeApp(repo.dir);
+    const cookie = await exchange(app);
+    // A long-running session started in December, last active mid-January.
+    const straddler = await seedSession(repo.dbPath, repo.repositoryId, {
+      platform: "claude_code",
+      startedAt: "2025-12-30T00:00:00.000Z",
+      lastSeenAt: "2026-01-15T12:00:00.000Z",
+    });
+    await seedSession(repo.dbPath, repo.repositoryId, {
+      platform: "codex",
+      startedAt: "2026-03-01T00:00:00.000Z",
+      lastSeenAt: "2026-03-01T00:00:00.000Z",
+    });
+
+    const sids = async (res: Response): Promise<string[]> =>
+      ((await res.json()) as { data: { items: { id: string }[] } }).data.items.map((i) => i.id);
+
+    // The Jan range is compared against last_seen_at, so the December-started
+    // straddler is included and the March session is excluded.
+    const jan = await get(
+      app,
+      "/api/v1/sessions?from=2026-01-01T00:00:00.000Z&to=2026-01-31T23:59:59.999Z",
+      cookie,
+    );
+    expect(await sids(jan)).toEqual([straddler]);
+
+    // A malformed `from` is not RFC 3339, so it is ignored and both sessions list.
+    const bad = await get(app, "/api/v1/sessions?from=not-a-date", cookie);
+    expect((await sids(bad)).length).toBe(2);
   });
 
   it("forwards search filters to hybrid retrieval, rejects unknown filter keys, and has no suggestions route", async () => {

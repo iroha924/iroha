@@ -255,8 +255,8 @@ export function createApp(config: AppConfig) {
             "draft",
             "approved",
           ]),
-          ...strOpt("from", c.req.query("from")),
-          ...strOpt("to", c.req.query("to")),
+          ...isoOpt("from", c.req.query("from")),
+          ...isoOpt("to", c.req.query("to")),
         }),
       ),
     )
@@ -385,6 +385,20 @@ export function createApp(config: AppConfig) {
           ...useCaseCtx,
           ...numOpt("limit", c.req.query("limit")),
           ...strOpt("cursor", c.req.query("cursor")),
+          ...enumArrOpt("statuses", c.req.queries("status"), [
+            "approved",
+            "superseded",
+            "archived",
+          ]),
+          ...enumArrOpt("entityTypes", c.req.queries("type"), [
+            "decision",
+            "rule",
+            "concept",
+            "insight",
+            "incident",
+            "pattern",
+            "review_learning",
+          ]),
         }),
       ),
     )
@@ -493,6 +507,11 @@ function strOpt(key: string, value: string | undefined): Record<string, string> 
   return value === undefined ? {} : { [key]: value };
 }
 
+/** Like `strOpt`, but drops a value that is not an RFC 3339 datetime (mirrors the search route's `from`/`to`). */
+function isoOpt(key: string, value: string | undefined): Record<string, string> {
+  return value !== undefined && z.iso.datetime().safeParse(value).success ? { [key]: value } : {};
+}
+
 function numOpt(key: string, value: string | undefined): Record<string, number> {
   if (value === undefined) return {};
   const n = Number(value);
@@ -507,6 +526,17 @@ function enumOpt<T extends string>(
   return value !== undefined && (allowed as readonly string[]).includes(value)
     ? { [key]: value as T }
     : {};
+}
+
+/** Multi-value filter: keeps only allowed values from a repeated query param, omitting the key when none remain. */
+function enumArrOpt<T extends string>(
+  key: string,
+  values: string[] | undefined,
+  allowed: readonly T[],
+): Record<string, T[]> {
+  if (values === undefined) return {};
+  const filtered = values.filter((v): v is T => (allowed as readonly string[]).includes(v));
+  return filtered.length > 0 ? { [key]: filtered } : {};
 }
 
 async function readJson<T extends z.ZodType>(

@@ -762,7 +762,11 @@ export interface ListSessionsFilter {
   beforeId?: TypedId<"ses">;
   platform?: SessionPlatform;
   summaryStatus?: SessionSummaryStatus;
-  /** Inclusive `started_at` lower/upper bounds (RFC 3339 UTC). */
+  /**
+   * Inclusive `last_seen_at` lower/upper bounds (RFC 3339 UTC). Filtered on the
+   * SAME column the list is ordered and cursored by (and the date the row shows),
+   * so a session whose displayed date falls in the range is never silently dropped.
+   */
   from?: string;
   to?: string;
 }
@@ -805,11 +809,11 @@ export async function listSessions(
     args.push(filter.summaryStatus);
   }
   if (filter.from !== undefined) {
-    conditions.push("s.started_at >= ?");
+    conditions.push("s.last_seen_at >= ?");
     args.push(filter.from);
   }
   if (filter.to !== undefined) {
-    conditions.push("s.started_at <= ?");
+    conditions.push("s.last_seen_at <= ?");
     args.push(filter.to);
   }
   args.push(filter.limit);

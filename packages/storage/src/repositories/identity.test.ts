@@ -2,6 +2,7 @@ import type { TypedId } from "@iroha/domain";
 import { afterEach, describe, expect, it } from "vitest";
 import { closeDatabase, type Database } from "../connection.js";
 import { openMigratedTestDb, removeTempDir } from "../test-helpers/tmp-db.js";
+import type { EntityType } from "./identity.js";
 import {
   getActorById,
   getActorByProviderExternalId,
@@ -17,6 +18,7 @@ import {
   insertRepository,
   listCanonicalDocumentsByRepository,
   listEntitiesByRepository,
+  listKnowledgeEntities,
   updateEntityAuthority,
   updateEntityStatus,
   updateRepositoryRemote,
@@ -367,6 +369,104 @@ describe("identity repositories", () => {
     expect(all.ok).toBe(true);
     if (all.ok) {
       expect(all.value.length).toBe(2);
+    }
+  });
+
+  it("lists only knowledge entity_types, honoring status and entityTypes filters", async () => {
+    const opened = await openMigratedTestDb();
+    tempDir = opened.dir;
+    db = opened.db;
+    const database = opened.db;
+    const repositoryId = repoId("k");
+    await insertRepository(database, {
+      id: repositoryId,
+      rootFingerprint: "fp-k",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    const seed = (id: string, entityType: EntityType, status: string, updatedAt: string) =>
+      insertEntity(database, {
+        id,
+        repositoryId,
+        entityType,
+        title: id,
+        status,
+        authority: 100,
+        sourceKind: "canonical",
+        createdAt: NOW,
+        updatedAt,
+      });
+    await seed("dec_0000000000000000000000001", "decision", "approved", "2026-01-05T00:00:00.000Z");
+    await seed("rul_0000000000000000000000002", "rule", "approved", "2026-01-04T00:00:00.000Z");
+    await seed("dec_0000000000000000000000003", "decision", "archived", "2026-01-03T00:00:00.000Z");
+    // A non-knowledge entity (newest of all) must never surface here.
+    await seed("ses_0000000000000000000000004", "session", "approved", "2026-01-06T00:00:00.000Z");
+
+    // Default: approved knowledge only, newest-first, session excluded.
+    const def = await listKnowledgeEntities(database, repositoryId, { limit: 10 });
+    expect(def.ok).toBe(true);
+    if (def.ok) {
+      expect(def.value.map((e) => e.id)).toEqual([
+        "dec_0000000000000000000000001",
+        "rul_0000000000000000000000002",
+      ]);
+    }
+
+    // entityTypes narrows to the requested knowledge type.
+    const onlyDecisions = await listKnowledgeEntities(database, repositoryId, {
+      limit: 10,
+      entityTypes: ["decision"],
+    });
+    expect(onlyDecisions.ok).toBe(true);
+    if (onlyDecisions.ok) {
+      expect(onlyDecisions.value.map((e) => e.id)).toEqual(["dec_0000000000000000000000001"]);
+    }
+
+    // A non-knowledge type is dropped (never widens): falls back to all knowledge,
+    // and the session still never appears.
+    const nonKnowledge = await listKnowledgeEntities(database, repositoryId, {
+      limit: 10,
+      entityTypes: ["session"],
+    });
+    expect(nonKnowledge.ok).toBe(true);
+    if (nonKnowledge.ok) {
+      expect(nonKnowledge.value.map((e) => e.id)).toEqual([
+        "dec_0000000000000000000000001",
+        "rul_0000000000000000000000002",
+      ]);
+    }
+
+    // status filter reaches archived knowledge.
+    const archived = await listKnowledgeEntities(database, repositoryId, {
+      limit: 10,
+      statuses: ["archived"],
+    });
+    expect(archived.ok).toBe(true);
+    if (archived.ok) {
+      expect(archived.value.map((e) => e.id)).toEqual(["dec_0000000000000000000000003"]);
+    }
+
+    // Filter + keyset cursor together (locks arg order on the paginated filter path):
+    // both decisions, one per page, newest first.
+    const page1 = await listKnowledgeEntities(database, repositoryId, {
+      limit: 1,
+      entityTypes: ["decision"],
+      statuses: ["approved", "archived"],
+    });
+    expect(page1.ok).toBe(true);
+    if (page1.ok) {
+      expect(page1.value.map((e) => e.id)).toEqual(["dec_0000000000000000000000001"]);
+    }
+    const page2 = await listKnowledgeEntities(database, repositoryId, {
+      limit: 1,
+      entityTypes: ["decision"],
+      statuses: ["approved", "archived"],
+      beforeUpdatedAt: "2026-01-05T00:00:00.000Z",
+      beforeId: "dec_0000000000000000000000001",
+    });
+    expect(page2.ok).toBe(true);
+    if (page2.ok) {
+      expect(page2.value.map((e) => e.id)).toEqual(["dec_0000000000000000000000003"]);
     }
   });
 

@@ -19,8 +19,10 @@ import {
   insertToolEvent,
   insertTurn,
   listCheckpointsBySession,
+  listSessions,
   listToolEventsByTurn,
   listToolEventsByTurns,
+  type SessionPlatform,
   touchAgentSessionLastSeen,
   updateTurnCheckpointState,
 } from "./sessions.js";
@@ -119,6 +121,111 @@ describe("session repositories", () => {
     expect(byPlatform.ok).toBe(true);
     if (byPlatform.ok) {
       expect(byPlatform.value?.id).toBe(sessionId);
+    }
+  });
+
+  it("lists sessions filtered by platform and last_seen_at range, paginated by the last_seen_at keyset", async () => {
+    const opened = await openMigratedTestDb();
+    tempDir = opened.dir;
+    db = opened.db;
+    const database = opened.db;
+    const repositoryId = repoId("ls");
+    await insertRepository(database, {
+      id: repositoryId,
+      rootFingerprint: "fp-ls",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    const seed = async (
+      suffix: string,
+      platform: SessionPlatform,
+      startedAt: string,
+      lastSeenAt: string,
+    ): Promise<TypedId<"ses">> => {
+      const id = sesId(suffix);
+      await insertEntity(database, {
+        id,
+        repositoryId,
+        entityType: "session",
+        title: id,
+        status: "active",
+        authority: 60,
+        sourceKind: "hook",
+        createdAt: startedAt,
+        updatedAt: lastSeenAt,
+      });
+      await insertAgentSession(database, {
+        id,
+        repositoryId,
+        platform,
+        platformSessionId: `plat-${suffix}`,
+        startedAt,
+        lastSeenAt,
+      });
+      return id;
+    };
+
+    // A long-running session started in December, last active mid-January.
+    const straddler = await seed(
+      "straddle",
+      "claude_code",
+      "2025-12-30T00:00:00.000Z",
+      "2026-01-15T12:00:00.000Z",
+    );
+    const janA = await seed(
+      "janaaa",
+      "claude_code",
+      "2026-01-10T00:00:00.000Z",
+      "2026-01-10T00:00:00.000Z",
+    );
+    const janB = await seed(
+      "janbbb",
+      "claude_code",
+      "2026-01-20T00:00:00.000Z",
+      "2026-01-20T00:00:00.000Z",
+    );
+    const codex = await seed(
+      "codexx",
+      "codex",
+      "2026-01-12T00:00:00.000Z",
+      "2026-01-12T00:00:00.000Z",
+    );
+
+    // The date range is compared against last_seen_at, so the December-started
+    // straddler (last seen Jan 15) IS included — matching its displayed date —
+    // even though its started_at is outside January.
+    const jan = await listSessions(database, repositoryId, {
+      limit: 10,
+      from: "2026-01-01T00:00:00.000Z",
+      to: "2026-01-31T23:59:59.999Z",
+    });
+    expect(jan.ok).toBe(true);
+    if (jan.ok) {
+      // last_seen_at DESC: janB(20) > straddler(15) > codex(12) > janA(10).
+      expect(jan.value.map((s) => s.id)).toEqual([janB, straddler, codex, janA]);
+    }
+
+    // platform narrows to the single codex session.
+    const onlyCodex = await listSessions(database, repositoryId, { limit: 10, platform: "codex" });
+    expect(onlyCodex.ok).toBe(true);
+    if (onlyCodex.ok) {
+      expect(onlyCodex.value.map((s) => s.id)).toEqual([codex]);
+    }
+
+    // Keyset pagination on (last_seen_at, id): page 1, then strictly-older page 2.
+    const page1 = await listSessions(database, repositoryId, { limit: 2 });
+    expect(page1.ok).toBe(true);
+    if (page1.ok) {
+      expect(page1.value.map((s) => s.id)).toEqual([janB, straddler]);
+    }
+    const page2 = await listSessions(database, repositoryId, {
+      limit: 2,
+      beforeLastSeenAt: "2026-01-15T12:00:00.000Z",
+      beforeId: straddler,
+    });
+    expect(page2.ok).toBe(true);
+    if (page2.ok) {
+      expect(page2.value.map((s) => s.id)).toEqual([codex, janA]);
     }
   });
 
