@@ -25,6 +25,8 @@ import { useI18n } from "@/i18n/index.js";
 import { mergeNeighbors, seedLayout } from "./graph-merge.js";
 
 const DEPTHS = [1, 2, 3, 4] as const;
+/** `POST /v1/graph/query` rejects `roots` arrays longer than this (`graphQuerySchema`). */
+const MAX_ROOTS = 20;
 
 interface SeedItem {
   id: string;
@@ -200,7 +202,7 @@ export function Graph() {
           </label>
           <button
             type="button"
-            disabled={selected.length === 0 || busy}
+            disabled={selected.length === 0 || selected.length > MAX_ROOTS || busy}
             onClick={() => loadGraph.mutate({ roots: selected, depth })}
             className={btnPrimary}
           >
@@ -221,6 +223,9 @@ export function Graph() {
             </button>
           )}
         </div>
+        {selected.length > MAX_ROOTS && (
+          <p className="mt-2 text-xs text-persimmon">{t("graph.tooManyRoots")}</p>
+        )}
       </div>
 
       {busy && <Loading />}

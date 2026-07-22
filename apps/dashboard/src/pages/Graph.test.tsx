@@ -102,6 +102,22 @@ describe("Graph", () => {
     await waitFor(() => expect(screen.queryByText(/Something went wrong/)).not.toBeInTheDocument());
   });
 
+  it("disables Load and warns when more than 20 roots are selected", async () => {
+    const items = Array.from({ length: 21 }, (_, i) => knowledgeItem(`dec_${i + 1}`, `K${i + 1}`));
+    mockApi({
+      "GET /api/v1/knowledge": ok({ items, nextCursor: null }),
+      "GET /api/v1/sessions": ok({ items: [], nextCursor: null }),
+    });
+    renderWithProviders(<Graph />);
+
+    await screen.findByRole("button", { name: "K1" });
+    for (let i = 1; i <= 21; i++) {
+      await userEvent.click(screen.getByRole("button", { name: `K${i}` }));
+    }
+    expect(screen.getByText(/Select at most 20/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Load graph/ })).toBeDisabled();
+  });
+
   it("enables Find path only with two seeds and calls graphPath", async () => {
     const fn = mockApi({
       "GET /api/v1/knowledge": ok({
