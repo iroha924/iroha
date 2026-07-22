@@ -48,7 +48,7 @@ Codex spends its 5h bucket on every re-review, and firing it mechanically on eve
 - Tests only or docs only.
 - A mechanical refactor with no behavior change.
 
-**Trigger syntax** (PR comment): whole PR `@codex review`; scoped `@codex review for security regressions` or `@codex review for missing tests and risky behavior changes`. `@codex <anything other than review>` opens a PR-context cloud chat instead of a review, so avoid it. When unsure and the diff is security-sensitive, prefer the scoped `for security regressions` over a full review (predictable spend).
+**Trigger syntax** (PR comment): whole PR `@codex review`; scoped `@codex review for security regressions` or `@codex review for missing tests and risky behavior changes`. **`@codex` is a trigger, not a way to address the bot.** Per the official docs ([developers.openai.com/codex/integrations/github](https://developers.openai.com/codex/integrations/github) → learn.chatgpt.com/docs/third-party/github, verified 2026-07-22): *"If you mention `@codex` in a comment with anything other than `review`, Codex starts a cloud chat using your pull request as context"* (e.g. `@codex fix the P1 issue` opens a cloud chat that can push a fix to the branch). So **only ever type `@codex review`** (optionally scoped). To reply to or document a finding — including leaving triage evidence — use a PLAIN comment (or a review-thread reply) with **no `@codex` mention**: opening a comment with `@codex re …` / `@codex regarding …` does NOT address the bot, it silently fires a cloud chat instead of leaving a note (observed 2026-07-22: `@codex re the … finding` triggered a "create an environment for this repo" cloud-chat reply). When unsure and the diff is security-sensitive, prefer the scoped `for security regressions` over a full review (predictable spend).
 
 - If Codex was **down (rate-limited) at PR-open**, its automatic pass may not have fired. But **"down at open" does not mean "never reviews"**: once the limit recovers, Codex has been observed to pick up an already-open PR on its own (a 👀 appears late) — so keep polling its reaction/review before concluding it skipped the PR. If, after the limit is known to be clear, it still has not reacted and the PR is security-sensitive, request one pass under the criteria above.
 
@@ -67,7 +67,7 @@ gh api graphql -f query='query { repository(owner:"<owner>", name:"<repo>") {
 gh api graphql -f query='mutation { resolveReviewThread(input:{threadId:"<THREAD_ID>"}) { thread { isResolved } } }'
 ```
 
-Before resolving a finding you judged INVALID, leave a PR comment with the evidence (repro log / primary-source URL) first ([[code-review-triage]], cyclic false positives).
+Before resolving a finding you judged INVALID, leave a PR comment with the evidence (repro log / primary-source URL) first ([[code-review-triage]], cyclic false positives) — a PLAIN comment with **no `@codex` mention** (a comment that opens with `@codex` + anything other than `review` fires a cloud chat, not a note; see "Trigger syntax" above).
 
 ## Pre-completion checklist
 
