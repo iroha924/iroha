@@ -408,8 +408,8 @@ function rowToIdempotencyRecord(row: Record<string, unknown>): IdempotencyRecord
 }
 
 /**
- * Design.md §9: "MCP/HTTP mutationは`idempotency_keys`で再試行しても重複を
- * 作らない". A plain `INSERT` (no `ON CONFLICT`) is intentional — a
+ * Design.md §9: "MCP/HTTP mutations must not create duplicates on retry, via
+ * `idempotency_keys`". A plain `INSERT` (no `ON CONFLICT`) is intentional — a
  * `CONFLICT` on the `(repository_id, operation, idempotency_key)` primary
  * key means a concurrent request already recorded a result, and the MCP
  * layer should fetch that result via `getIdempotencyRecord` rather than

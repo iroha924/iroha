@@ -240,8 +240,8 @@ export interface InitRepositoryOptions {
  * when `options.scan` is set (canonical-schema.md §14: `iroha init --scan`)
  * — scans `AGENTS.md`/`CLAUDE.md`/`.claude/rules/**\/*.md` into local
  * (non-canonical) `rule` candidates. Idempotent: a second run against the
- * same repository makes no further changes (Scenario A: "再実行しても既存
- * データを破壊しない").
+ * same repository makes no further changes (Scenario A: "a re-run does not
+ * destroy existing data").
  *
  * Canonical-file import is deliberately not done here — that is
  * `syncCanonicalToDatabase`'s job; the CLI layer composes the two so `iroha

@@ -11,82 +11,82 @@ allowed-tools: Bash(grep *) Bash(pnpm lint) Bash(pnpm typecheck) Bash(pnpm test)
 
 # Self-review before push
 
-このスキルは「報告された1件を直して終わり」を防ぐためのものです。反復的な修正がセキュリティを悪化させ得ることは実証研究([Security Degradation in Iterative AI Code Generation](https://arxiv.org/pdf/2506.11022), arXiv 2506.11022)でも指摘されています。原因は主に (a) ローカル最適化(1件を直すと別の場所に新しい弱点を生む)、(b) 網羅的な脅威モデリング不足です。各修正を「リスクを減らす行為」ではなく「新しいリスクを生みうる行為」として扱ってください。
+This skill exists to prevent "fix the one reported issue and be done". That iterative fixes can worsen security is pointed out even in empirical research ([Security Degradation in Iterative AI Code Generation](https://arxiv.org/pdf/2506.11022), arXiv 2506.11022). The causes are mainly (a) local optimization (fixing one issue creates a new weakness somewhere else) and (b) a lack of exhaustive threat modeling. Treat each fix not as "an act that reduces risk" but as "an act that may create new risk".
 
-以下のステップを**変更内容に応じて該当するものだけ**、pushの直前に実行してください。全ステップが常に必要なわけではありません。
+Run the following steps **only the ones that apply to what you changed**, right before pushing. Not all steps are always necessary.
 
-## Step 1 — 変更の性質を1文で書く
+## Step 1 — Write the nature of the change in one sentence
 
-「何を」「なぜ」直したかを1文で明示する。次のステップの判断基準になる。
-例: 「`redactUrlLikeCredentials` の区切り文字にカンマを追加し、隣接する2つのURLが1つのマッチとして扱われる問題を直した」
+State in one sentence "what" you fixed and "why". It becomes the basis for judging the next steps.
+Example: "Added a comma to the delimiters of `redactUrlLikeCredentials`, fixing an issue where two adjacent URLs were treated as a single match".
 
-## Step 2 — "これは何を新たに通すようになったか?" を問う
+## Step 2 — Ask "what does this newly let through?"
 
-パターンマッチ/正規表現/除外セットを変更したら、**直した誤検知(false negative)を確認するだけでは不十分**。同じ変更が生む**新しい**false negativeを最低2〜3個、自分で考えて試す。
+When you change a pattern match / regex / exclusion set, **confirming only the false negative you fixed is not enough**. Come up with, on your own, and test at least 2-3 **new** false negatives that the same change produces.
 
-- 除外文字を追加した → その文字が「区切り」ではなく「正当な値の一部」として現れるケースを書いて確認したか?
-- 判定条件を緩めた/厳しくした → 逆方向の入力(緩めたなら通したくない入力、厳しくしたなら通したい入力)を最低1つテストしたか?
+- Added an exclusion character → did you write and confirm a case where that character appears not as a "delimiter" but as "part of a legitimate value"?
+- Loosened / tightened a condition → did you test at least one input in the opposite direction (if you loosened it, an input you do not want to let through; if you tightened it, an input you do want to let through)?
 
-これは「fixを検証する」のではなく「fixが何を犠牲にしたか」を能動的に探す作業です。
+This is not the work of "verifying the fix" but of actively hunting for "what the fix sacrificed".
 
-## Step 3 — 同じヘルパー/プリミティブの全呼び出し箇所を横断確認する
+## Step 3 — Cross-check every call site of the same helper/primitive
 
-1箇所を直したら、**そのファイルだけでなくパッケージ全体**で同じヘルパーの他の使用箇所を確認する(「ローカル最適化」がグローバルな弱点を生む主因)。
-
-```bash
-# 変更した関数/正規表現/ヘルパーの全呼び出し箇所を洗い出す
-grep -rn "<変更した関数名>(" src/*.ts | grep -v "\.test\.ts"
-```
-
-「厳格版」と「緩い版」の2つの関数が併存している場合、**外部呼び出し箇所が全て厳格版を使っているか**を必ず確認する。
-
-## Step 4 — 自分が書いた不変条件(invariant)への違反を横断チェックする
-
-docstring/コメントで「Xは絶対に使わない、なぜならY」と書いたら、**同じコミットの中で**同じファイル・同じ関数の別分岐でXを使っていないか、必ずgrepで確認する。
+When you fix one spot, check the other uses of the same helper **not just in that file but across the whole package** ("local optimization" is the main cause of a global weakness).
 
 ```bash
-# 例: 「path.resolve/path.join は .. を畳むので使わない」と宣言したファイルで
-grep -n "resolve(\|\.join(\|path\.join\|path\.resolve" <変更したファイル>
+# List every call site of the changed function/regex/helper
+grep -rn "<changed-function-name>(" src/*.ts | grep -v "\.test\.ts"
 ```
 
-不変条件を書いた直後にその不変条件へ違反するのは、最も基本的で見落としやすいパターン。**同じ関数の別分岐**は特に見落としやすい。
+When a "strict version" and a "lenient version" of a function coexist, always confirm **whether all external call sites use the strict version**.
 
-## Step 5 — OSネイティブ関数を自前実装に置き換えたら、プラットフォーム差分を明示的に列挙する
+## Step 4 — Cross-check for violations of an invariant you wrote yourself
 
-`fs.realpath` のようなOSネイティブ関数を手書きロジックに置き換える(または部分的に迂回する)場合、そのネイティブ関数が暗黙に処理していた可能性のある挙動を明示的に列挙し、1つずつ「維持したか」「意図的に対象外としたか」を判定する。
+If you wrote in a docstring/comment "never use X, because Y", always grep to confirm that you are not using X **within the same commit** in another branch of the same file or the same function.
 
-チェックリストの出発点(詳細は `.claude/rules/path-and-symlink-safety.md`):
-- 大文字小文字の扱い(Windowsは環境変数名・パスの大文字小文字を区別しない)
-- 短縮名/エイリアス形式(Windows 8.3形式)
-- ロケール依存の出力(gettext等で翻訳されるメッセージ)
-- 改行・空白・エンコーディングの正規化
+```bash
+# Example: in a file that declared "path.resolve/path.join collapse .. so do not use them"
+grep -n "resolve(\|\.join(\|path\.join\|path\.resolve" <changed-file>
+```
 
-ローカル環境で再現できない挙動(Windows短縮名、NLS翻訳等)は、**再現できないことをそのままリスクとして記録し**、該当プラットフォームがCIマトリクスに含まれる場合は実機CIの結果を待つ。ローカルで再現できないことを「問題なし」の根拠にしない。
+Violating an invariant right after writing it is the most basic and most easily overlooked pattern. **Another branch of the same function** is especially easy to miss.
 
-## Step 6 — 「除去できないか」を先に問う(denylistよりallowlist)
+## Step 5 — When you replace an OS-native function with your own implementation, explicitly enumerate the platform differences
 
-機密情報がエラー/ログに漏れる問題を見つけたら、**まず「その値自体を含めるのをやめられないか」を検討する**。正規表現によるredactionは本質的にdenylist(既知の悪いパターンを検知)であり、[OWASP Input Validation Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Input_Validation_Cheat_Sheet.html)が明記する通り「trivialに迂回可能」という構造的限界を持つ。詳細は `.claude/rules/secure-subprocess-and-credentials.md`。
+When you replace an OS-native function such as `fs.realpath` with hand-written logic (or partially bypass it), explicitly enumerate the behaviors that native function may have handled implicitly, and decide for each one whether you "preserved it" or "intentionally left it out of scope".
 
-判断順序:
-1. その値(引数の生値、パスの絶対表記等)は本当にエラーに必要か? → 不要なら**含めない**
-2. 含める必要がある(デバッグに必須)なら、既知の形状を検知して除去するredaction戦略を採る
-3. redaction戦略を採る場合、それが原理的に漏洩経路を塞げていないことを自覚し、コメントに限界を明記する
+Starting point for the checklist (details in `.claude/rules/path-and-symlink-safety.md`):
+- Case handling (Windows does not distinguish the case of environment variable names or paths)
+- Short-name / alias forms (Windows 8.3 form)
+- Locale-dependent output (messages translated by gettext, etc.)
+- Normalization of newlines, whitespace, and encoding
 
-「もう1個パターンを追加すれば直る」という考えが3回目に出てきたら、それは戦略自体を疑うべきサインです。
+For behaviors you cannot reproduce in your local environment (Windows short names, NLS translation, etc.), **record the inability to reproduce as a risk in its own right**, and if the platform in question is included in the CI matrix, wait for the results of real-machine CI. Do not use "cannot be reproduced locally" as grounds for "no problem".
 
-## Step 7 — 独立した視点でのアドバーサリアルレビュー
+## Step 6 — First ask "can it be removed?" (allowlist over denylist)
 
-自分(このスキルを呼び出したのと同じ会話の文脈)でのレビューは確証バイアスがかかる。fresh contextの `security-diff-reviewer` サブエージェント(`.claude/agents/security-diff-reviewer.md`)に、変更のあったファイルの現在の内容を渡して独立にレビューさせる。
+When you find an issue where sensitive information leaks into an error/log, **first consider "can you stop including the value itself?"**. Redaction by regex is inherently a denylist (detecting known bad patterns) and has the structural limitation of being "trivially bypassable", as the [OWASP Input Validation Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Input_Validation_Cheat_Sheet.html) explicitly states. Details in `.claude/rules/secure-subprocess-and-credentials.md`.
 
-## Step 8 — 全体検証ゲート
+Order of judgment:
+1. Is that value (the raw argument value, the absolute form of a path, etc.) really needed in the error? → if not, **do not include it**
+2. If it must be included (essential for debugging), adopt a redaction strategy that detects and removes known shapes
+3. If you adopt a redaction strategy, be aware that it does not in principle close the leak channel, and state its limitations explicitly in a comment
 
-`pnpm lint && pnpm typecheck && pnpm test && pnpm build` を必ず実行してから push する。個別パッケージだけでなくリポジトリ全体で実行する。
+When the thought "just add one more pattern and it will be fixed" comes up for the third time, that is a sign you should doubt the strategy itself.
 
-## Step 9 — 前提条件を記録する
+## Step 7 — Adversarial review from an independent perspective
 
-Step 2〜5で「意図的に対象外とした」項目があれば、コミットメッセージまたはコード内コメントに明記する。次のレビューラウンドで同じ議論を繰り返さないため。
+A review by yourself (in the same conversation context that invoked this skill) is subject to confirmation bias. Have the fresh-context `security-diff-reviewer` subagent (`.claude/agents/security-diff-reviewer.md`) review it independently by passing it the current contents of the changed files.
 
-## トラブルシューティング
+## Step 8 — Whole-repository verification gate
 
-- **Step 8の検証(lint/typecheck/test/build)が失敗する**: pushを進めない。失敗したコマンドの出力を読み、根本原因を修正してからStep 8をやり直す。テストを通すためだけにプロダクションコードを歪めない(`~/.claude/rules/testing.md`)。
-- **Step 7の`security-diff-reviewer`呼び出しが指摘ゼロで返る**: 「問題なし」と「レビューが空振りした」を区別できないため、渡したファイル内容が実際に変更後の最新版か確認する。変更ファイルを絞りすぎて関連する呼び出し元ファイルを渡し忘れていないかもチェックする。
+Always run `pnpm lint && pnpm typecheck && pnpm test && pnpm build` before you push. Run it across the whole repository, not just the individual package.
+
+## Step 9 — Record the assumptions
+
+If there are items you "intentionally left out of scope" in Steps 2-5, state them explicitly in the commit message or in an in-code comment. This is so you do not repeat the same discussion in the next review round.
+
+## Troubleshooting
+
+- **The Step 8 verification (lint/typecheck/test/build) fails**: do not proceed with the push. Read the output of the failed command, fix the root cause, and redo Step 8. Do not distort production code just to make tests pass (`~/.claude/rules/testing.md`).
+- **The Step 7 `security-diff-reviewer` call returns with zero findings**: because you cannot distinguish "no problems" from "the review whiffed", confirm that the file contents you passed are actually the latest post-change version. Also check that you did not narrow the changed files too far and forget to pass a related caller file.

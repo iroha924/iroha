@@ -375,7 +375,7 @@ export async function listCandidatesPage(
 export interface UpdateCandidateStatusInput {
   from: CandidateStatus;
   to: CandidateStatus;
-  /** design.md §10 step 2: "Candidate revision token再検査" — optimistic-concurrency guard. */
+  /** design.md §10 step 2: "re-check the candidate revision token" — optimistic-concurrency guard. */
   expectedRevisionToken: string;
   newRevisionToken: string;
   reviewedAt: string;

@@ -6,46 +6,46 @@ paths:
 
 # Windows CI compatibility (test code)
 
-`windows-2025` は CI の `verify` マトリクスに含まれない(`compatibility.md` §6 で Windows は Tier 2 / best effort)。理由は下記「Windows post-close ファイルロックはアプリケーションコードから解決できない」を参照。**このファイルは削除しない** — Windows でローカル実行するテストコードや、将来 Windows CI を再検討する際の参照資料として使う。以下は macOS/Linux でしか検証していないテストコードが高確率で作り込む不具合クラス。
+`windows-2025` is not included in CI's `verify` matrix (`compatibility.md` §6 puts Windows at Tier 2 / best effort). For the reason, see "Windows post-close file locks cannot be resolved from application code" below. **Do not delete this file** — use it as reference material for test code run locally on Windows, and for when Windows CI is reconsidered in the future. Below are the classes of defect that test code verified only on macOS/Linux is highly likely to introduce.
 
-## パス区切り文字をハードコードしない
+## Do not hardcode path separators
 
-- `path.join`/`path.dirname`(既定 export、`path.win32`)は Windows 上で `\` を返す。テストの `expect(...).toBe("/repo/.git/iroha/index.db")` のように `/` 区切りの絶対パスを直接ハードコードすると、Windows 上でだけ落ちる
-- 実装側(`path.join`/`path.dirname` を使う関数)は基本的に正しい — バグはテストの期待値の方にあることが多い。修正は実装を変えるのではなく、期待値も `join(...)` で組み立てて OS 非依存にする
-- 確認方法: `packages/storage/src/rebuild.test.ts` の `createSiblingDatabasePath` テストが実例。`join("repo", ".git", "iroha")` のように相対パスの断片から組み立て、期待値も同じ `join(...)` で計算する
+- `path.join`/`path.dirname` (the default export, `path.win32`) return `\` on Windows. Hardcoding a `/`-separated absolute path directly in a test, like `expect(...).toBe("/repo/.git/iroha/index.db")`, will fail only on Windows.
+- The implementation side (functions that use `path.join`/`path.dirname`) is generally correct — the bug is often in the test's expected value. The fix is not to change the implementation but to build the expected value with `join(...)` too, making it OS-independent.
+- How to confirm: the `createSiblingDatabasePath` test in `packages/storage/src/rebuild.test.ts` is a concrete example. Assemble from relative path fragments like `join("repo", ".git", "iroha")`, and compute the expected value with the same `join(...)`.
 
-## Windows post-close ファイルロックはアプリケーションコードから解決できない
+## Windows post-close file locks cannot be resolved from application code
 
-**事実**(SQLite公式ドキュメント https://sqlite.org/tempfiles.html、および Bun([oven-sh/bun#25964](https://github.com/oven-sh/bun/issues/25964))・better-sqlite3([JoshuaWise/better-sqlite3#376](https://github.com/JoshuaWise/better-sqlite3/issues/376))を含む複数の主要な Node SQLite バインディングで確認済み): SQLite の WAL モードでは、最後の接続が `close()` する際に排他ロックを取得 → チェックポイント実行 → `-wal`/`-shm` 削除 → ロック解放、という処理を行う。この排他ロックは Windows 上で `close()` が JS 側に返った後もしばらく(時に長時間、プロセスが終了するまで解放されない場合もある)残ることがある。`@libsql/client` local driver も例外ではない。
+**Fact** (confirmed in the official SQLite documentation https://sqlite.org/tempfiles.html, and across several major Node SQLite bindings including Bun ([oven-sh/bun#25964](https://github.com/oven-sh/bun/issues/25964)) and better-sqlite3 ([JoshuaWise/better-sqlite3#376](https://github.com/JoshuaWise/better-sqlite3/issues/376))): in SQLite's WAL mode, when the last connection `close()`s it performs the sequence acquire exclusive lock → run checkpoint → delete `-wal`/`-shm` → release lock. This exclusive lock can, on Windows, persist for a while after `close()` has returned to the JS side (sometimes for a long time, occasionally not released until the process exits). `@libsql/client`'s local driver is no exception.
 
-- 直後にファイルの `rm()`/`rename()` を行うと `EBUSY: resource busy or locked` になる。この待ち時間は不定で、**同じテストが実行のたびに 1.5 秒で足りたり、20 秒でも足りなかったりする** — リトライ予算をどれだけ大きくしても Windows CI が確実に green になる保証はない
-- `packages/storage/src/connection.ts` の `closeDatabase()` は `close()` 直前に `PRAGMA journal_mode = DELETE` へ切替えて排他ロック〜チェックポイント〜削除のシーケンス自体を回避しようとするが、これも確実な解決策ではない(前提: 他に接続が残っていれば切替え自体が効かない)
-- `packages/storage/src/rebuild.ts` の `renameWithRetry`、`packages/core/src/rebuild-database.ts` の `removeSiblingDatabase` は、この問題に対する**現実的な緩和策**(妥当な範囲のリトライ)であって解決策ではない。Windows で実際に動かすユーザーには有効だが、CI 上で100%再現なく通ることは保証しない
-- **このクラスの `EBUSY` を、リトライ予算の拡大だけで解消しようとしない**。既に妥当な範囲(数秒〜十数秒)のリトライが実装されている箇所でなお発生する場合は、それ以上リトライ回数を増やしても収束しない可能性が高い。この制限自体が解消されたという新しい一次情報(SQLite/libSQL側の修正等)がない限り、Windows CI で100%の再現性を追求しない
+- Doing an `rm()`/`rename()` on the file immediately afterward results in `EBUSY: resource busy or locked`. This wait time is indeterminate, and **the same test may need 1.5 seconds on one run and not even 20 seconds on another** — no matter how large you make the retry budget, there is no guarantee that Windows CI turns green reliably.
+- `closeDatabase()` in `packages/storage/src/connection.ts` switches to `PRAGMA journal_mode = DELETE` right before `close()` to try to avoid the exclusive-lock–checkpoint–delete sequence itself, but this is not a reliable solution either (caveat: if any other connection remains, the switch itself has no effect).
+- `renameWithRetry` in `packages/storage/src/rebuild.ts` and `removeSiblingDatabase` in `packages/core/src/rebuild-database.ts` are **realistic mitigations** for this problem (retries within a reasonable range), not a solution. They are effective for users actually running on Windows, but do not guarantee passing on CI with 100% reproducibility.
+- **Do not try to resolve this class of `EBUSY` by growing the retry budget alone.** If it still occurs in places where retries within a reasonable range (a few to a dozen-odd seconds) are already implemented, it is highly likely that increasing the retry count further will not converge. Unless there is new primary-source information that this limitation itself has been resolved (a fix on the SQLite/libSQL side, etc.), do not pursue 100% reproducibility in Windows CI.
 
-`fs.rm` 自身のリトライ機構についても同様の注意が必要:
+The same caution applies to `fs.rm`'s own retry mechanism:
 
-- **`fs.rm` 自身の `maxRetries`/`retryDelay` オプションを信用しない** — ドキュメント上はまさにこの用途 (`EBUSY`/`EPERM` 等の transient エラーに対する線形バックオフ再試行) のためにあるが、CI 再現で確認済みの通り、Node 24 + Windows の組み合わせでこのオプションが正しく機能せず、vitest の hook timeout (既定 10000ms) いっぱいまで戻ってこないことがある。原因は未特定 (Node 内部の `fs.rm` 実装依存)
-- 対策: `fs.rm` の `maxRetries` には頼らず、**自前の短い有界リトライ**を書く(`packages/storage/src/test-helpers/tmp-db.ts` の `removeTempDir` が実例)。数回・数百 ms 単位の待機で諦め、最終的に消せなくても **エラーにせず黙って戻る** (best-effort)。各テストは `mkdtemp` で毎回一意なディレクトリを使うため、消し残りが後続テストに影響することはない
-- CI で "Hook timed out in 10000ms" が特定ファイルの `afterEach` で連続して出た場合、まずこのパターン(cleanup 処理のリトライがハングしている)を疑う
+- **Do not trust `fs.rm`'s own `maxRetries`/`retryDelay` options** — documentation-wise they exist for exactly this purpose (linear-backoff retries against transient errors such as `EBUSY`/`EPERM`), but as confirmed reproducibly in CI, in the Node 24 + Windows combination these options do not work correctly, and it can fail to return until vitest's hook timeout (default 10000ms) is exhausted. The cause is unidentified (dependent on Node's internal `fs.rm` implementation).
+- Countermeasure: do not rely on `fs.rm`'s `maxRetries`; write **your own short bounded retry** (`removeTempDir` in `packages/storage/src/test-helpers/tmp-db.ts` is a concrete example). Give up after a few attempts / a few hundred ms of waiting, and even if it ultimately cannot be deleted, **return silently without erroring** (best-effort). Because each test uses a unique directory every time via `mkdtemp`, leftover undeleted files never affect subsequent tests.
+- If "Hook timed out in 10000ms" appears repeatedly in a specific file's `afterEach` in CI, first suspect this pattern (the cleanup retry hanging).
 
-## テスト自身のリトライループの worst-case とvitestのtimeoutを必ず突き合わせる
+## Always reconcile the worst case of a test's own retry loop with vitest's timeout
 
-`~/.claude/rules/ci-discipline.md`「Retry budget は job timeout より十分小さく」と同じ算数を、**CIジョブ単位だけでなくテスト単位でも**行う。
+Do the same arithmetic as `~/.claude/rules/ci-discipline.md`'s "Retry budget must be sufficiently smaller than the job timeout", **not only per CI job but also per test**.
 
-- テストの `afterEach`/本体内に自前のリトライループ(`for (attempt=1; attempt<=N; attempt++) { ... await sleep(backoff) }`)を書いたら、その **worst-case 累積待機時間** (`Σ backoff`) を計算する
-- vitest の既定テストタイムアウトは **5000ms**。この monorepo は `vitest.config.ts` を置かない方針([[typescript-conventions]])なので、明示的に `it(name, fn, timeoutMs)` の第3引数で上書きしない限りこの既定値が効く
-- リトライの worst-case が既定タイムアウトに近い/超えると、意図したリトライ処理自体が `Error: Test timed out in 5000ms` という**別の失敗**に化ける。これは一見「ハングした」ように見えるが実際はリトライが動作している証拠であり、コードのバグではなく **リトライ予算とタイムアウトの不整合**が原因
-- 対策: テスト自身がリトライを含む処理を呼ぶ場合、そのテストの `it(...)` に明示的なタイムアウト値を渡す。目安は `Σ backoff` の 1.5〜2倍程度の余裕を持たせる(セットアップ処理自体にも数百ms〜数秒かかるため)
-- リトライ予算を大きくするたびに、この突き合わせをやり直す。「リトライ回数を増やしたらテストが timeout で落ちた」は、リトライが効いていないのではなく **このタイムアウトを更新し忘れている**サインであることが多い
+- When you write your own retry loop (`for (attempt=1; attempt<=N; attempt++) { ... await sleep(backoff) }`) in a test's `afterEach`/body, compute its **worst-case cumulative wait time** (`Σ backoff`).
+- vitest's default test timeout is **5000ms**. Because this monorepo has a policy of not placing a `vitest.config.ts` ([[typescript-conventions]]), this default value applies unless you override it explicitly via the third argument of `it(name, fn, timeoutMs)`.
+- When the retry worst case approaches/exceeds the default timeout, the intended retry processing itself turns into a **different failure**: `Error: Test timed out in 5000ms`. This looks at first glance like a "hang" but is actually evidence that the retry is working; the cause is not a bug in the code but a **mismatch between the retry budget and the timeout**.
+- Countermeasure: when a test itself calls processing that includes retries, pass an explicit timeout value to that test's `it(...)`. A rule of thumb is to leave a margin of about 1.5–2× `Σ backoff` (because the setup processing itself also takes several hundred ms to a few seconds).
+- Redo this reconciliation every time you grow the retry budget. "The test failed with a timeout after I increased the retry count" is often a sign not that the retry is ineffective, but that **you forgot to update this timeout**.
 
-## CI 失敗が別パッケージ・原因不明のとき
+## When a CI failure is in a different package or the cause is unknown
 
-- Windows job で自分が触っていないパッケージのテストが落ちる、あるいはエラーメッセージなしに `typecheck`/`build` が exit 1 する場合がある。これは大抵 CI インフラ側の flake であり、コードの問題ではない
-- 対応は推測でコードを変更せず、CI 実行履歴で同じテストが直近の実行で通っていたかを確認してから判断する。詳細は `~/.claude/rules/ci-discipline.md`「CI 失敗は『新規か既存か』を履歴で確認してから対応する」
+- On a Windows job, a test in a package you did not touch may fail, or `typecheck`/`build` may exit 1 with no error message. This is usually a flake on the CI infrastructure side, not a problem in the code.
+- Rather than changing code on speculation, check the CI run history to see whether the same test passed in a recent run before deciding. For details, see `~/.claude/rules/ci-discipline.md`'s "Confirm whether a CI failure is new or pre-existing from the history before acting".
 
-## 関連
+## Related
 
-- 一般的な CI 検証規律は `~/.claude/rules/ci-discipline.md`
-- パス解決・symlink の安全性は [[path-and-symlink-safety]](本ファイルとは別の関心事 — あちらはセキュリティ境界、こちらはクロスプラットフォーム互換性)
-- 経緯の全記録は `implementation/decision-log.md` ID-026(12)-(14)
+- General CI verification discipline is `~/.claude/rules/ci-discipline.md`.
+- Path resolution and symlink safety is [[path-and-symlink-safety]] (a separate concern from this file — that one is about the security boundary, this one is about cross-platform compatibility).
+- The full record of the background is `implementation/decision-log.md` ID-026(12)-(14).
