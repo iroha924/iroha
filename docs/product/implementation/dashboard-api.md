@@ -266,7 +266,7 @@ Default relation chain:
 Issue -> Session -> Commit/PR -> Review -> Knowledge
 ```
 
-React Flow renders up to 100 nodes initially. Larger graphs use server-side expansion and explicit “load neighbors”. Color encodes entity type, not person performance.
+React Flow renders up to 200 nodes per query (the §5 graph cap). Larger graphs use server-side expansion and explicit “load neighbors”. Color encodes entity type, not person performance.
 
 ## 7. Local refresh behavior
 

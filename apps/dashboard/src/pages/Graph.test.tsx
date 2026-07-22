@@ -1,0 +1,155 @@
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it } from "vitest";
+import { Graph } from "@/pages/Graph.js";
+import { fail, mockApi, ok, renderWithProviders } from "@/test-utils.js";
+
+function knowledgeItem(id: string, title: string) {
+  return {
+    id,
+    type: "decision",
+    title,
+    summary: null,
+    authority: 100,
+    status: "approved",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  };
+}
+
+const NODE = {
+  id: "dec_1",
+  type: "decision",
+  title: "Use libSQL",
+  authority: 100,
+  status: "approved",
+};
+
+function bodyOf(call: unknown[]): unknown {
+  return JSON.parse(String((call[1] as RequestInit).body));
+}
+
+describe("Graph", () => {
+  it("seeds the graph from picked entities via graphQuery(roots, depth)", async () => {
+    const fn = mockApi({
+      "GET /api/v1/knowledge": ok({
+        items: [knowledgeItem("dec_1", "Use libSQL")],
+        nextCursor: null,
+      }),
+      "GET /api/v1/sessions": ok({ items: [], nextCursor: null }),
+      "POST /api/v1/graph/query": ok({ nodes: [NODE], edges: [], truncated: false }),
+    });
+    renderWithProviders(<Graph />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Use libSQL" }));
+    // Depth defaults to 2; the button reflects the one selected seed.
+    await userEvent.click(screen.getByRole("button", { name: /Load graph \(1\)/ }));
+
+    await waitFor(() => {
+      const call = fn.mock.calls.find((c) => String(c[0]).endsWith("/api/v1/graph/query"));
+      expect(call).toBeDefined();
+      expect(bodyOf(call as unknown[])).toEqual({ roots: ["dec_1"], depth: 2 });
+    });
+  });
+
+  it("surfaces a seed-query failure as an error, not an empty picker", async () => {
+    mockApi({
+      "GET /api/v1/knowledge": fail("INTERNAL_ERROR", 500),
+      "GET /api/v1/sessions": ok({ items: [], nextCursor: null }),
+    });
+    renderWithProviders(<Graph />);
+
+    // The picker shows an error note, never the misleading "no entities" copy.
+    expect(await screen.findByText(/Something went wrong/)).toBeInTheDocument();
+    expect(screen.queryByText(/No entities to start from/)).not.toBeInTheDocument();
+  });
+
+  it("renders the accessible neighbor table with node titles, not raw ids", async () => {
+    mockApi({
+      "GET /api/v1/knowledge": ok({ items: [knowledgeItem("dec_1", "First")], nextCursor: null }),
+      "GET /api/v1/sessions": ok({ items: [], nextCursor: null }),
+      "POST /api/v1/graph/query": ok({
+        nodes: [
+          { id: "dec_1", type: "decision", title: "First", authority: 100, status: "approved" },
+          { id: "dec_2", type: "rule", title: "Second", authority: 90, status: "approved" },
+        ],
+        edges: [{ from: "dec_1", type: "SUPERSEDES", to: "dec_2" }],
+        truncated: false,
+      }),
+    });
+    renderWithProviders(<Graph />);
+    await userEvent.click(await screen.findByRole("button", { name: "First" }));
+    await userEvent.click(screen.getByRole("button", { name: /Load graph/ }));
+
+    const rows = await screen.findAllByRole("row");
+    const tableText = rows.map((r) => r.textContent).join(" ");
+    expect(tableText).toContain("SUPERSEDES");
+    expect(tableText).toContain("Second"); // the target's title, not its ULID
+    expect(tableText).not.toContain("dec_2");
+  });
+
+  it("clears a prior op error when the graph is cleared", async () => {
+    mockApi({
+      "GET /api/v1/knowledge": ok({ items: [knowledgeItem("dec_1", "First")], nextCursor: null }),
+      "GET /api/v1/sessions": ok({ items: [], nextCursor: null }),
+      "POST /api/v1/graph/query": fail("INTERNAL_ERROR", 500),
+    });
+    renderWithProviders(<Graph />);
+    await userEvent.click(await screen.findByRole("button", { name: "First" }));
+    await userEvent.click(screen.getByRole("button", { name: /Load graph/ }));
+
+    expect(await screen.findByText(/Something went wrong/)).toBeInTheDocument();
+    // The error replaces the empty-state prompt — they never render together.
+    expect(screen.queryByText(/Select one or more entities/)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Clear" }));
+    await waitFor(() => expect(screen.queryByText(/Something went wrong/)).not.toBeInTheDocument());
+  });
+
+  it("disables Load and warns when more than 20 roots are selected", async () => {
+    const items = Array.from({ length: 21 }, (_, i) => knowledgeItem(`dec_${i + 1}`, `K${i + 1}`));
+    mockApi({
+      "GET /api/v1/knowledge": ok({ items, nextCursor: null }),
+      "GET /api/v1/sessions": ok({ items: [], nextCursor: null }),
+    });
+    renderWithProviders(<Graph />);
+
+    await screen.findByRole("button", { name: "K1" });
+    for (let i = 1; i <= 21; i++) {
+      await userEvent.click(screen.getByRole("button", { name: `K${i}` }));
+    }
+    expect(screen.getByText(/Select at most 20/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Load graph/ })).toBeDisabled();
+  });
+
+  it("enables Find path only with two seeds and calls graphPath", async () => {
+    const fn = mockApi({
+      "GET /api/v1/knowledge": ok({
+        items: [knowledgeItem("dec_1", "First"), knowledgeItem("dec_2", "Second")],
+        nextCursor: null,
+      }),
+      "GET /api/v1/sessions": ok({ items: [], nextCursor: null }),
+      "GET /api/v1/graph/path": ok({ found: false, edges: [], nodes: [] }),
+    });
+    renderWithProviders(<Graph />);
+
+    // Wait for the seed chips (populated by the async knowledge query) to render.
+    const first = await screen.findByRole("button", { name: "First" });
+    const findPath = screen.getByRole("button", { name: "Find path" });
+    expect(findPath).toBeDisabled();
+
+    await userEvent.click(first);
+    expect(findPath).toBeDisabled(); // one seed is not enough
+    await userEvent.click(screen.getByRole("button", { name: "Second" }));
+    expect(findPath).toBeEnabled();
+
+    await userEvent.click(findPath);
+    await waitFor(() => {
+      const call = fn.mock.calls.find((c) => String(c[0]).includes("/api/v1/graph/path"));
+      expect(call).toBeDefined();
+      const url = new URL(String(call?.[0]), "http://x");
+      expect(url.searchParams.get("from")).toBe("dec_1");
+      expect(url.searchParams.get("to")).toBe("dec_2");
+    });
+    // No path found → the not-found note is shown.
+    expect(await screen.findByText(/No path found/)).toBeInTheDocument();
+  });
+});
