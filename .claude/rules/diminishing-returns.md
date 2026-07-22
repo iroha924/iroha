@@ -1,27 +1,27 @@
-# 収穫逓減: 反復修正を続けるか、スコープを確定するか
+# Diminishing returns: keep iterating on fixes, or lock the scope
 
-修正を繰り返してリスクを下げているつもりが、実際には新しいリスクを生んでいる場合がある(実証研究: [Security Degradation in Iterative AI Code Generation](https://arxiv.org/pdf/2506.11022), arXiv 2506.11022)。1件を直すたびに次の1件を作り込んでいないか、繰り返しのたびに疑う。
+You may think repeated fixes are lowering risk when in fact they are creating new risk (empirical study: [Security Degradation in Iterative AI Code Generation](https://arxiv.org/pdf/2506.11022), arXiv 2506.11022). On every iteration, question whether each fix of one issue is building in the next one.
 
-## 兆候
+## Signs
 
-- 直近の修正が、前回より狭いエッジケースだけを対象にしている
-- 直近の修正が新しい回帰を生んだ(1つ直すたびに別の1つが壊れる)
-- 同じ根本原因に対して、パラメータ(リトライ回数・閾値・タイムアウト等)を何度も調整しているが収束しない
+- The latest fix targets only a narrower edge case than the one before it
+- The latest fix produced a new regression (each fix breaks another one)
+- You keep tuning parameters (retry count, thresholds, timeouts, etc.) against the same root cause, but it does not converge
 
-## 対応
+## Response
 
-1. 兆候が出たら、まず推測でのパラメータ調整を止め、根本原因の一次情報(公式ドキュメント・上流ライブラリのissue・仕様書)を調査する
-2. 根本原因調査をしてもなお収束しない場合、それ以上の反復は「リスクを減らす行為」ではなく「新しいリスクを生みうる行為」になっている。人に選択肢を提示し、スコープを明示的に確定する(`~/.claude/rules/think-before-coding.md` の「押し戻し」)
-3. 確定したスコープと理由は `implementation/decision-log.md` に記録する
+1. When a sign appears, first stop tuning parameters by guesswork and investigate primary sources for the root cause (official documentation, upstream library issues, the specification)
+2. If it still does not converge even after root-cause investigation, further iteration is no longer "an act that reduces risk" but "an act that can create new risk". Present the options to a human and lock the scope explicitly (the "Push Back" section of `~/.claude/rules/think-before-coding.md`)
+3. Record the locked scope and the reasoning in `implementation/decision-log.md`
 
-## このリポジトリでの実例
+## Examples in this repository
 
-- ID-023(WP-02, `@iroha/git`): 資格情報redactionの修正が数十件のレビュー往復で収穫逓減に達し、一部の修正が新しい回帰を生んだ時点でスコープを打ち切った
-- ID-026(12)-(14)(WP-05, `@iroha/storage`/`@iroha/core`): Windows上のファイルロック問題でリトライ予算の拡大を繰り返しても収束せず、根本原因調査(外部一次情報)を経てもなお解決しなかった時点で、Windows CI検証自体をスコープから外した
+- ID-023 (WP-02, `@iroha/git`): credential-redaction fixes reached diminishing returns over dozens of review round-trips, and the scope was cut off at the point where some of the fixes produced new regressions
+- ID-026 (12)-(14) (WP-05, `@iroha/storage`/`@iroha/core`): for a file-lock problem on Windows, repeatedly expanding the retry budget did not converge, and once even root-cause investigation (external primary sources) failed to resolve it, Windows CI verification itself was removed from scope
 
-## 関連
+## Related
 
-- 検証手段の限界・CI実行履歴の確認は `~/.claude/rules/ci-discipline.md`
-- レビュー指摘の検証規律(サイクリックな誤検知への対応含む)は `~/.claude/rules/code-review-triage.md`
-- 押し戻し・複数解釈の提示は `~/.claude/rules/think-before-coding.md`
-- セキュリティ修正における同種の原則は `.claude/skills/self-review/SKILL.md`
+- For the limits of verification means and checking CI run history, see `~/.claude/rules/ci-discipline.md`
+- For the discipline of verifying review findings (including handling cyclic false positives), see `~/.claude/rules/code-review-triage.md`
+- For pushing back and presenting multiple interpretations, see `~/.claude/rules/think-before-coding.md`
+- For the same class of principle in security fixes, see `.claude/skills/self-review/SKILL.md`

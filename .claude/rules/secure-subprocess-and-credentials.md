@@ -5,40 +5,40 @@ paths:
 
 # Subprocess execution and credential handling
 
-WP-02(`packages/git`)のCodexレビュー6ラウンドで得た知見。子プロセス実行・資格情報が絡むコード(`packages/git`、将来の `packages/forge*`、`packages/adapter-*` 等)を書く/直すときは必ず適用する。
+Knowledge gained across 6 rounds of Codex review of WP-02 (`packages/git`). Always apply it when writing/fixing code that involves subprocess execution or credentials (`packages/git`, the future `packages/forge*`, `packages/adapter-*`, etc.).
 
-## 環境変数: denylistではなくallowlistを優先する
+## Environment variables: prefer an allowlist over a denylist
 
-`{...process.env}` をコピーして危険な変数を `delete` する方式(denylist)は、**知らない変数は絶対に消せない**という構造的な欠陥を持つ。実際にこのセッションでは `GIT_DIR` 系 → `GIT_TRACE` 系 → `GIT_CEILING_DIRECTORIES` → `GIT_REDIRECT_*` と、5ラウンドかけて1つずつ後から発見した。
+The approach of copying `{...process.env}` and `delete`-ing dangerous variables (a denylist) has a structural flaw: **you can never remove a variable you don't know about**. In this very session we discovered them one at a time, after the fact, over 5 rounds: the `GIT_DIR` family → the `GIT_TRACE` family → `GIT_CEILING_DIRECTORIES` → `GIT_REDIRECT_*`.
 
-- 新しいsubprocessラッパーを書くときは、**空の環境から必要な変数だけをコピーする**allowlist方式を優先する(`PATH`、`HOME`、`TEMP`/`TMPDIR` 等、実際に必要なものだけ)
-- 既存の `packages/git/src/run-git.ts` のようにdenylistで書かれている箇所を触るときは、新しい変数を1つ追加するだけで満足せず、allowlistへの置き換えを検討する
-- **事実**(Node.js公式ドキュメント): Windows上で `child_process` の `env` オプションに大文字小文字違いの同名キーが複数含まれる場合、辞書順で最初にマッチしたものが使われる。これは「自分が渡したオブジェクト内の重複」を解決する話であり、**親プロセスの環境変数を小文字で `delete` し忘れると、そのまま子プロセスに漏れる**(Windowsの環境変数は大文字小文字を区別しないため)。denylistで環境変数を消す実装は、大文字小文字を無視した比較で `delete` すること
+- When writing a new subprocess wrapper, prefer an allowlist approach that **copies only the required variables out of an empty environment** (`PATH`, `HOME`, `TEMP`/`TMPDIR`, etc. — only what is actually needed)
+- When touching a place already written as a denylist, like the existing `packages/git/src/run-git.ts`, don't settle for adding one new variable — consider replacing it with an allowlist
+- **Fact** (Node.js official documentation): on Windows, when the `child_process` `env` option contains multiple keys with the same name differing only in case, the first match in lexicographic order is used. That is about resolving duplicates *within the object you passed*, and **if you forget to `delete` a lowercase form of a parent-process environment variable, it leaks straight through to the child process** (because Windows environment variables are case-insensitive). A denylist implementation that removes environment variables must `delete` using a case-insensitive comparison
 
-## エラーメッセージに生の値を含めない(redactionしない)
+## Don't include raw values in error messages (don't redact after the fact)
 
-**事実**(OWASP Logging Cheat Sheet、CWE-209): パスワード・トークン・接続文字列は「ログに出す前に」除去・マスク・ハッシュ化すべきものであり、後from filtering(収集してから正規表現で除去する)は推奨されるアプローチではない。**事実**(execaのドキュメント確認済み): Node.jsで最も広く使われるsubprocessラッパーであるexecaは、redaction機能を意図的に持たない — エラーメッセージ・`verbose`モードは引数をそのまま含み、機密値の判定を呼び出し側に完全に委ねている。
+**Fact** (OWASP Logging Cheat Sheet, CWE-209): passwords, tokens, and connection strings should be removed, masked, or hashed *before they are logged*; after-the-fact filtering (collecting them first, then stripping with a regex) is not a recommended approach. **Fact** (verified against execa's documentation): execa, the most widely used subprocess wrapper in Node.js, deliberately has no redaction feature — its error messages and `verbose` mode include arguments verbatim, delegating the judgment about sensitive values entirely to the caller.
 
-このプロジェクトでは正規表現ベースのredaction(`credential-redaction.ts`)を6ラウンドかけて磨いたが、それでも「URL形式ですらない秘密値」を原理的に検出できないという天井にぶつかった。**推奨**: 新しいsubprocessラッパー/エラー構築コードでは、
+In this project we honed a regex-based redaction (`credential-redaction.ts`) over 6 rounds, but still hit a ceiling: it fundamentally cannot detect a secret value that isn't even in URL form. **Recommended**: in new subprocess wrappers / error-construction code,
 
-1. まず「この値は本当にエラーに必要か?」を問う。不要なら**含めない**(サブコマンド名・引数の個数・exit code・signalだけを残す)
-2. どうしても含める必要がある場合のみ、既知の形状(URL等)のredactionを検討する。ただしこれはdenylistであり、原理的に迂回可能なことをコメントに明記する
-3. `error.cause` に生の例外オブジェクト(`ExecFileException`等)をそのまま渡さない。`.message`/`.cmd` に呼び出しコマンド全体が含まれることがある(Node.js確認済み)。redact済みの内容だけを持つ合成Errorに置き換える
+1. First ask, "is this value really necessary in the error?" If not, **leave it out** (keep only the subcommand name, the number of arguments, the exit code, and the signal)
+2. Only when you truly must include it, consider redacting known shapes (URLs, etc.). But note explicitly in a comment that this is a denylist and is fundamentally bypassable
+3. Don't pass a raw exception object (`ExecFileException`, etc.) straight into `error.cause`. Its `.message`/`.cmd` can contain the entire invoked command (confirmed in Node.js). Replace it with a synthetic Error that holds only redacted content
 
-## 保存前のredaction/sanitizeは、未制約のfree-textフィールドを全て列挙する
+## Pre-storage redaction/sanitization must enumerate every unconstrained free-text field
 
-WP-07(`packages/core/src/mcp/redact.ts`)のセルフレビューで再発した、冒頭の「denylistは知らないものを消せない」と同じ構造の欠陥。構造化入力(Checkpoint/Proposal等)をローカルDBへ保存する前にsecretをredactする実装で、当初は散文フィールド(title/summary/body)だけをscanし、`guard.denyCommands`(コマンド文字列)・`sources[].url`/`references[].url`(userinfoに資格情報を持てる)・`scope.symbols`・`implementation[].symbol` を素通ししていた。しかもdocstringに「これらはformat制約があるので資格情報を持てない」と**未検証の安全宣言**を書いていた(誤り — これらはenumや相対パスと違い未制約のfree-text)。
+A defect with the same structure as the opening "a denylist can't remove what it doesn't know about", which recurred in the self-review of WP-07 (`packages/core/src/mcp/redact.ts`). In the implementation that redacts secrets before saving structured input (Checkpoint/Proposal, etc.) to the local DB, it initially only scanned the prose fields (title/summary/body) and let `guard.denyCommands` (a command string), `sources[].url`/`references[].url` (whose userinfo can carry credentials), `scope.symbols`, and `implementation[].symbol` pass straight through. Worse, the docstring made an **unverified safety claim** that "these have format constraints, so they can't carry credentials" (wrong — unlike enums or relative paths, these are unconstrained free-text).
 
-- redact/sanitize対象のスキーマを見て、**未制約のfree-textフィールドを1つ残らず列挙**する。配列要素・URL(userinfo)・ネストしたオブジェクト(guard spec等)も対象。「format制約"風"」でも、Zodのenum/正規表現/相対パスで**実際に制約されていない**限りfree-textとして扱う
-- **検証していない安全性をdocstring/コメントに書かない**。「このフィールドは安全」と書くなら、そのフィールドのスキーマ制約を実際に確認した根拠を添える。未検証の安全宣言はレビュアーと将来の自分を誤誘導する
-- URL等のformatを持つフィールドをredactする場合、後段のバリデーション(承認時の再検証等)を壊さない**format妥当なplaceholder**を使う(例: `https://redacted.invalid/`。`.invalid`はRFC 2606予約TLD)
-- ローカルの使い捨てDBが相手でも省略しない。canonical(人間承認・Git commit)と違い保存前に**拒否**はしないが、redactを怠れば平文がat-rest storeに残る
+- Look at the schema being redacted/sanitized and **enumerate every single unconstrained free-text field**. Array elements, URLs (userinfo), and nested objects (guard spec, etc.) are all in scope. Even something that *looks* "format-constrained" must be treated as free-text as long as it is **not actually constrained** by a Zod enum / regex / relative path
+- **Don't write unverified safety into docstrings/comments**. If you write "this field is safe", attach the evidence that you actually checked that field's schema constraints. An unverified safety claim misleads reviewers and your future self
+- When redacting a field that has a format such as a URL, use a **format-valid placeholder** that doesn't break downstream validation (re-validation at approval time, etc.) (e.g. `https://redacted.invalid/`; `.invalid` is an RFC 2606 reserved TLD)
+- Don't skip this even when the target is the local disposable DB. Unlike canonical (human-approved, Git commit), we don't **reject** before saving, but if you neglect to redact, plaintext remains in the at-rest store
 
-## stderrパターンマッチはロケールに依存する
+## stderr pattern matching depends on the locale
 
-GitのようなCLIツールの人間可読なメッセージ(`fatal: not a git repository` 等)でエラー種別を判定するコードを書く場合、子プロセスの `env` に `LC_ALL=C`、`LANG=C` を設定し、`LANGUAGE` を削除する(GNU gettextは `LANGUAGE` が `LC_ALL`/`LANG` より優先されるため、削除だけでは不十分で明示的に消す必要がある)。ローカルのgitビルドがNLS非対応で翻訳を再現できない場合でも、公式ドキュメントで仕組みが確認できればそれを根拠に対応してよい(実機再現は必須ではない)。
+When writing code that determines an error type from a CLI tool's human-readable messages (like Git's `fatal: not a git repository`), set `LC_ALL=C` and `LANG=C` in the child process's `env`, and remove `LANGUAGE` (because GNU gettext gives `LANGUAGE` priority over `LC_ALL`/`LANG`, setting those alone is insufficient — you must explicitly unset it). Even if your local git build has no NLS support and can't reproduce the translations, you may act on that basis as long as the official documentation confirms the mechanism (reproduction on real hardware is not required).
 
-## 関連
+## Related
 
-- パス解決の安全性は [[path-and-symlink-safety]]
-- 一般的なエラーハンドリング規約は [[typescript-conventions]]
+- Path-resolution safety: [[path-and-symlink-safety]]
+- General error-handling conventions: [[typescript-conventions]]
