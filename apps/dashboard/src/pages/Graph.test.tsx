@@ -2,7 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { Graph } from "@/pages/Graph.js";
-import { mockApi, ok, renderWithProviders } from "@/test-utils.js";
+import { fail, mockApi, ok, renderWithProviders } from "@/test-utils.js";
 
 function knowledgeItem(id: string, title: string) {
   return {
@@ -49,6 +49,18 @@ describe("Graph", () => {
       expect(call).toBeDefined();
       expect(bodyOf(call as unknown[])).toEqual({ roots: ["dec_1"], depth: 2 });
     });
+  });
+
+  it("surfaces a seed-query failure as an error, not an empty picker", async () => {
+    mockApi({
+      "GET /api/v1/knowledge": fail("INTERNAL_ERROR", 500),
+      "GET /api/v1/sessions": ok({ items: [], nextCursor: null }),
+    });
+    renderWithProviders(<Graph />);
+
+    // The picker shows an error note, never the misleading "no entities" copy.
+    expect(await screen.findByText(/Something went wrong/)).toBeInTheDocument();
+    expect(screen.queryByText(/No entities to start from/)).not.toBeInTheDocument();
   });
 
   it("enables Find path only with two seeds and calls graphPath", async () => {

@@ -139,9 +139,13 @@ export function Graph() {
       .join(" · "),
   }));
   const seedsLoading = knowledge.isPending || sessions.isPending;
+  const seedsError = knowledge.isError || sessions.isError;
   const hasSeeds = knowledgeItems.length + sessionItems.length > 0;
   const busy = loadGraph.isPending || expandNode.isPending || findPath.isPending;
   const failed = loadGraph.isError || expandNode.isError || findPath.isError;
+  // Titles for the accessible edge table, so it reads as human labels (like the
+  // visual graph) rather than raw ULIDs.
+  const titleById = new Map(graph.nodes.map((n) => [n.id, String(n.data.label ?? n.id)]));
 
   return (
     <section>
@@ -152,7 +156,8 @@ export function Graph() {
           {t("graph.selectSeeds")}
         </div>
         {seedsLoading && <Loading />}
-        {!seedsLoading && !hasSeeds && (
+        {seedsError && <ErrorNote />}
+        {!seedsLoading && !seedsError && !hasSeeds && (
           <p className="text-sm text-ink-muted">{t("graph.noSeeds")}</p>
         )}
         <SeedGroup
@@ -167,6 +172,7 @@ export function Graph() {
           selected={selected}
           onToggle={toggle}
         />
+        {hasSeeds && <p className="mt-1 text-[11px] text-ink-faint">{t("graph.seedNote")}</p>}
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <label className="flex items-center gap-1.5 text-xs text-ink-muted">
             {t("graph.depth")}
@@ -200,7 +206,7 @@ export function Graph() {
             {t("graph.findPath")}
           </button>
           {(graph.nodes.length > 0 || selected.length > 0) && (
-            <button type="button" onClick={clear} className={btnSecondary}>
+            <button type="button" disabled={busy} onClick={clear} className={btnSecondary}>
               {t("common.clear")}
             </button>
           )}
@@ -235,7 +241,11 @@ export function Graph() {
               onEdgesChange={(c: EdgeChange[]) =>
                 setGraph((g) => ({ ...g, edges: applyEdgeChanges(c, g.edges) }))
               }
-              onNodeClick={(_, node) => expandNode.mutate(node.id)}
+              // Gated while a mutation is in flight so an expand can't interleave
+              // with a fresh load/clear and repopulate a graph the user just replaced.
+              onNodeClick={(_, node) => {
+                if (!busy) expandNode.mutate(node.id);
+              }}
               fitView
               nodesConnectable={false}
               proOptions={{ hideAttribution: true }}
