@@ -74,7 +74,7 @@ Before resolving a finding you judged INVALID, leave a PR comment with the evide
 After a push, do not say "review passed" until you have actually confirmed:
 
 - [ ] `gh pr checks <PR>` shows Greptile Review passing, AND you read the Summary + every inline comment and triaged them.
-- [ ] Codex checked: you looked at its reaction and posted review. If it is not running (rate limited), state "Codex did not run" and decide re-review necessity by the criteria above.
+- [ ] Codex checked: you polled its reaction/review and it is **not mid-review** (no lingering 👀 from `chatgpt-codex-connector[bot]`) — waited for it to resolve, never merged under a 👀. Only after the limit is confirmed clear and no reaction appears do you state "Codex did not run" and decide re-review necessity by the criteria above.
 - [ ] Threads for the findings you addressed are resolved.
 
 ## Related
