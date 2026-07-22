@@ -453,10 +453,10 @@ describe("Steps B–F: the approved-knowledge loop (Claude)", () => {
     // lexical arm (decision-log ID-032 — cross-lingual recall is a vector-arm
     // concern, out of scope for FTS-only).
     const jpQuery = "なぜ repository pattern を使うのか";
-    const cliHits = await runSearch(cloneDir, jpQuery, { limit: 10 });
+    const cliHits = await runSearch(cloneDir, jpQuery, { mode: "lexical", limit: 10 });
     expect(cliHits.ok).toBe(true);
     if (cliHits.ok) {
-      expect(cliHits.value.some((hit) => hit.entityId === approvedEntityId)).toBe(true);
+      expect(cliHits.value.results.some((hit) => hit.id === approvedEntityId)).toBe(true);
     }
 
     // MCP search (the agent path) returns the same entity id, with provenance.

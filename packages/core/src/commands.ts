@@ -1,5 +1,5 @@
 import { CryptoRandomSource, type IrohaError, ok, type Result, SystemClock } from "@iroha/domain";
-import { type SearchTextHit, searchText } from "@iroha/search";
+import type { SearchMode } from "@iroha/search";
 import { closeDatabase, type Database, openDatabase, runMigrations } from "@iroha/storage";
 import { type RunEmbeddingSyncResult, runEmbeddingSync } from "./embedding-sync.js";
 import {
@@ -13,6 +13,7 @@ import {
   type InitRepositoryResult,
   initRepository,
 } from "./init-repository.js";
+import { type McpSearchData, type McpSearchFilters, mcpSearch } from "./mcp/search.js";
 import { type RebuildDatabaseResult, rebuildDatabase } from "./rebuild-database.js";
 import { type ResolvedRepository, resolveInitializedRepository } from "./resolve-repository.js";
 import { type SyncCanonicalResult, syncCanonicalToDatabase } from "./sync-canonical.js";
@@ -202,26 +203,29 @@ async function syncForge(
 }
 
 export interface RunSearchOptions {
+  mode?: SearchMode;
   limit?: number;
+  filters?: McpSearchFilters;
 }
 
-/** `iroha search <query>`: FTS-only, offline (database-schema.md §8-9's unicode/trigram subset). */
+/**
+ * `iroha search <query>`: the same hybrid retrieval as the MCP `search` tool and
+ * the dashboard (mode/limit/filters), not the old FTS-only slice. Offline-safe —
+ * the default `hybrid` mode degrades to lexical when embedding is unconfigured
+ * (`mcpSearch`), and `--mode lexical` forces the FTS arm.
+ */
 export async function runSearch(
   cwd: string,
   query: string,
   options: RunSearchOptions = {},
-): Promise<Result<SearchTextHit[], IrohaError>> {
-  const resolvedResult = await resolveInitializedRepository(cwd);
-  if (!resolvedResult.ok) {
-    return resolvedResult;
-  }
-  const opened = await openDatabase(resolvedResult.value.dbPath);
-  if (!opened.ok) {
-    return opened;
-  }
-  try {
-    return await searchText(opened.value, query, options);
-  } finally {
-    await closeDatabase(opened.value);
-  }
+): Promise<Result<McpSearchData, IrohaError>> {
+  return mcpSearch({
+    cwd,
+    clock: new SystemClock(),
+    random: new CryptoRandomSource(),
+    query,
+    ...(options.mode !== undefined ? { mode: options.mode } : {}),
+    ...(options.limit !== undefined ? { limit: options.limit } : {}),
+    ...(options.filters !== undefined ? { filters: options.filters } : {}),
+  });
 }
