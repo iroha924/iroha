@@ -176,6 +176,32 @@ describe("parseCodexEvent — apply_patch and Bash targets", () => {
     });
   });
 
+  it("surfaces the destination write for a `Move to:` with no preceding file header (fail-safe)", () => {
+    const { ctx } = makeFakeCtx();
+    // Malformed/out-of-spec: a `Move to:` with no `Update File:` before it. The
+    // destination write must still be surfaced so the Guardrail sees the write.
+    const patch = ["*** Begin Patch", "*** Move to: src/generated/client.ts", "*** End Patch"].join(
+      "\n",
+    );
+    const event = unwrap(
+      parseCodexEvent(
+        {
+          ...common,
+          hook_event_name: "PreToolUse",
+          turn_id: "t-1",
+          tool_name: "apply_patch",
+          tool_input: { command: patch },
+        },
+        ctx,
+      ),
+    );
+    expect(event).toMatchObject({
+      payload: {
+        targets: [{ kind: "file", value: "src/generated/client.ts", operation: "write" }],
+      },
+    });
+  });
+
   it("falls back to an opaque write target when apply_patch has no headers", () => {
     const { ctx } = makeFakeCtx();
     const event = unwrap(

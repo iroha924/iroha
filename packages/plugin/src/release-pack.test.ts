@@ -65,6 +65,16 @@ describe("published package.json", () => {
     }
     expect(Object.keys(publishManifest.dependencies).length).toBeGreaterThan(0);
   });
+
+  it("declares picomatch, an npm dep the bundled @iroha/core imports at runtime", () => {
+    // @iroha/core is bundled into the binary but its npm deps stay external
+    // (tsdown only inlines `@iroha/*`), so a dep it imports — picomatch, for the
+    // guardrail `guard.paths` matcher — must be declared in the plugin manifest
+    // or a clean `npm i @iroha-labs/iroha` fails with ERR_MODULE_NOT_FOUND when
+    // the hook loads it. The monorepo hoists it, so only the published manifest
+    // (this assembled package.json) proves it is actually shipped.
+    expect(publishManifest.dependencies.picomatch).toBeDefined();
+  });
 });
 
 describe("tarball contents", () => {

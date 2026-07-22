@@ -797,6 +797,9 @@ importers:
       mdast-util-to-string:
         specifier: 'catalog:'
         version: 4.0.0
+      picomatch:
+        specifier: 'catalog:'
+        version: 4.0.5
       secretlint:
         specifier: 'catalog:'
         version: 13.0.2
