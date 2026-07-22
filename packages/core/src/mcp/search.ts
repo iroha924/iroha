@@ -78,7 +78,11 @@ export async function mcpSearch(input: McpSearchInput): Promise<Result<McpSearch
   return withMcpRepository(
     { cwd: input.repositoryPath ?? input.cwd, clock: input.clock, random: input.random },
     async (ctx) => {
-      const limit = Math.min(input.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
+      // Clamp both bounds: the MCP/API transports reject `limit < 1` at their Zod
+      // boundary, but `runSearch` (the CLI) forwards the raw value, and a negative
+      // limit reaches `rankCandidates`'s `slice(0, limit)` — `slice(0, -1)` drops
+      // rows instead of capping. Defend the contract (1..MAX_LIMIT) at the use case.
+      const limit = Math.max(1, Math.min(input.limit ?? DEFAULT_LIMIT, MAX_LIMIT));
       const filters = input.filters ?? {};
       const now = ctx.clock.now().toISOString();
       const requestedMode: SearchMode = input.mode ?? "hybrid";

@@ -90,6 +90,14 @@ describe("run* command wrappers", () => {
         expect(searchResult.value.results.map((hit) => hit.id)).toEqual([id]);
       }
 
+      // A non-positive limit is clamped to 1, not forwarded as `slice(0, -1)`
+      // (which would drop the single matching row and return nothing).
+      const clamped = await runSearch(repoDir, "libSQL", { limit: -1 });
+      expect(clamped.ok).toBe(true);
+      if (clamped.ok) {
+        expect(clamped.value.results.length).toBe(1);
+      }
+
       const syncResult = await runSync(repoDir, MIGRATIONS_DIR);
       expect(syncResult.ok).toBe(true);
       if (syncResult.ok) {
