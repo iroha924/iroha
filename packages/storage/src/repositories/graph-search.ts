@@ -99,6 +99,30 @@ export async function insertRelation(
 }
 
 /**
+ * Deletes every `source_kind = 'canonical'` relation originating at `fromEntityId`.
+ * Used to reconcile a re-synced canonical document's outgoing edges (relation import
+ * is otherwise insert-only, so an edge removed from a document's `relations[]` would
+ * survive until a full rebuild). Scoped to `source_kind = 'canonical'`, so `api`/
+ * `git`/`inferred`/`human`/`hook` edges — and every other document's canonical edges,
+ * and any *incoming* edge — are left untouched. Caller must run the delete + re-insert
+ * in one transaction so a crash cannot leave the document without its edges.
+ */
+export async function deleteCanonicalRelationsFromEntity(
+  db: Executor,
+  fromEntityId: string,
+): Promise<Result<void, IrohaError>> {
+  try {
+    await db.execute({
+      sql: "DELETE FROM relations WHERE from_entity_id = ? AND source_kind = 'canonical'",
+      args: [fromEntityId],
+    });
+    return ok(undefined);
+  } catch (cause) {
+    return err(mapLibsqlError(cause, "Failed to delete canonical relations"));
+  }
+}
+
+/**
  * Looks up a relation by its unique `(from_entity_id, relation_type,
  * to_entity_id, source_kind)` tuple — the same key `insertRelation`'s
  * `ON CONFLICT DO NOTHING` targets. A caller that inserted such a tuple can use

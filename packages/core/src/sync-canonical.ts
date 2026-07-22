@@ -15,6 +15,7 @@ import {
 } from "@iroha/domain";
 import {
   type Database,
+  deleteCanonicalRelationsFromEntity,
   type Executor,
   enqueueEmbeddingJob,
   getEntityById,
@@ -29,10 +30,27 @@ import {
   upsertKnowledgeItem,
   upsertSearchDocument,
   upsertSyncCursor,
+  withTransaction,
 } from "@iroha/storage";
 
-/** database-schema.md §6: "approved canonical" is the only tier this maps to — see decision-log.md ID-026. */
-const CANONICAL_AUTHORITY = 100;
+/**
+ * database-schema.md §6: approved canonical = 100 is the only documented tier. A
+ * superseded/archived document must not tie current knowledge in ranking, so it is
+ * tiered below (decision-log ID-048): `superseded` stays visible but unboosted at
+ * the `DEFAULT_MINIMUM_AUTHORITY` floor (60); `archived` drops below it (40) — a
+ * retired doc excluded from default search, findable only with an explicit lower
+ * `minimumAuthority`. Applied to both the entity and search_document authority.
+ */
+function authorityForStatus(status: "approved" | "superseded" | "archived"): number {
+  switch (status) {
+    case "approved":
+      return 100;
+    case "superseded":
+      return 60;
+    case "archived":
+      return 40;
+  }
+}
 const SYNC_PROVIDER = "canonical";
 /** OQ-005 fixes the embedding provider/model; `embedding_jobs` is keyed on `(sdoc, provider, model)`. */
 const EMBEDDING_PROVIDER = "voyage";
@@ -56,7 +74,8 @@ export interface SyncCanonicalResult {
 /**
  * Imports one already-written canonical document into the local DB — the
  * entity, `canonical_documents` row, `search_documents` row, and an enqueued
- * embedding job — at authority 100 (`source_kind = 'canonical'`). Exported so
+ * embedding job — at an authority tiered by lifecycle status (`authorityForStatus`,
+ * `source_kind = 'canonical'`). Exported so
  * the WP-09 approval transaction (design.md §10 / ID-025(2)) reuses the exact
  * same import path `sync --rebuild` uses, guaranteeing that approving a
  * candidate and rebuilding from `.iroha/` produce byte-identical DB rows
@@ -85,7 +104,7 @@ export async function importCanonicalDocument(
     entityType: entityTypeForFrontmatterType(frontmatter.type),
     title: frontmatter.title,
     status: frontmatter.status,
-    authority: CANONICAL_AUTHORITY,
+    authority: authorityForStatus(frontmatter.status),
     sourceKind: "canonical",
     sourceRef: path,
     contentHash: hash,
@@ -148,7 +167,7 @@ export async function importCanonicalDocument(
     title: frontmatter.title,
     body,
     codeTerms: frontmatter.scope.symbols.join(" "),
-    authority: CANONICAL_AUTHORITY,
+    authority: authorityForStatus(frontmatter.status),
     contentHash: hash,
     indexedAt: now,
   });
@@ -207,6 +226,17 @@ export async function insertCanonicalDocumentRelations(
   random: RandomSource,
 ): Promise<Result<{ unresolved: number }, IrohaError>> {
   const now = clock.now().toISOString();
+  // Reconcile: relation import is otherwise insert-only, so an edge removed from
+  // this document's `relations[]` would survive a re-sync until a full rebuild.
+  // Drop this document's existing canonical edges first, then re-insert the
+  // current set below. Scoped to `source_kind='canonical'` from this entity, so
+  // other sources / other documents' edges / incoming edges are untouched. The
+  // caller runs this in a transaction (approve does; `syncCanonicalToDatabase`
+  // wraps its per-document call) so a crash cannot leave the doc without edges.
+  const pruned = await deleteCanonicalRelationsFromEntity(db, document.frontmatter.id);
+  if (!pruned.ok) {
+    return pruned;
+  }
   let unresolved = 0;
   for (const relation of document.frontmatter.relations) {
     const targetResult = await getEntityById(db, relation.target);
@@ -312,12 +342,12 @@ export async function syncCanonicalToDatabase(
 
   let unresolvedRelations = 0;
   for (const entry of [...diff.added, ...diff.changed]) {
-    const relationsResult = await insertCanonicalDocumentRelations(
-      db,
-      repositoryId,
-      entry.document,
-      clock,
-      random,
+    // One transaction per document so the delete-then-insert reconcile in
+    // `insertCanonicalDocumentRelations` is atomic (the approve path wraps its
+    // own call the same way). `db` here is always a `Database`, never a nested
+    // transaction — `syncCanonicalToDatabase`'s callers pass an open connection.
+    const relationsResult = await withTransaction(db, "write", (tx) =>
+      insertCanonicalDocumentRelations(tx, repositoryId, entry.document, clock, random),
     );
     if (!relationsResult.ok) {
       return relationsResult;
