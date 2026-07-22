@@ -74,6 +74,7 @@ function buildDefaultConfig(repositoryId: TypedId<"repo">): RepositoryConfig {
       provider: "github",
       enabled: false,
       api_token_env: "GITHUB_TOKEN",
+      review_learning_threshold: 3,
     },
     privacy: {
       canonical_prompt_content: false,

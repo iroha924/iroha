@@ -38,6 +38,7 @@ import {
   withTransaction,
 } from "@iroha/storage";
 import { z } from "zod";
+import { detectReviewLearnings } from "./forge-review-learning.js";
 
 type ForgeConfig = RepositoryConfig["forge"];
 
@@ -111,6 +112,7 @@ export type ForgeSyncOutcome =
       pullRequests: number;
       reviewComments: number;
       relations: number;
+      reviewLearnings: number;
       truncated: boolean;
     }
   | { status: "error"; errorCode: string };
@@ -493,6 +495,7 @@ export async function runForgeSync(
   provider: ForgeProvider,
   clock: Clock,
   random: RandomSource,
+  reviewLearningThreshold: number,
 ): Promise<ForgeSyncOutcome> {
   const attemptAt = clock.now().toISOString();
   try {
@@ -569,12 +572,36 @@ export async function runForgeSync(
       });
     }
 
+    // Derive recurring-review-comment learnings from the comments just synced.
+    // The sync's success is already committed on the cursor above, so this
+    // derived step must not be able to turn the completed sync into an error —
+    // the fail-open invariant. Enforce it structurally with a local guard rather
+    // than trusting every callee to always return a `Result`: an unexpected throw
+    // here (not just an `err`) still leaves the "synced" outcome intact, only
+    // zeroing the count.
+    let reviewLearnings = 0;
+    try {
+      const learnings = await detectReviewLearnings(
+        db,
+        repositoryId,
+        reviewLearningThreshold,
+        clock,
+        random,
+      );
+      if (learnings.ok) {
+        reviewLearnings = learnings.value;
+      }
+    } catch {
+      reviewLearnings = 0;
+    }
+
     return {
       status: "synced",
       issues: issues.length,
       pullRequests: pullRequests.length,
       reviewComments: written.value.reviewComments,
       relations: written.value.relations,
+      reviewLearnings,
       truncated,
     };
   } catch (error) {

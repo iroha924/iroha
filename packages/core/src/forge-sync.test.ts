@@ -15,6 +15,7 @@ import type {
   NormalizedPullRequest,
 } from "@iroha/forge";
 import {
+  type CandidateRow,
   closeDatabase,
   type Database,
   getActorByProviderExternalId,
@@ -24,6 +25,7 @@ import {
   getSyncCursor,
   getWorkItemByExternalId,
   insertRepository,
+  listCandidatesByStatus,
   listReviewCommentsByPullRequest,
 } from "@iroha/storage";
 import { afterEach, describe, expect, it } from "vitest";
@@ -90,6 +92,39 @@ function pullRequest(over: Partial<NormalizedPullRequest> = {}): NormalizedPullR
     ],
     ...over,
   };
+}
+
+/** A PR carrying a single review comment with a chosen body — for recurrence tests. */
+function prWithComment(
+  prExternalId: string,
+  prNumber: number,
+  commentExternalId: string,
+  bodySummary: string,
+): NormalizedPullRequest {
+  return pullRequest({
+    externalId: prExternalId,
+    number: prNumber,
+    url: `https://github.com/octo/demo/pull/${prNumber}`,
+    closesIssueExternalIds: [],
+    reviewThreads: [
+      {
+        isResolved: false,
+        isOutdated: false,
+        comments: [
+          {
+            externalId: commentExternalId,
+            url: `https://github.com/octo/demo/pull/${prNumber}#${commentExternalId}`,
+            author: { externalId: "U_bob", login: "bob", displayName: "bob" },
+            path: "src/login.ts",
+            line: 12,
+            bodySummary,
+            resolutionState: "open",
+            createdAt: "2026-03-04T00:00:00Z",
+          },
+        ],
+      },
+    ],
+  });
 }
 
 interface FakeConfig {
@@ -163,7 +198,12 @@ describe("parseGitHubRef", () => {
 });
 
 describe("resolveForgeProvider", () => {
-  const config = { provider: "github" as const, enabled: true, api_token_env: "GITHUB_TOKEN" };
+  const config = {
+    provider: "github" as const,
+    enabled: true,
+    api_token_env: "GITHUB_TOKEN",
+    review_learning_threshold: 3,
+  };
 
   it("builds a provider when enabled and the token env var is set", () => {
     expect(resolveForgeProvider(config, { GITHUB_TOKEN: "t" })).not.toBeNull();
@@ -210,11 +250,16 @@ describe("runForgeSync", () => {
     return db;
   }
 
-  async function run(provider: ForgeProvider): Promise<ForgeSyncOutcome> {
+  // Default the recurrence threshold high so the review-comment-agnostic tests
+  // below never trip review-learning detection; the dedicated tests pass 3.
+  async function run(
+    provider: ForgeProvider,
+    reviewLearningThreshold = 100,
+  ): Promise<ForgeSyncOutcome> {
     if (db === undefined) {
       throw new Error("db not set up");
     }
-    return runForgeSync(db, REPOSITORY_ID, REF, provider, CLOCK, RANDOM);
+    return runForgeSync(db, REPOSITORY_ID, REF, provider, CLOCK, RANDOM, reviewLearningThreshold);
   }
 
   it("persists issues, PRs, review comments, entities, deduped actors, and the ADDRESSES relation", async () => {
@@ -370,5 +415,157 @@ describe("runForgeSync", () => {
     expect(cursor.ok && cursor.value?.lastSuccessAt).toBeNull();
     const entities = await database.execute({ sql: "SELECT COUNT(*) AS n FROM entities" });
     expect(entities.rows[0]?.n).toBe(0);
+  });
+
+  describe("review learnings", () => {
+    const BODY = "please add a unit test covering this branch";
+
+    async function pendingReviewLearnings(database: Database): Promise<CandidateRow[]> {
+      const pending = await listCandidatesByStatus(database, REPOSITORY_ID, "pending");
+      if (!pending.ok) {
+        throw new Error(`failed to list candidates: ${pending.error.message}`);
+      }
+      return pending.value.filter((candidate) => candidate.candidateType === "review_learning");
+    }
+
+    it("proposes one candidate when a comment recurs across >= threshold distinct PRs", async () => {
+      const database = await setup();
+      const outcome = await run(
+        fakeProvider({
+          pullRequests: [
+            prWithComment("PR_1", 10, "C_1", BODY),
+            prWithComment("PR_2", 20, "C_2", BODY),
+            prWithComment("PR_3", 30, "C_3", BODY),
+          ],
+        }),
+        3,
+      );
+      expect(outcome).toMatchObject({ status: "synced", reviewLearnings: 1 });
+
+      const learnings = await pendingReviewLearnings(database);
+      expect(learnings).toHaveLength(1);
+      const learning = learnings[0];
+      if (learning === undefined) {
+        throw new Error("no review_learning candidate");
+      }
+      const payload = JSON.parse(learning.payloadJson) as {
+        type: string;
+        sources: { type: string; ref: string; url?: string }[];
+        labels: string[];
+      };
+      expect(payload.type).toBe("review_learning");
+      // Provenance: every synced occurrence links back by stable external id + URL.
+      expect(payload.sources).toHaveLength(3);
+      expect(payload.sources.every((source) => source.type === "review")).toBe(true);
+      expect(payload.sources.map((source) => source.ref).sort()).toEqual(["C_1", "C_2", "C_3"]);
+      expect(payload.labels.some((label) => label.startsWith("forge-recurrence-"))).toBe(true);
+    });
+
+    it("does not re-propose the same learning on a later sync (fingerprint dedup)", async () => {
+      const database = await setup();
+      const prs = [
+        prWithComment("PR_1", 10, "C_1", BODY),
+        prWithComment("PR_2", 20, "C_2", BODY),
+        prWithComment("PR_3", 30, "C_3", BODY),
+      ];
+      const first = await run(fakeProvider({ pullRequests: prs }), 3);
+      expect(first).toMatchObject({ reviewLearnings: 1 });
+      const second = await run(fakeProvider({ pullRequests: prs }), 3);
+      expect(second).toMatchObject({ reviewLearnings: 0 });
+      expect(await pendingReviewLearnings(database)).toHaveLength(1);
+    });
+
+    it("ignores a comment that recurs in fewer than threshold distinct PRs", async () => {
+      const database = await setup();
+      const outcome = await run(
+        fakeProvider({
+          pullRequests: [
+            prWithComment("PR_1", 10, "C_1", BODY),
+            prWithComment("PR_2", 20, "C_2", BODY),
+          ],
+        }),
+        3,
+      );
+      expect(outcome).toMatchObject({ reviewLearnings: 0 });
+      expect(await pendingReviewLearnings(database)).toHaveLength(0);
+    });
+
+    it("skips comments that normalize to nothing (e.g. URL-only) even when they recur", async () => {
+      const database = await setup();
+      const outcome = await run(
+        fakeProvider({
+          pullRequests: [
+            prWithComment("PR_1", 10, "C_1", "https://ci.example.com/run/1"),
+            prWithComment("PR_2", 20, "C_2", "https://ci.example.com/run/2"),
+            prWithComment("PR_3", 30, "C_3", "https://ci.example.com/run/3"),
+          ],
+        }),
+        3,
+      );
+      expect(outcome).toMatchObject({ reviewLearnings: 0 });
+      expect(await pendingReviewLearnings(database)).toHaveLength(0);
+    });
+
+    it("proposes short non-Latin (Japanese) recurring feedback (no length-based floor)", async () => {
+      const database = await setup();
+      // 12 UTF-16 units — an ASCII-calibrated length floor would have dropped it.
+      const body = "テストを追加してください";
+      const outcome = await run(
+        fakeProvider({
+          pullRequests: [
+            prWithComment("PR_1", 10, "C_1", body),
+            prWithComment("PR_2", 20, "C_2", body),
+            prWithComment("PR_3", 30, "C_3", body),
+          ],
+        }),
+        3,
+      );
+      expect(outcome).toMatchObject({ reviewLearnings: 1 });
+      expect(await pendingReviewLearnings(database)).toHaveLength(1);
+    });
+
+    it("strips tilde-fenced (~~~) code blocks, so code-only comments do not recur", async () => {
+      const database = await setup();
+      const body = "~~~\nconst x = 1;\n~~~";
+      const outcome = await run(
+        fakeProvider({
+          pullRequests: [
+            prWithComment("PR_1", 10, "C_1", body),
+            prWithComment("PR_2", 20, "C_2", body),
+            prWithComment("PR_3", 30, "C_3", body),
+          ],
+        }),
+        3,
+      );
+      expect(outcome).toMatchObject({ reviewLearnings: 0 });
+      expect(await pendingReviewLearnings(database)).toHaveLength(0);
+    });
+
+    it("does not leave a lone surrogate when truncation lands mid-emoji", async () => {
+      const database = await setup();
+      // 119 ASCII chars then 🎉 (a surrogate pair at UTF-16 indices 119-120): the
+      // 120-char excerpt boundary falls between the pair. A code-unit slice would
+      // store a lone high surrogate in the title.
+      const body = `${"a".repeat(119)}🎉 extract this`;
+      await run(
+        fakeProvider({
+          pullRequests: [
+            prWithComment("PR_1", 10, "C_1", body),
+            prWithComment("PR_2", 20, "C_2", body),
+            prWithComment("PR_3", 30, "C_3", body),
+          ],
+        }),
+        3,
+      );
+      const learnings = await pendingReviewLearnings(database);
+      const learning = learnings[0];
+      if (learning === undefined) {
+        throw new Error("no review_learning candidate");
+      }
+      const payload = JSON.parse(learning.payloadJson) as { title: string };
+      const loneSurrogate =
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+      expect(loneSurrogate.test(payload.title)).toBe(false);
+    });
   });
 });

@@ -197,6 +197,7 @@ async function syncForge(
     provider,
     clock,
     new CryptoRandomSource(),
+    resolved.config.forge.review_learning_threshold,
   );
 }
 

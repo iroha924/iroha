@@ -28,6 +28,11 @@ function formatSync(data: RunSyncResult): string {
     lines.push(
       `Forge: ${forge.issues} issue(s), ${forge.pullRequests} PR(s), ${forge.reviewComments} review comment(s), ${forge.relations} relation(s).`,
     );
+    if (forge.reviewLearnings > 0) {
+      lines.push(
+        `Forge: ${forge.reviewLearnings} recurring review learning(s) proposed for approval.`,
+      );
+    }
     if (forge.truncated) {
       lines.push(
         "Forge sync was truncated — older history was not fetched; raise the page bound or re-run. See dirty markers.",

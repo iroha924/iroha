@@ -45,6 +45,11 @@ const forgeConfigSchema = z.strictObject({
   // and never stored in config, the DB, or logs. Defaults so existing configs
   // (written before this field) parse unchanged.
   api_token_env: envVarNameSchema.default("GITHUB_TOKEN"),
+  // Distinct pull requests a review-comment pattern must recur across before
+  // `iroha sync` proposes it as a `review_learning` candidate. Floor is 2 — a
+  // "recurrence" of one is a single comment, not a pattern. Defaulted so configs
+  // written before this field parse unchanged.
+  review_learning_threshold: z.number().int().min(2).default(3),
 });
 
 const privacyConfigSchema = z.strictObject({

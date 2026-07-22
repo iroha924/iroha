@@ -311,6 +311,28 @@ export async function listCandidatesByStatus(
   }
 }
 
+/**
+ * All candidates of one type, regardless of status. Used to dedup derived
+ * proposals (e.g. `review_learning` recurrence) against candidates a human has
+ * already seen (pending) or decided on (approved/rejected/superseded), so
+ * re-running detection never re-proposes the same finding.
+ */
+export async function listCandidatesByType(
+  db: Executor,
+  repositoryId: TypedId<"repo">,
+  candidateType: CandidateType,
+): Promise<Result<CandidateRow[], IrohaError>> {
+  try {
+    const result = await db.execute({
+      sql: "SELECT * FROM candidates WHERE repository_id = ? AND candidate_type = ? ORDER BY created_at DESC, id DESC",
+      args: [repositoryId, candidateType],
+    });
+    return ok(result.rows.map(rowToCandidate));
+  } catch (cause) {
+    return err(mapLibsqlError(cause, "Failed to list candidates"));
+  }
+}
+
 export interface ListCandidatesPageFilter {
   status: CandidateStatus;
   /** Page size; the caller passes `limit + 1` to detect a next page. */
