@@ -72,3 +72,17 @@ minimumReleaseAgeExclude:
   - gunshi@0.37.1
   - '@tanstack/query-core@5.101.3'
   - '@tanstack/react-query@5.101.3'
+
+# Security overrides for transitive dependencies with no in-range upstream fix
+# (osv-scanner runs fail-on-vuln). Both are forced to a patched version:
+#   - fast-uri 3.1.3 (GHSA-v2hh-gcrm-f6hx) is pulled transitively via ajv; 3.1.4
+#     is a semver-compatible patch.
+#   - @hono/node-server 1.19.14 (GHSA-frvp-7c67-39w9) is pulled only by
+#     @modelcontextprotocol/sdk (^1.19.9), whose latest (1.29.0) still pins 1.x
+#     and ships no patched 1.x. iroha's MCP server uses StdioServerTransport, so
+#     the SDK's Streamable HTTP transport (the sole @hono/node-server consumer)
+#     is never on iroha's runtime path; forcing 2.0.10 dedupes it onto the
+#     version the direct deps (@iroha/api, @iroha/plugin) already resolve to.
+overrides:
+  fast-uri: 3.1.4
+  "@hono/node-server": 2.0.10
