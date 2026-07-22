@@ -87,7 +87,7 @@ describe("run* command wrappers", () => {
       const searchResult = await runSearch(repoDir, "libSQL");
       expect(searchResult.ok).toBe(true);
       if (searchResult.ok) {
-        expect(searchResult.value.map((hit) => hit.entityId)).toEqual([id]);
+        expect(searchResult.value.results.map((hit) => hit.id)).toEqual([id]);
       }
 
       const syncResult = await runSync(repoDir, MIGRATIONS_DIR);

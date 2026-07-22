@@ -166,6 +166,25 @@ describe("runCli", () => {
     searchStdout.restore();
     const searchParsed = JSON.parse(searchStdout.text());
     expect(searchParsed.hits.length).toBe(1);
+
+    // --mode forces the retrieval arm and the effective mode is surfaced.
+    const lexStdout = captureStdout();
+    await runCli(["search", "--json", "--mode", "lexical", "libSQL"]);
+    lexStdout.restore();
+    const lexParsed = JSON.parse(lexStdout.text());
+    expect(lexParsed.effectiveMode).toBe("lexical");
+    expect(lexParsed.hits.length).toBe(1);
+
+    // --type filters by entity type: the fixture is a decision, not a rule.
+    const decStdout = captureStdout();
+    await runCli(["search", "--json", "--type", "decision", "libSQL"]);
+    decStdout.restore();
+    expect(JSON.parse(decStdout.text()).hits.length).toBe(1);
+
+    const ruleStdout = captureStdout();
+    await runCli(["search", "--json", "--type", "rule", "libSQL"]);
+    ruleStdout.restore();
+    expect(JSON.parse(ruleStdout.text()).hits.length).toBe(0);
   });
 
   it("exits non-zero when launching the dashboard in an uninitialized repository", async () => {
