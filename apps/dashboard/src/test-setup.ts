@@ -8,3 +8,13 @@ import { afterEach } from "vitest";
 afterEach(() => {
   cleanup();
 });
+
+// jsdom has no ResizeObserver; @xyflow/react (the Work Graph) instantiates one
+// on mount, so provide a no-op stub for tests that render the graph.
+if (typeof globalThis.ResizeObserver === "undefined") {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}

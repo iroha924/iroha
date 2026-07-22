@@ -1,116 +1,242 @@
-import { useQuery } from "@tanstack/react-query";
-import { Background, type Edge, type Node, ReactFlow } from "@xyflow/react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import {
+  applyEdgeChanges,
+  applyNodeChanges,
+  Background,
+  type Edge,
+  type EdgeChange,
+  type Node,
+  type NodeChange,
+  ReactFlow,
+} from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { type FormEvent, useState } from "react";
+import { useState } from "react";
 import { api } from "@/api/client.js";
-import { EmptyState, ErrorNote, Loading, PageTitle } from "@/components/ui.js";
+import {
+  btnPrimary,
+  btnSecondary,
+  EmptyState,
+  ErrorNote,
+  FilterChip,
+  Loading,
+  PageTitle,
+} from "@/components/ui.js";
 import { useI18n } from "@/i18n/index.js";
+import { mergeNeighbors, seedLayout } from "./graph-merge.js";
 
-// Color encodes entity type, never person performance (dashboard-api.md §6).
-const TYPE_COLOR: Record<string, string> = {
-  decision: "#6E7B57",
-  rule: "#515E3E",
-  concept: "#BC9870",
-  insight: "#A8823F",
-  incident: "#C26A3C",
-  pattern: "#8C7A57",
-  review_learning: "#7B6B8E",
-  session: "#6F675A",
-  checkpoint: "#968D7C",
-};
+const DEPTHS = [1, 2, 3, 4] as const;
 
-function colorFor(type: string): string {
-  return TYPE_COLOR[type] ?? "#6F675A";
+interface SeedItem {
+  id: string;
+  label: string;
 }
 
-function circle(index: number, total: number): { x: number; y: number } {
-  if (total <= 1) return { x: 340, y: 220 };
-  const angle = (2 * Math.PI * index) / total;
-  return { x: 340 + 260 * Math.cos(angle), y: 220 + 190 * Math.sin(angle) };
+/** A group of selectable seed entities (Knowledge / Sessions) rendered as toggle chips. */
+function SeedGroup({
+  title,
+  items,
+  selected,
+  onToggle,
+}: {
+  title: string;
+  items: SeedItem[];
+  selected: string[];
+  onToggle: (id: string) => void;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <div className="mb-2">
+      <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-ink-faint">
+        {title}
+      </div>
+      <div className="flex max-h-28 flex-wrap gap-1.5 overflow-y-auto">
+        {items.map((it) => (
+          <FilterChip key={it.id} active={selected.includes(it.id)} onClick={() => onToggle(it.id)}>
+            {it.label}
+          </FilterChip>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 /**
- * Work Graph (dashboard-api.md §6): a bounded relation view. React Flow applies
- * node positions via CSSOM (not a `style` attribute), so it stays within the
- * strict `style-src 'self'` CSP. Always paired with the accessible neighbor
+ * Work Graph (dashboard-api.md §6): an interactive bounded relation view. Seed
+ * from browsable entities (Knowledge / Sessions), pick a depth, then explore by
+ * clicking a node to load its neighbors (server-side expansion). React Flow
+ * applies node positions via CSSOM (not a `style` attribute), so it stays within
+ * the strict `style-src 'self'` CSP. Always paired with the accessible neighbor
  * list (§8) so the graph has an equivalent table representation.
  */
 export function Graph() {
   const { t } = useI18n();
-  const [input, setInput] = useState("");
-  const [root, setRoot] = useState("");
+  const [selected, setSelected] = useState<string[]>([]);
+  const [depth, setDepth] = useState(2);
+  const [graph, setGraph] = useState<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] });
+  const [truncated, setTruncated] = useState(false);
+  const [pathMissing, setPathMissing] = useState(false);
 
-  const q = useQuery({
-    queryKey: ["graph", root],
-    queryFn: () => api.graphQuery([root]),
-    enabled: root.length > 0,
+  // Seed candidates are the two entity lists a human can browse; the rest of the
+  // default chain (Issue / Commit / PR / Review) is reached via load-neighbors.
+  const knowledge = useQuery({
+    queryKey: ["graph-seed-knowledge"],
+    queryFn: () => api.knowledge(),
+  });
+  const sessions = useQuery({ queryKey: ["graph-seed-sessions"], queryFn: () => api.sessions() });
+
+  const loadGraph = useMutation({
+    mutationFn: (vars: { roots: string[]; depth: number }) =>
+      api.graphQuery(vars.roots, vars.depth),
+    onSuccess: (data) => {
+      setGraph(seedLayout(data));
+      setTruncated(data.truncated);
+      setPathMissing(false);
+    },
   });
 
-  const onSubmit = (event: FormEvent) => {
-    event.preventDefault();
-    setRoot(input.trim());
+  const expandNode = useMutation({
+    mutationFn: (id: string) => api.entityRelations(id),
+    onSuccess: (data, id) => {
+      setGraph((g) => mergeNeighbors(g, data, id));
+      if (data.truncated) setTruncated(true);
+    },
+  });
+
+  const findPath = useMutation({
+    mutationFn: (vars: { from: string; to: string }) => api.graphPath(vars.from, vars.to),
+    onSuccess: (data) => {
+      setPathMissing(!data.found);
+      setGraph(data.found ? seedLayout(data) : { nodes: [], edges: [] });
+      setTruncated(false);
+    },
+  });
+
+  const toggle = (id: string) =>
+    setSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+
+  const clear = () => {
+    setSelected([]);
+    setGraph({ nodes: [], edges: [] });
+    setTruncated(false);
+    setPathMissing(false);
   };
 
-  const nodes: Node[] =
-    q.data?.nodes.map((n, i) => ({
-      id: n.id,
-      position: circle(i, q.data?.nodes.length ?? 1),
-      data: { label: n.title },
-      style: {
-        background: colorFor(n.type),
-        color: "#FBF7EE",
-        border: "none",
-        borderRadius: 12,
-        fontSize: 12,
-        padding: 8,
-        width: 150,
-      },
-    })) ?? [];
+  const runFindPath = () => {
+    const [from, to] = selected;
+    if (from !== undefined && to !== undefined) {
+      findPath.mutate({ from, to });
+    }
+  };
 
-  const edges: Edge[] =
-    q.data?.edges.map((e, i) => ({
-      id: `e-${i}-${e.from}-${e.to}`,
-      source: e.from,
-      target: e.to,
-      label: e.type,
-      style: { stroke: "#D8CDB4" },
-    })) ?? [];
+  const knowledgeItems: SeedItem[] = (knowledge.data?.items ?? []).map((k) => ({
+    id: k.id,
+    label: k.title,
+  }));
+  const sessionItems: SeedItem[] = (sessions.data?.items ?? []).map((s) => ({
+    id: s.id,
+    label: [s.platform, s.latestBranch ?? "", s.lastSeenAt.slice(0, 10)]
+      .filter(Boolean)
+      .join(" · "),
+  }));
+  const seedsLoading = knowledge.isPending || sessions.isPending;
+  const hasSeeds = knowledgeItems.length + sessionItems.length > 0;
+  const busy = loadGraph.isPending || expandNode.isPending || findPath.isPending;
+  const failed = loadGraph.isError || expandNode.isError || findPath.isError;
 
   return (
     <section>
       <PageTitle>{t("graph.title")}</PageTitle>
-      <form onSubmit={onSubmit} className="mb-5 flex gap-2">
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder={t("graph.rootPlaceholder")}
-          aria-label={t("graph.rootPlaceholder")}
-          className="h-10 flex-1 rounded-xl border border-hairline bg-paper-raised px-3 font-mono text-sm text-ink placeholder:text-ink-faint focus:border-matcha focus:outline-none"
+
+      <div className="mb-4 rounded-2xl border border-hairline bg-paper-raised p-4">
+        <div className="mb-3 text-xs uppercase tracking-wide text-ink-faint">
+          {t("graph.selectSeeds")}
+        </div>
+        {seedsLoading && <Loading />}
+        {!seedsLoading && !hasSeeds && (
+          <p className="text-sm text-ink-muted">{t("graph.noSeeds")}</p>
+        )}
+        <SeedGroup
+          title={t("nav.knowledge")}
+          items={knowledgeItems}
+          selected={selected}
+          onToggle={toggle}
         />
-        <button
-          type="submit"
-          className="h-10 rounded-xl bg-matcha px-4 font-medium text-paper-raised"
-        >
-          {t("graph.load")}
-        </button>
-      </form>
+        <SeedGroup
+          title={t("nav.sessions")}
+          items={sessionItems}
+          selected={selected}
+          onToggle={toggle}
+        />
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-1.5 text-xs text-ink-muted">
+            {t("graph.depth")}
+            <select
+              value={depth}
+              onChange={(e) => setDepth(Number(e.target.value))}
+              className="h-9 rounded-xl border border-hairline bg-paper-raised px-2 text-sm text-ink focus:border-matcha focus:outline-none"
+            >
+              {DEPTHS.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            disabled={selected.length === 0 || busy}
+            onClick={() => loadGraph.mutate({ roots: selected, depth })}
+            className={btnPrimary}
+          >
+            {t("graph.loadGraph")}
+            {selected.length > 0 && ` (${selected.length})`}
+          </button>
+          <button
+            type="button"
+            disabled={selected.length !== 2 || busy}
+            onClick={runFindPath}
+            className={btnSecondary}
+          >
+            {t("graph.findPath")}
+          </button>
+          {(graph.nodes.length > 0 || selected.length > 0) && (
+            <button type="button" onClick={clear} className={btnSecondary}>
+              {t("common.clear")}
+            </button>
+          )}
+        </div>
+      </div>
 
-      {root.length === 0 && <EmptyState message={t("graph.empty")} />}
-      {q.isFetching && <Loading />}
-      {q.isError && <ErrorNote />}
+      {busy && <Loading />}
+      {failed && <ErrorNote />}
+      {pathMissing && (
+        <p className="rounded-xl bg-warn-tint px-3 py-2 text-sm text-warn">
+          {t("graph.pathNotFound")}
+        </p>
+      )}
+      {graph.nodes.length === 0 && !busy && !pathMissing && (
+        <EmptyState message={t("graph.empty")} />
+      )}
 
-      {q.data !== undefined && (
+      {graph.nodes.length > 0 && (
         <>
           <div className="mb-2 text-xs text-ink-muted">
-            {t("graph.nodes")} {q.data.nodes.length} · {t("graph.edges")} {q.data.edges.length}
-            {q.data.truncated && <span className="ml-2 text-warn">· {t("graph.truncated")}</span>}
+            {t("graph.nodes")} {graph.nodes.length} · {t("graph.edges")} {graph.edges.length}
+            {truncated && <span className="ml-2 text-warn">· {t("graph.truncated")}</span>}
+            <span className="ml-2">· {t("graph.hint")}</span>
           </div>
           <div className="h-[480px] overflow-hidden rounded-2xl border border-hairline bg-paper-raised">
             <ReactFlow
-              nodes={nodes}
-              edges={edges}
+              nodes={graph.nodes}
+              edges={graph.edges}
+              onNodesChange={(c: NodeChange[]) =>
+                setGraph((g) => ({ ...g, nodes: applyNodeChanges(c, g.nodes) }))
+              }
+              onEdgesChange={(c: EdgeChange[]) =>
+                setGraph((g) => ({ ...g, edges: applyEdgeChanges(c, g.edges) }))
+              }
+              onNodeClick={(_, node) => expandNode.mutate(node.id)}
               fitView
-              nodesDraggable={false}
               nodesConnectable={false}
               proOptions={{ hideAttribution: true }}
             >
@@ -124,11 +250,11 @@ export function Graph() {
           <div className="overflow-x-auto rounded-2xl border border-hairline bg-paper-raised">
             <table className="w-full text-sm">
               <tbody className="divide-y divide-hairline">
-                {q.data.edges.map((e, i) => (
-                  <tr key={`row-${i}-${e.from}-${e.to}`}>
-                    <td className="px-4 py-2 font-mono text-ink">{e.from}</td>
-                    <td className="px-4 py-2 text-ink-muted">{e.type}</td>
-                    <td className="px-4 py-2 font-mono text-ink">{e.to}</td>
+                {graph.edges.map((e) => (
+                  <tr key={e.id}>
+                    <td className="px-4 py-2 font-mono text-ink">{e.source}</td>
+                    <td className="px-4 py-2 text-ink-muted">{String(e.label ?? "")}</td>
+                    <td className="px-4 py-2 font-mono text-ink">{e.target}</td>
                   </tr>
                 ))}
               </tbody>
