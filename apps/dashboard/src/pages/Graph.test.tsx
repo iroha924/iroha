@@ -63,6 +63,45 @@ describe("Graph", () => {
     expect(screen.queryByText(/No entities to start from/)).not.toBeInTheDocument();
   });
 
+  it("renders the accessible neighbor table with node titles, not raw ids", async () => {
+    mockApi({
+      "GET /api/v1/knowledge": ok({ items: [knowledgeItem("dec_1", "First")], nextCursor: null }),
+      "GET /api/v1/sessions": ok({ items: [], nextCursor: null }),
+      "POST /api/v1/graph/query": ok({
+        nodes: [
+          { id: "dec_1", type: "decision", title: "First", authority: 100, status: "approved" },
+          { id: "dec_2", type: "rule", title: "Second", authority: 90, status: "approved" },
+        ],
+        edges: [{ from: "dec_1", type: "SUPERSEDES", to: "dec_2" }],
+        truncated: false,
+      }),
+    });
+    renderWithProviders(<Graph />);
+    await userEvent.click(await screen.findByRole("button", { name: "First" }));
+    await userEvent.click(screen.getByRole("button", { name: /Load graph/ }));
+
+    const rows = await screen.findAllByRole("row");
+    const tableText = rows.map((r) => r.textContent).join(" ");
+    expect(tableText).toContain("SUPERSEDES");
+    expect(tableText).toContain("Second"); // the target's title, not its ULID
+    expect(tableText).not.toContain("dec_2");
+  });
+
+  it("clears a prior op error when the graph is cleared", async () => {
+    mockApi({
+      "GET /api/v1/knowledge": ok({ items: [knowledgeItem("dec_1", "First")], nextCursor: null }),
+      "GET /api/v1/sessions": ok({ items: [], nextCursor: null }),
+      "POST /api/v1/graph/query": fail("INTERNAL_ERROR", 500),
+    });
+    renderWithProviders(<Graph />);
+    await userEvent.click(await screen.findByRole("button", { name: "First" }));
+    await userEvent.click(screen.getByRole("button", { name: /Load graph/ }));
+
+    expect(await screen.findByText(/Something went wrong/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Clear" }));
+    await waitFor(() => expect(screen.queryByText(/Something went wrong/)).not.toBeInTheDocument());
+  });
+
   it("enables Find path only with two seeds and calls graphPath", async () => {
     const fn = mockApi({
       "GET /api/v1/knowledge": ok({

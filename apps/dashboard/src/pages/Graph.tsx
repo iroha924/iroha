@@ -75,6 +75,9 @@ export function Graph() {
   const [graph, setGraph] = useState<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] });
   const [truncated, setTruncated] = useState(false);
   const [pathMissing, setPathMissing] = useState(false);
+  // One error flag for whichever graph op ran last; cleared when the next op
+  // starts (or on Clear) so a prior failure never lingers over a fresh graph.
+  const [opError, setOpError] = useState(false);
 
   // Seed candidates are the two entity lists a human can browse; the rest of the
   // default chain (Issue / Commit / PR / Review) is reached via load-neighbors.
@@ -87,28 +90,34 @@ export function Graph() {
   const loadGraph = useMutation({
     mutationFn: (vars: { roots: string[]; depth: number }) =>
       api.graphQuery(vars.roots, vars.depth),
+    onMutate: () => setOpError(false),
     onSuccess: (data) => {
       setGraph(seedLayout(data));
       setTruncated(data.truncated);
       setPathMissing(false);
     },
+    onError: () => setOpError(true),
   });
 
   const expandNode = useMutation({
     mutationFn: (id: string) => api.entityRelations(id),
+    onMutate: () => setOpError(false),
     onSuccess: (data, id) => {
       setGraph((g) => mergeNeighbors(g, data, id));
       if (data.truncated) setTruncated(true);
     },
+    onError: () => setOpError(true),
   });
 
   const findPath = useMutation({
     mutationFn: (vars: { from: string; to: string }) => api.graphPath(vars.from, vars.to),
+    onMutate: () => setOpError(false),
     onSuccess: (data) => {
       setPathMissing(!data.found);
       setGraph(data.found ? seedLayout(data) : { nodes: [], edges: [] });
       setTruncated(false);
     },
+    onError: () => setOpError(true),
   });
 
   const toggle = (id: string) =>
@@ -119,6 +128,7 @@ export function Graph() {
     setGraph({ nodes: [], edges: [] });
     setTruncated(false);
     setPathMissing(false);
+    setOpError(false);
   };
 
   const runFindPath = () => {
@@ -142,7 +152,7 @@ export function Graph() {
   const seedsError = knowledge.isError || sessions.isError;
   const hasSeeds = knowledgeItems.length + sessionItems.length > 0;
   const busy = loadGraph.isPending || expandNode.isPending || findPath.isPending;
-  const failed = loadGraph.isError || expandNode.isError || findPath.isError;
+  const failed = opError;
   // Titles for the accessible edge table, so it reads as human labels (like the
   // visual graph) rather than raw ULIDs.
   const titleById = new Map(graph.nodes.map((n) => [n.id, String(n.data.label ?? n.id)]));
@@ -262,9 +272,9 @@ export function Graph() {
               <tbody className="divide-y divide-hairline">
                 {graph.edges.map((e) => (
                   <tr key={e.id}>
-                    <td className="px-4 py-2 font-mono text-ink">{e.source}</td>
+                    <td className="px-4 py-2 text-ink">{titleById.get(e.source) ?? e.source}</td>
                     <td className="px-4 py-2 text-ink-muted">{String(e.label ?? "")}</td>
-                    <td className="px-4 py-2 font-mono text-ink">{e.target}</td>
+                    <td className="px-4 py-2 text-ink">{titleById.get(e.target) ?? e.target}</td>
                   </tr>
                 ))}
               </tbody>
