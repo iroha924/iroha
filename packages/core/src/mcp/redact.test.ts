@@ -63,6 +63,25 @@ describe("redactProposal — previously-unscanned free-text fields", () => {
     }
   });
 
+  it("gives distinct placeholders to two secret-bearing array entries (no uniqueItems collision)", async () => {
+    // Two DISTINCT paths, each carrying a secret, must not collapse to one
+    // placeholder: canonical `scope.paths` is `unique()`, so identical
+    // placeholders would make the approved document fail validation and leave
+    // the candidate un-approvable. Red on the pre-fix constant placeholder.
+    const result = await redactProposal(
+      { ...baseProposal, scope: { paths: [`a/${SECRET}`, `b/${SECRET}`], symbols: [] } },
+      "p",
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const paths = result.value.proposal.scope.paths;
+      expect(paths).toHaveLength(2);
+      expect(paths[0]).toContain("[redacted");
+      expect(paths[1]).toContain("[redacted");
+      expect(paths[0]).not.toBe(paths[1]);
+    }
+  });
+
   it("leaves a clean proposal's new fields untouched", async () => {
     const result = await redactProposal(
       {

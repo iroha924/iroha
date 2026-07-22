@@ -60,7 +60,18 @@ export async function redactStringArray(
   const out: string[] = [];
   const redactions: FieldRedaction[] = [];
   for (const [index, value] of values.entries()) {
-    const result = await redactField(`${field}[${index}]`, value);
+    // A per-index placeholder so two distinct secret-bearing elements do not
+    // collapse to one string: several of these arrays (scope.paths,
+    // guard.paths, scope.symbols) map to a canonical field with a `uniqueItems`
+    // constraint, so identical placeholders would make the approved document
+    // fail validation — leaving the candidate un-approvable through the normal
+    // flow. The suffixed placeholder still satisfies `relativePathSchema`
+    // (no leading `/`, drive letter, or `..`).
+    const result = await redactField(
+      `${field}[${index}]`,
+      value,
+      `${REDACTED_PLACEHOLDER} #${index}`,
+    );
     if (!result.ok) {
       return err(result.error);
     }

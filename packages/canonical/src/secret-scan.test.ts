@@ -58,6 +58,28 @@ describe("scanForSecrets", () => {
       expect(result.value.clean).toBe(true);
     }
   });
+
+  it("does not flag ordinary snake_case identifiers that merely contain ist_", async () => {
+    // The token-charset boundaries stop `ist_` from matching inside a longer
+    // word: `list_of_…`, `artist_…`, `persist_…`, and file paths like
+    // `src/list_….ts` are ordinary identifiers, not leaked tokens. Each of
+    // these has 43+ `[A-Za-z0-9_-]` chars after its `ist_`, so an unanchored
+    // `/ist_[A-Za-z0-9_-]{43}/` would flag them — falsely rejecting a
+    // legitimate canonical write. This goes red on the unanchored pattern.
+    const identifiers = [
+      "list_of_all_registered_event_handlers_by_priority",
+      "artist_biography_and_complete_discography_metadata_xx",
+      "persist_the_current_application_state_to_local_disk_now",
+      "src/list_of_all_registered_event_handlers_by_priority.ts",
+    ];
+    for (const identifier of identifiers) {
+      const result = await scanForSecrets(`# Notes\n\nSee ${identifier} for details.\n`);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.clean, `expected "${identifier}" to be clean`).toBe(true);
+      }
+    }
+  });
 });
 
 describe("scanForSecrets engine retry", () => {

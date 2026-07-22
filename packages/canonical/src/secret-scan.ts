@@ -61,7 +61,23 @@ async function getEngine(): Promise<Awaited<ReturnType<typeof createEngine>>> {
         {
           id: "@secretlint/secretlint-rule-pattern",
           options: {
-            patterns: [{ name: "iroha session token", patterns: ["/ist_[A-Za-z0-9_-]{43}/"] }],
+            // Anchored on both sides with token-charset boundaries so it matches
+            // ONLY a standalone `ist_<43>` token, never `ist_` embedded in an
+            // ordinary identifier. A naive `/ist_[A-Za-z0-9_-]{43}/` is unanchored
+            // and `{43}` is a *minimum*, so it false-positives on `list_of_…`,
+            // `artist_…`, `persist_…` and file paths like `src/list_….ts` (any
+            // word with 43+ trailing `[A-Za-z0-9_-]` after an `ist_`), which the
+            // canonical write path would then falsely REJECT — exactly the
+            // operability cost this targeted rule exists to avoid. The
+            // lookbehind/lookahead require a non-token boundary on each side,
+            // making `{43}` effectively exact; mirrors `sessionTokenSchema`'s
+            // `^ist_[A-Za-z0-9_-]{43}$` for detection inside surrounding text.
+            patterns: [
+              {
+                name: "iroha session token",
+                patterns: ["/(?<![A-Za-z0-9_-])ist_[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])/"],
+              },
+            ],
           },
         },
       ],
