@@ -129,7 +129,7 @@ Rules:
 
 Session filters: platform, actor, status, label, Issue/PR ref, date range, unresolved-only.
 
-`GET /api/v1/sessions` query parameters: `cursor`, `limit`, `platform` (`claude_code`|`codex`), `summaryStatus` (`none`|`draft`|`approved`), `from`, `to` (RFC 3339, compared against `started_at`). Unknown or out-of-enum filter values are ignored.
+`GET /api/v1/sessions` query parameters: `cursor`, `limit`, `platform` (`claude_code`|`codex`), `summaryStatus` (`none`|`draft`|`approved`), `from`, `to` (RFC 3339 datetime; the inclusive date range is compared against `last_seen_at` — the column the list is ordered and cursored by and the date each row shows). Unknown, out-of-enum, or non-RFC-3339 filter values are ignored.
 
 Raw prompt, transcript, assistant message, and full tool payload endpoints do not exist.
 

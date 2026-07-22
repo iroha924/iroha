@@ -43,6 +43,8 @@ export function ReviewQueue() {
   });
 
   const items = q.data !== undefined ? flattenPages(q.data.pages) : [];
+  // The default queue view is the pending tab; any other tab is a filtered view.
+  const filtered = status !== "pending";
 
   return (
     <section>
@@ -59,7 +61,7 @@ export function ReviewQueue() {
       {q.isError && <ErrorNote />}
       {q.data !== undefined &&
         (items.length === 0 ? (
-          <EmptyState message={t("review.empty")} />
+          <EmptyState message={filtered ? t("common.noMatches") : t("review.empty")} />
         ) : (
           <>
             <ul className="divide-y divide-hairline overflow-hidden rounded-2xl border border-hairline bg-paper-raised">

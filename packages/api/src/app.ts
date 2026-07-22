@@ -255,8 +255,8 @@ export function createApp(config: AppConfig) {
             "draft",
             "approved",
           ]),
-          ...strOpt("from", c.req.query("from")),
-          ...strOpt("to", c.req.query("to")),
+          ...isoOpt("from", c.req.query("from")),
+          ...isoOpt("to", c.req.query("to")),
         }),
       ),
     )
@@ -505,6 +505,11 @@ function safeHost(origin: string): string | null {
 
 function strOpt(key: string, value: string | undefined): Record<string, string> {
   return value === undefined ? {} : { [key]: value };
+}
+
+/** Like `strOpt`, but drops a value that is not an RFC 3339 datetime (mirrors the search route's `from`/`to`). */
+function isoOpt(key: string, value: string | undefined): Record<string, string> {
+  return value !== undefined && z.iso.datetime().safeParse(value).success ? { [key]: value } : {};
 }
 
 function numOpt(key: string, value: string | undefined): Record<string, number> {

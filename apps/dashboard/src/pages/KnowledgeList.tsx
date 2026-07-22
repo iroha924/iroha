@@ -53,6 +53,7 @@ export function KnowledgeList() {
     setTypes((c) => (c.includes(ty) ? c.filter((x) => x !== ty) : [...c, ty]));
 
   const items = q.data !== undefined ? flattenPages(q.data.pages) : [];
+  const filtered = statuses.length > 0 || types.length > 0;
 
   return (
     <section>
@@ -83,7 +84,7 @@ export function KnowledgeList() {
       {q.isError && <ErrorNote />}
       {q.data !== undefined &&
         (items.length === 0 ? (
-          <EmptyState message={t("knowledge.empty")} />
+          <EmptyState message={filtered ? t("common.noMatches") : t("knowledge.empty")} />
         ) : (
           <>
             <ul className="divide-y divide-hairline overflow-hidden rounded-2xl border border-hairline bg-paper-raised">

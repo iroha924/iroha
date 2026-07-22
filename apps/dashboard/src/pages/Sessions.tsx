@@ -48,6 +48,7 @@ export function Sessions() {
   });
 
   const items = q.data !== undefined ? flattenPages(q.data.pages) : [];
+  const filtered = platform !== "" || from !== "" || to !== "";
   const dateInput =
     "h-9 rounded-xl border border-hairline bg-paper-raised px-3 text-sm text-ink focus:border-matcha focus:outline-none";
 
@@ -89,13 +90,14 @@ export function Sessions() {
               className={dateInput}
             />
           </label>
+          <span className="uppercase tracking-wide">· {t("sessions.datesUtc")}</span>
         </div>
       </div>
       {q.isPending && <Loading />}
       {q.isError && <ErrorNote />}
       {q.data !== undefined &&
         (items.length === 0 ? (
-          <EmptyState message={t("sessions.empty")} />
+          <EmptyState message={filtered ? t("common.noMatches") : t("sessions.empty")} />
         ) : (
           <>
             <ul className="divide-y divide-hairline overflow-hidden rounded-2xl border border-hairline bg-paper-raised">

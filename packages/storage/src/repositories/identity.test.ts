@@ -445,6 +445,29 @@ describe("identity repositories", () => {
     if (archived.ok) {
       expect(archived.value.map((e) => e.id)).toEqual(["dec_0000000000000000000000003"]);
     }
+
+    // Filter + keyset cursor together (locks arg order on the paginated filter path):
+    // both decisions, one per page, newest first.
+    const page1 = await listKnowledgeEntities(database, repositoryId, {
+      limit: 1,
+      entityTypes: ["decision"],
+      statuses: ["approved", "archived"],
+    });
+    expect(page1.ok).toBe(true);
+    if (page1.ok) {
+      expect(page1.value.map((e) => e.id)).toEqual(["dec_0000000000000000000000001"]);
+    }
+    const page2 = await listKnowledgeEntities(database, repositoryId, {
+      limit: 1,
+      entityTypes: ["decision"],
+      statuses: ["approved", "archived"],
+      beforeUpdatedAt: "2026-01-05T00:00:00.000Z",
+      beforeId: "dec_0000000000000000000000001",
+    });
+    expect(page2.ok).toBe(true);
+    if (page2.ok) {
+      expect(page2.value.map((e) => e.id)).toEqual(["dec_0000000000000000000000003"]);
+    }
   });
 
   it("upserts a canonical document, bumping the revision on re-approval", async () => {
