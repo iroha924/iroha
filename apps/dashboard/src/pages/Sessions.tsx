@@ -5,23 +5,26 @@ import { api, type SessionPlatformFilter } from "@/api/client.js";
 import { flattenPages } from "@/api/pagination.js";
 import {
   EmptyState,
-  ErrorNote,
+  ErrorState,
   FilterChip,
   Loading,
   LoadMore,
-  PageTitle,
-  Pill,
-} from "@/components/ui.js";
+  PageHeader,
+} from "@/components/brand.js";
+import { DateField } from "@/components/date-field.js";
+import { Badge } from "@/components/ui/badge.js";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table.js";
 import { useI18n } from "@/i18n/index.js";
+import { runStatusTone } from "@/lib/status.js";
 
 const PLATFORMS: readonly SessionPlatformFilter[] = ["claude_code", "codex"];
-
-function runTone(status: string | null): "approve" | "pending" | "reject" | "neutral" {
-  if (status === "active") return "approve";
-  if (status === "interrupted") return "pending";
-  if (status === "abandoned") return "reject";
-  return "neutral";
-}
 
 /** Session list with platform/date filters and cursor pagination (dashboard-api.md §6). No per-person metric (FR-108). */
 export function Sessions() {
@@ -49,15 +52,14 @@ export function Sessions() {
 
   const items = q.data !== undefined ? flattenPages(q.data.pages) : [];
   const filtered = platform !== "" || from !== "" || to !== "";
-  const dateInput =
-    "h-9 rounded-xl border border-hairline bg-paper-raised px-3 text-sm text-ink focus:border-matcha focus:outline-none";
 
   return (
     <section>
-      <PageTitle>{t("sessions.title")}</PageTitle>
+      <PageHeader eyebrow={t("nav.sessions")} title={t("sessions.title")} />
+
       <div className="mb-6 flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs uppercase tracking-wide text-ink-faint">
+          <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-ink-faint">
             {t("sessions.platform")}
           </span>
           <FilterChip active={platform === ""} onClick={() => setPlatform("")}>
@@ -69,60 +71,76 @@ export function Sessions() {
             </FilterChip>
           ))}
         </div>
-        <div className="flex flex-wrap items-center gap-2 text-xs text-ink-faint">
-          <label className="flex items-center gap-1.5">
-            <span className="uppercase tracking-wide">{t("sessions.from")}</span>
-            <input
-              type="date"
-              value={from}
-              max={to || undefined}
-              onChange={(e) => setFrom(e.target.value)}
-              className={dateInput}
-            />
-          </label>
-          <label className="flex items-center gap-1.5">
-            <span className="uppercase tracking-wide">{t("sessions.to")}</span>
-            <input
-              type="date"
-              value={to}
-              min={from || undefined}
-              onChange={(e) => setTo(e.target.value)}
-              className={dateInput}
-            />
-          </label>
-          <span className="uppercase tracking-wide">· {t("sessions.datesUtc")}</span>
+        <div className="flex flex-wrap items-center gap-2">
+          <DateField
+            value={from}
+            onChange={setFrom}
+            max={to}
+            placeholder={t("sessions.from")}
+            ariaLabel={t("sessions.from")}
+          />
+          <span className="text-ink-faint">–</span>
+          <DateField
+            value={to}
+            onChange={setTo}
+            min={from}
+            placeholder={t("sessions.to")}
+            ariaLabel={t("sessions.to")}
+          />
+          <span className="ml-1 text-xs uppercase tracking-wide text-ink-faint">
+            {t("sessions.datesUtc")}
+          </span>
         </div>
       </div>
+
       {q.isPending && <Loading />}
-      {q.isError && <ErrorNote />}
+      {q.isError && <ErrorState />}
       {q.data !== undefined &&
         (items.length === 0 ? (
           <EmptyState message={filtered ? t("common.noMatches") : t("sessions.empty")} />
         ) : (
           <>
-            <ul className="divide-y divide-hairline overflow-hidden rounded-2xl border border-hairline bg-paper-raised">
-              {items.map((s) => (
-                <li key={s.id}>
-                  <Link
-                    to={`/sessions/${s.id}`}
-                    className="flex items-center gap-3 px-5 py-3.5 transition-colors hover:bg-paper-inset"
-                  >
-                    <Pill tone={runTone(s.latestRunStatus)}>{s.latestRunStatus ?? s.platform}</Pill>
-                    <span className="flex-1 text-ink">
-                      <span className="font-medium">{s.platform}</span>
-                      {s.latestBranch !== null && (
-                        <span className="ml-2 font-mono text-xs text-ink-muted">
-                          {s.latestBranch}
-                        </span>
-                      )}
-                    </span>
-                    <span className="text-xs tabular-nums text-ink-faint">
-                      {t("sessions.runs")} {s.runCount} · {s.lastSeenAt.slice(0, 10)}
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
+            <div className="overflow-hidden rounded-2xl border border-hairline bg-paper-raised">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t("common.status")}</TableHead>
+                    <TableHead>{t("sessions.platform")}</TableHead>
+                    <TableHead>{t("session.branch")}</TableHead>
+                    <TableHead className="text-right">{t("sessions.runs")}</TableHead>
+                    <TableHead className="text-right">{t("sessions.lastSeen")}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {items.map((s) => (
+                    <TableRow key={s.id}>
+                      <TableCell>
+                        <Badge variant={runStatusTone(s.latestRunStatus)}>
+                          {s.latestRunStatus ?? s.platform}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Link
+                          to={`/sessions/${s.id}`}
+                          className="font-medium text-ink transition-colors hover:text-matcha"
+                        >
+                          {s.platform}
+                        </Link>
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-ink-muted">
+                        {s.latestBranch ?? "—"}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums text-ink-muted">
+                        {s.runCount}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums text-ink-faint">
+                        {s.lastSeenAt.slice(0, 10)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
             {q.hasNextPage && (
               <LoadMore onClick={() => q.fetchNextPage()} loading={q.isFetchingNextPage} />
             )}

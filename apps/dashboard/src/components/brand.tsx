@@ -1,6 +1,7 @@
 import { CircleAlertIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert.js";
+import { Button } from "@/components/ui/button.js";
 import { useI18n } from "@/i18n/index.js";
 
 /**
@@ -85,5 +86,41 @@ export function ErrorState({ message }: { message?: string }) {
       <AlertTitle>{t("common.error")}</AlertTitle>
       {message !== undefined && <AlertDescription>{message}</AlertDescription>}
     </Alert>
+  );
+}
+
+/** A pill-shaped filter toggle (matcha when active) — the shared list-filter control. */
+export function FilterChip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant={active ? "default" : "outline"}
+      aria-pressed={active}
+      onClick={onClick}
+      className="rounded-full"
+    >
+      {children}
+    </Button>
+  );
+}
+
+/** "Load more" affordance for cursor-paginated lists (dashboard-api.md §4). */
+export function LoadMore({ onClick, loading }: { onClick: () => void; loading: boolean }) {
+  const { t } = useI18n();
+  return (
+    <div className="mt-5 flex justify-center">
+      <Button type="button" variant="outline" onClick={onClick} disabled={loading}>
+        {loading ? t("common.loading") : t("common.loadMore")}
+      </Button>
+    </div>
   );
 }

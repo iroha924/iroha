@@ -12,6 +12,7 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart.js";
 import { useI18n } from "@/i18n/index.js";
+import { runStatusTone } from "@/lib/status.js";
 
 // The seven canonical knowledge types, each with a brand chart colour. Order and
 // colours are stable so the composition chart reads consistently.
@@ -24,13 +25,6 @@ const KNOWLEDGE_TYPES = [
   { key: "pattern", color: "var(--color-ink-muted)" },
   { key: "review_learning", color: "var(--color-matcha-active)" },
 ] as const;
-
-function runTone(status: string | null): "approve" | "pending" | "reject" | "neutral" {
-  if (status === "active") return "approve";
-  if (status === "interrupted") return "pending";
-  if (status === "abandoned") return "reject";
-  return "neutral";
-}
 
 function MiniStat({ label, value }: { label: string; value: number }) {
   return (
@@ -151,7 +145,7 @@ export function Overview() {
                       className="flex items-center justify-between gap-3 px-6 py-3 transition-colors hover:bg-paper-inset"
                     >
                       <span className="flex items-center gap-2.5">
-                        <Badge variant={runTone(s.latestRunStatus)}>
+                        <Badge variant={runStatusTone(s.latestRunStatus)}>
                           {s.latestRunStatus ?? s.platform}
                         </Badge>
                         <span className="text-sm font-medium text-ink">{s.platform}</span>
