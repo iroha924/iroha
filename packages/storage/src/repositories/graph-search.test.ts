@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { closeDatabase, type Database } from "../connection.js";
 import { openMigratedTestDb, removeTempDir } from "../test-helpers/tmp-db.js";
 import {
+  deleteCanonicalRelationsFromEntity,
   enqueueEmbeddingJob,
   getEmbeddingMetadataBySearchDocumentId,
   getEmbeddingVectorByContentHash,
@@ -186,6 +187,60 @@ describe("graph-search repositories", () => {
       expect(typed.value.length).toBe(1);
       expect(typed.value[0]?.relationType).toBe("SUPERSEDES");
     }
+  });
+
+  it("deleteCanonicalRelationsFromEntity removes only canonical edges out of the entity", async () => {
+    const opened = await openMigratedTestDb();
+    tempDir = opened.dir;
+    db = opened.db;
+    const repositoryId = await seedRepository(db, "d");
+    const a = "dec_0000000000000000000000000da";
+    const b = "dec_0000000000000000000000000db";
+    await seedEntity(db, a, repositoryId);
+    await seedEntity(db, b, repositoryId);
+    // canonical A->B, human A->B, and canonical B->A (incoming to A).
+    await insertRelation(db, {
+      id: relId("d1"),
+      repositoryId,
+      fromEntityId: a,
+      relationType: "RELATED_TO",
+      toEntityId: b,
+      sourceKind: "canonical",
+      createdAt: NOW,
+    });
+    await insertRelation(db, {
+      id: relId("d2"),
+      repositoryId,
+      fromEntityId: a,
+      relationType: "SUPERSEDES",
+      toEntityId: b,
+      sourceKind: "human",
+      createdAt: NOW,
+    });
+    await insertRelation(db, {
+      id: relId("d3"),
+      repositoryId,
+      fromEntityId: b,
+      relationType: "RELATED_TO",
+      toEntityId: a,
+      sourceKind: "canonical",
+      createdAt: NOW,
+    });
+
+    const deleted = await deleteCanonicalRelationsFromEntity(db, a);
+    expect(deleted.ok).toBe(true);
+
+    // The canonical A->B is gone; the human A->B survives.
+    const outgoing = await getNeighbors(db, a, { direction: "outgoing" });
+    expect(outgoing.ok).toBe(true);
+    if (outgoing.ok) {
+      expect(outgoing.value.map((r) => `${r.sourceKind}:${r.relationType}`)).toEqual([
+        "human:SUPERSEDES",
+      ]);
+    }
+    // The incoming canonical B->A is untouched (scoped to from_entity_id = A).
+    const incoming = await getNeighbors(db, a, { direction: "incoming" });
+    expect(incoming.ok && incoming.value.length).toBe(1);
   });
 
   it("returns neighbors ordered by id, so a limit truncates deterministically", async () => {

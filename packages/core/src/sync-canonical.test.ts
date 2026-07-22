@@ -8,7 +8,9 @@ import {
   getCanonicalDocumentByEntityId,
   getEntityById,
   getKnowledgeItemById,
+  getNeighbors,
   getSearchDocumentByEntityId,
+  insertRelation,
   insertRepository,
   listApprovedRulesForRepository,
   listOpenDirtyMarkers,
@@ -335,6 +337,93 @@ describe("syncCanonicalToDatabase", () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value.unresolvedRelations).toBe(0);
+    }
+  });
+
+  it("prunes a canonical edge removed on re-sync but keeps other-source edges", async () => {
+    await setup();
+    if (!db || !canonicalDir) return;
+    const idA = makeTypedId("dec", CLOCK, new CryptoRandomSource());
+    const idB = makeTypedId("dec", CLOCK, new CryptoRandomSource());
+    const idC = makeTypedId("dec", CLOCK, new CryptoRandomSource());
+    for (const [id, title] of [
+      [idB, "Decision B"],
+      [idC, "Decision C"],
+    ] as const) {
+      await writeCanonicalDocument(
+        decisionCandidate(id, title, 1),
+        canonicalDir,
+        new CryptoRandomSource(),
+      );
+    }
+    // A relates to both B and C.
+    await writeCanonicalDocument(
+      decisionCandidate(idA, "Decision A", 1, [
+        { type: "RELATED_TO", target: idB },
+        { type: "RELATED_TO", target: idC },
+      ]),
+      canonicalDir,
+      new CryptoRandomSource(),
+    );
+    await syncCanonicalToDatabase(db, repositoryId, canonicalDir, CLOCK, new CryptoRandomSource());
+
+    // A human-sourced edge from A must survive the canonical prune.
+    const humanEdge = await insertRelation(db, {
+      id: makeTypedId("rel", CLOCK, new CryptoRandomSource()),
+      repositoryId,
+      fromEntityId: idA,
+      relationType: "RELATED_TO",
+      toEntityId: idC,
+      sourceKind: "human",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    expect(humanEdge.ok).toBe(true);
+
+    // Re-sync A at a higher revision with C removed from its relations.
+    await writeCanonicalDocument(
+      decisionCandidate(idA, "Decision A", 2, [{ type: "RELATED_TO", target: idB }]),
+      canonicalDir,
+      new CryptoRandomSource(),
+    );
+    await syncCanonicalToDatabase(db, repositoryId, canonicalDir, CLOCK, new CryptoRandomSource());
+
+    const neighbors = await getNeighbors(db, idA, { direction: "outgoing" });
+    expect(neighbors.ok).toBe(true);
+    if (!neighbors.ok) return;
+    const edges = neighbors.value.map((r) => `${r.sourceKind}:${r.toEntityId}`);
+    expect(edges).toContain(`canonical:${idB}`); // still declared → re-inserted
+    expect(edges).not.toContain(`canonical:${idC}`); // removed → pruned
+    expect(edges).toContain(`human:${idC}`); // other source → untouched
+  });
+
+  it("tiers authority below 100 by lifecycle status, at or above the search floor", async () => {
+    await setup();
+    if (!db || !canonicalDir) return;
+    // Both non-approved tiers stay >= DEFAULT_MINIMUM_AUTHORITY (60) so they are
+    // not excluded from default search after the candidate cap; they rank lower
+    // only via the missing 80+ boost.
+    for (const [status, expected] of [
+      ["superseded", 70],
+      ["archived", 60],
+    ] as const) {
+      const id = makeTypedId("dec", CLOCK, new CryptoRandomSource());
+      const doc = decisionCandidate(id, `${status} decision`, 1);
+      doc.frontmatter.status = status;
+      await writeCanonicalDocument(doc, canonicalDir, new CryptoRandomSource());
+      await syncCanonicalToDatabase(
+        db,
+        repositoryId,
+        canonicalDir,
+        CLOCK,
+        new CryptoRandomSource(),
+      );
+
+      const entity = await getEntityById(db, id);
+      expect(entity.ok && entity.value?.authority, `entity authority for ${status}`).toBe(expected);
+      const searchDoc = await getSearchDocumentByEntityId(db, id);
+      expect(searchDoc.ok && searchDoc.value?.authority, `sdoc authority for ${status}`).toBe(
+        expected,
+      );
     }
   });
 
