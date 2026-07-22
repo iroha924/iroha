@@ -364,6 +364,16 @@ export async function getPath(
  * carve-out, calling with multiple explicit roots connected by
  * `DUPLICATES` silently drops that edge, hiding a relationship the caller
  * asked about directly rather than one merely discovered via traversal.
+ *
+ * Fetch-vs-cap tradeoff (deliberate): each level fetches EVERY relation
+ * incident to the whole frontier in one `getNeighborsForNodes` before the
+ * `maxEdges` guard consumes them, so the rows read scale with frontier degree,
+ * not with `maxEdges` — the pre-batch per-node loop could instead stop after
+ * the first node filled the cap. The returned edge list is identical either
+ * way (surplus rows are discarded); this only trades a possible over-read for
+ * one round-trip per level. Acceptable because a curated knowledge graph's
+ * relation degree is low and `maxEdges`(≤200) bounds the output; if entities
+ * ever become very high-degree, expand the frontier in `maxEdges`-sized slices.
  */
 export async function getSubgraph(
   db: Executor,
