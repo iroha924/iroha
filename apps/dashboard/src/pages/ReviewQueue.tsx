@@ -5,14 +5,15 @@ import { api, type CandidateStatusFilter } from "@/api/client.js";
 import { flattenPages } from "@/api/pagination.js";
 import {
   EmptyState,
-  ErrorNote,
+  ErrorState,
   FilterChip,
   Loading,
   LoadMore,
-  PageTitle,
-  Pill,
-} from "@/components/ui.js";
+  PageHeader,
+} from "@/components/brand.js";
+import { Badge } from "@/components/ui/badge.js";
 import { useI18n } from "@/i18n/index.js";
+import { candidateStatusTone } from "@/lib/status.js";
 
 const CANDIDATE_STATUSES: readonly CandidateStatusFilter[] = [
   "pending",
@@ -20,13 +21,6 @@ const CANDIDATE_STATUSES: readonly CandidateStatusFilter[] = [
   "rejected",
   "superseded",
 ];
-
-function statusTone(status: string): "approve" | "pending" | "reject" | "neutral" {
-  if (status === "approved") return "approve";
-  if (status === "pending") return "pending";
-  if (status === "rejected") return "reject";
-  return "neutral";
-}
 
 /** Review queue (dashboard-api.md §6): candidates by status, with cursor pagination. */
 export function ReviewQueue() {
@@ -48,17 +42,21 @@ export function ReviewQueue() {
 
   return (
     <section>
-      <PageTitle>{t("review.title")}</PageTitle>
+      <PageHeader eyebrow={t("nav.review")} title={t("review.title")} />
+
       <div className="mb-6 flex flex-wrap items-center gap-2">
-        <span className="text-xs uppercase tracking-wide text-ink-faint">{t("common.status")}</span>
+        <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-ink-faint">
+          {t("common.status")}
+        </span>
         {CANDIDATE_STATUSES.map((s) => (
           <FilterChip key={s} active={status === s} onClick={() => setStatus(s)}>
             {t(`status.${s}`)}
           </FilterChip>
         ))}
       </div>
+
       {q.isPending && <Loading />}
-      {q.isError && <ErrorNote />}
+      {q.isError && <ErrorState />}
       {q.data !== undefined &&
         (items.length === 0 ? (
           <EmptyState message={filtered ? t("common.noMatches") : t("review.empty")} />
@@ -69,11 +67,11 @@ export function ReviewQueue() {
                 <li key={item.id}>
                   <Link
                     to={`/review/${item.id}`}
-                    className="flex items-center gap-3 px-5 py-3.5 transition-colors hover:bg-paper-inset"
+                    className="flex items-center gap-3 px-5 py-4 transition-colors hover:bg-paper-inset"
                   >
-                    <Pill tone={statusTone(item.status)}>{item.type}</Pill>
-                    <span className="flex-1 font-medium text-ink">{item.title}</span>
-                    <span className="text-xs tabular-nums text-ink-faint">
+                    <Badge variant={candidateStatusTone(item.status)}>{item.type}</Badge>
+                    <span className="flex-1 truncate font-medium text-ink">{item.title}</span>
+                    <span className="shrink-0 text-xs tabular-nums text-ink-faint">
                       {item.createdAt.slice(0, 10)}
                     </span>
                   </Link>
