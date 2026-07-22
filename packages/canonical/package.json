@@ -23,6 +23,7 @@
     "@iroha/domain": "workspace:*",
     "@iroha/config": "workspace:*",
     "@secretlint/node": "catalog:",
+    "@secretlint/secretlint-rule-pattern": "catalog:",
     "@secretlint/secretlint-rule-preset-recommend": "catalog:",
     "mdast-util-from-markdown": "catalog:",
     "mdast-util-to-string": "catalog:",

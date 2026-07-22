@@ -41,7 +41,53 @@ async function getEngine(): Promise<Awaited<ReturnType<typeof createEngine>>> {
     // the unrelated `sourceContent` field, which this module never reads).
     maskSecrets: true,
     configFileJSON: {
-      rules: [{ id: "@secretlint/secretlint-rule-preset-recommend" }],
+      rules: [
+        { id: "@secretlint/secretlint-rule-preset-recommend" },
+        // Coverage boundary (deliberate, not a guarantee): the recommend preset
+        // is pattern-based (AWS, GCP, private key, basic-auth URL, Slack, npm,
+        // SendGrid, …) and has NO entropy rule, so a bare high-entropy secret
+        // with no recognizable prefix/keyword passes this runtime scan. The
+        // entropy backstop lives in CI/pre-commit (gitleaks `generic-api-key`,
+        // ci.yml). A blanket entropy rule is intentionally NOT added here: this
+        // scanner also gates canonical writes (rejected outright on a finding)
+        // and checkpoint redaction (fields blanked wholesale), so a high
+        // false-positive rate would reject legitimate content — a real
+        // operability cost. Instead we add a targeted pattern for the one
+        // known high-value in-scope token shape: iroha's own session token
+        // (`ist_<43 base64url>`, checkpoint.ts `sessionTokenSchema`), which must
+        // never reach a canonical file or a persisted checkpoint free-text
+        // field. `maskSecrets` keeps the matched token out of the finding
+        // message (verified). See audit issue #43 / decision-log.
+        {
+          id: "@secretlint/secretlint-rule-pattern",
+          options: {
+            // Bounded so it matches ONLY a discrete `ist_<43>` token, not an
+            // `ist_` substring inside an ordinary word. A naive
+            // `/ist_[A-Za-z0-9_-]{43}/` is unanchored and its `{43}` is a
+            // *minimum*, so it false-positives on `list_of_…`, `artist_…`,
+            // `blacklist_…` and paths like `src/list_….ts`, which the canonical
+            // write path would then falsely REJECT — the operability cost this
+            // targeted rule exists to avoid. The two boundaries are deliberately
+            // asymmetric:
+            // - Leading `(?<![A-Za-z0-9])` excludes a preceding letter/digit. The
+            //   false-positive words all have a LETTER right before `ist`, so this
+            //   kills them; but a preceding *separator* (`-`, `_`, `/`, space, `:`)
+            //   is a genuine token boundary, so a real token glued after one
+            //   (`token-ist_…`, `ENV_ist_…`) is still detected. Excluding `_`/`-`
+            //   here would miss those real leaks.
+            // - Trailing `(?![A-Za-z0-9_-])` excludes any following token char so
+            //   the `{43}` is effectively exact and it won't match a longer base64
+            //   run that merely starts with `ist_`.
+            // Mirrors `sessionTokenSchema`'s `^ist_[A-Za-z0-9_-]{43}$` for text.
+            patterns: [
+              {
+                name: "iroha session token",
+                patterns: ["/(?<![A-Za-z0-9])ist_[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])/"],
+              },
+            ],
+          },
+        },
+      ],
     },
   });
   try {

@@ -39,6 +39,7 @@
     "@libsql/client": "catalog:",
     "@modelcontextprotocol/sdk": "catalog:",
     "@secretlint/node": "catalog:",
+    "@secretlint/secretlint-rule-pattern": "catalog:",
     "@secretlint/secretlint-rule-preset-recommend": "catalog:",
     "gunshi": "catalog:",
     "hono": "catalog:",

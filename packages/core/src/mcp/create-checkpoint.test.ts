@@ -158,4 +158,39 @@ describe("mcpCreateCheckpoint", () => {
     }
     await closeDatabase(db.value);
   }, 15000);
+
+  it("redacts a secret embedded in implementation[].file (a relative-path field)", async () => {
+    repo = await setupMcpRepo(random);
+    const seedDb = await openDatabase(repo.dbPath);
+    if (!seedDb.ok) return;
+    const seeded = await seedSessionWithToken(seedDb.value, repo, clock, random);
+    await closeDatabase(seedDb.value);
+
+    // `implementation[].file` is a `relativePath`, so a leaked token passes
+    // schema validation and must still be scanned like change/symbol. An
+    // `ist_<43>` token is both a clean relative path and a detected secret.
+    const token = `ist_${"A".repeat(43)}`;
+    const result = await mcpCreateCheckpoint({
+      cwd: repo.repoDir,
+      clock,
+      random,
+      input: baseInput(seeded.token, "idem-key-000000000009", {
+        implementation: [{ file: token, change: "touched a file" }],
+      }),
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(
+      result.value.redactions.some((redaction) => redaction.field === "implementation[0].file"),
+    ).toBe(true);
+
+    const db = await openDatabase(repo.dbPath);
+    if (!db.ok) return;
+    const checkpoint = await getCheckpointById(db.value, result.value.checkpointId);
+    if (checkpoint.ok && checkpoint.value) {
+      expect(JSON.stringify(checkpoint.value)).not.toContain(token);
+    }
+    await closeDatabase(db.value);
+  }, 15000);
 });

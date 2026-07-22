@@ -60,6 +60,9 @@ catalogs:
     '@secretlint/node':
       specifier: 13.0.2
       version: 13.0.2
+    '@secretlint/secretlint-rule-pattern':
+      specifier: 13.0.2
+      version: 13.0.2
     '@secretlint/secretlint-rule-preset-recommend':
       specifier: 13.0.2
       version: 13.0.2
@@ -424,6 +427,9 @@ importers:
       '@secretlint/node':
         specifier: 'catalog:'
         version: 13.0.2
+      '@secretlint/secretlint-rule-pattern':
+        specifier: 'catalog:'
+        version: 13.0.2
       '@secretlint/secretlint-rule-preset-recommend':
         specifier: 'catalog:'
         version: 13.0.2
@@ -780,6 +786,9 @@ importers:
         specifier: 'catalog:'
         version: 1.29.0(zod@4.4.3)
       '@secretlint/node':
+        specifier: 'catalog:'
+        version: 13.0.2
+      '@secretlint/secretlint-rule-pattern':
         specifier: 'catalog:'
         version: 13.0.2
       '@secretlint/secretlint-rule-preset-recommend':
@@ -2054,12 +2063,20 @@ packages:
   '@secretlint/resolver@13.0.2':
     resolution: {integrity: sha512-Ko50V0P3YAtEO20xBTczOzguBVk6+taSqkoAPHoOSdsTsSq1gzeYggY1UC8vVEHPGyRp/mb2QOuwIShdJZ8JFg==}
 
+  '@secretlint/secretlint-rule-pattern@13.0.2':
+    resolution: {integrity: sha512-ntXHndXRJLB4TEt9bGY+dKH4naOq3mHM8h4hwftg/HA1EyrmuRN8+6qPUbBzsJvZWmMd7CZBBBU7DsNERdMqCQ==}
+    engines: {node: '>=22.0.0'}
+
   '@secretlint/secretlint-rule-preset-recommend@13.0.2':
     resolution: {integrity: sha512-D03Kw51qOgffj9zNlJFZUarVmP8zGcCZNi7A14+vZtHskbbBPEsS/f09idb48rrlMSaRMBN29IkqfbmPyL9xtw==}
     engines: {node: '>=22.0.0'}
 
   '@secretlint/source-creator@13.0.2':
     resolution: {integrity: sha512-tSooHad8QL+lqHP88zH9F8GMoR7bHUqPja5M/QnNHGnvOq/8OT1V8t1uigm6jlD03oJWNLwwF8QeHIedWKJ13g==}
+    engines: {node: '>=22.0.0'}
+
+  '@secretlint/tester@13.0.2':
+    resolution: {integrity: sha512-4336ry9t/LHhOjL1nQqzaVMwVS9NNnWhZoIOCavr1QU2ICDeizslUuucrVMOzM6ptc1IRx1xk8PG2qUiOOwf0w==}
     engines: {node: '>=22.0.0'}
 
   '@secretlint/types@13.0.2':
@@ -2220,6 +2237,9 @@ packages:
 
   '@textlint/module-interop@15.7.1':
     resolution: {integrity: sha512-Jg+sQW2L/cRJypk59wtcMUVVpt8vmit5ZMT3gUnFwevP3A6Qp1HfOtUy9ObT4hBX3lOSGT/ekcCDxR1pL7uH1g==}
+
+  '@textlint/regexp-string-matcher@2.0.2':
+    resolution: {integrity: sha512-OXLD9XRxMhd3S0LWuPHpiARQOI7z9tCOs0FsynccW2lmyZzHHFJ9/eR6kuK9xF459Qf+740qI5h+/0cx+NljzA==}
 
   '@textlint/resolver@15.7.1':
     resolution: {integrity: sha512-8XnO0pgF6mXnm41VvWmBbEIdGPhiCUt31uLZkOis1ECeg/1SoUcIT6Mx/F0e1rukq8l0UlOSeY9a31CsvRMK0g==}
@@ -3135,6 +3155,10 @@ packages:
   escape-html@1.0.3:
     resolution: {integrity: sha512-NiSupZ4OeuGwr68lGIeym/ksIZMJodUGOSCZ/FSnTxcrekbvqrgdUxlJOMpijaKZVjAJrWrGs/6Jy8OMuyj9ow==}
 
+  escape-string-regexp@4.0.0:
+    resolution: {integrity: sha512-TtpcNJ3XAzx3Gq8sWRzJaVajRs0uVxA2YAkdb1jm2YkPz4G6egUFAyA3n5vtEIZefPk5Wa4UXbKuS5fKkJWdgA==}
+    engines: {node: '>=10'}
+
   esprima@4.0.1:
     resolution: {integrity: sha512-eGuFFw7Upda+g4p+QHvnW0RyTX/SVeJBDM/gCtMARO0cLuT2HcEKnTPvhjV6aGeqrCB/sbNop0Kszm0jsaWU4A==}
     engines: {node: '>=4'}
@@ -3719,6 +3743,12 @@ packages:
 
   lodash.truncate@4.4.2:
     resolution: {integrity: sha512-jttmRe7bRse52OsWIMDLaXxWqRAmtIUccAQ3garviCqJjafXOfNMO0yMfNpdD6zbGaTU0P5Nz7e7gAT6cKmJRw==}
+
+  lodash.uniq@4.5.0:
+    resolution: {integrity: sha512-xfBaXQd9ryd9dlSDvnvI0lvxfLJlYAZzXomUYzLKtUeOQvOP5piqAWuGtrhWeqaXK9hhoM/iyJc5AV+XfsX3HQ==}
+
+  lodash.uniqwith@4.5.0:
+    resolution: {integrity: sha512-7lYL8bLopMoy4CTICbxygAUq6CdRJ36vFc80DucPueUee+d5NBRxz3FdT9Pes/HEx5mPoT9jwnsEJWz1N7uq7Q==}
 
   lodash@4.18.1:
     resolution: {integrity: sha512-dMInicTPVE8d1e5otfwmmjlxkZoUpiVLwyeTdUsi/Caj/gfzzblBcCE5sRHV/AsjuCmxWrte2TNGSYuCeCq+0Q==}
@@ -6239,12 +6269,30 @@ snapshots:
 
   '@secretlint/resolver@13.0.2': {}
 
+  '@secretlint/secretlint-rule-pattern@13.0.2':
+    dependencies:
+      '@secretlint/tester': 13.0.2
+      '@secretlint/types': 13.0.2
+      '@textlint/regexp-string-matcher': 2.0.2
+      micromatch: 4.0.8
+    transitivePeerDependencies:
+      - supports-color
+
   '@secretlint/secretlint-rule-preset-recommend@13.0.2': {}
 
   '@secretlint/source-creator@13.0.2':
     dependencies:
       '@secretlint/types': 13.0.2
       istextorbinary: 9.5.0
+
+  '@secretlint/tester@13.0.2':
+    dependencies:
+      '@secretlint/config-loader': 13.0.2
+      '@secretlint/core': 13.0.2
+      '@secretlint/source-creator': 13.0.2
+      '@secretlint/types': 13.0.2
+    transitivePeerDependencies:
+      - supports-color
 
   '@secretlint/types@13.0.2': {}
 
@@ -6392,6 +6440,13 @@ snapshots:
       - supports-color
 
   '@textlint/module-interop@15.7.1': {}
+
+  '@textlint/regexp-string-matcher@2.0.2':
+    dependencies:
+      escape-string-regexp: 4.0.0
+      lodash.sortby: 4.7.0
+      lodash.uniq: 4.5.0
+      lodash.uniqwith: 4.5.0
 
   '@textlint/resolver@15.7.1': {}
 
@@ -7120,6 +7175,8 @@ snapshots:
 
   escape-html@1.0.3: {}
 
+  escape-string-regexp@4.0.0: {}
+
   esprima@4.0.1: {}
 
   estree-walker@3.0.3:
@@ -7670,6 +7727,10 @@ snapshots:
   lodash.startcase@4.4.0: {}
 
   lodash.truncate@4.4.2: {}
+
+  lodash.uniq@4.5.0: {}
+
+  lodash.uniqwith@4.5.0: {}
 
   lodash@4.18.1: {}
 
