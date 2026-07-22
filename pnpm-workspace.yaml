@@ -25,6 +25,8 @@ catalog:
   "@octokit/plugin-paginate-graphql": 6.0.0
   "@octokit/plugin-retry": 8.1.0
   "@octokit/plugin-throttling": 11.0.3
+  # Also pinned in `overrides` below (a pnpm override wins unconditionally, so a
+  # bump here alone is silently ignored) — keep the two in sync.
   "@hono/node-server": 2.0.10
   "@libsql/client": 0.17.4
   "@modelcontextprotocol/sdk": 1.29.0
