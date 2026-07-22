@@ -41,7 +41,30 @@ async function getEngine(): Promise<Awaited<ReturnType<typeof createEngine>>> {
     // the unrelated `sourceContent` field, which this module never reads).
     maskSecrets: true,
     configFileJSON: {
-      rules: [{ id: "@secretlint/secretlint-rule-preset-recommend" }],
+      rules: [
+        { id: "@secretlint/secretlint-rule-preset-recommend" },
+        // Coverage boundary (deliberate, not a guarantee): the recommend preset
+        // is pattern-based (AWS, GCP, private key, basic-auth URL, Slack, npm,
+        // SendGrid, …) and has NO entropy rule, so a bare high-entropy secret
+        // with no recognizable prefix/keyword passes this runtime scan. The
+        // entropy backstop lives in CI/pre-commit (gitleaks `generic-api-key`,
+        // ci.yml). A blanket entropy rule is intentionally NOT added here: this
+        // scanner also gates canonical writes (rejected outright on a finding)
+        // and checkpoint redaction (fields blanked wholesale), so a high
+        // false-positive rate would reject legitimate content — a real
+        // operability cost. Instead we add a targeted pattern for the one
+        // known high-value in-scope token shape: iroha's own session token
+        // (`ist_<43 base64url>`, checkpoint.ts `sessionTokenSchema`), which must
+        // never reach a canonical file or a persisted checkpoint free-text
+        // field. `maskSecrets` keeps the matched token out of the finding
+        // message (verified). See audit issue #43 / decision-log.
+        {
+          id: "@secretlint/secretlint-rule-pattern",
+          options: {
+            patterns: [{ name: "iroha session token", patterns: ["/ist_[A-Za-z0-9_-]{43}/"] }],
+          },
+        },
+      ],
     },
   });
   try {

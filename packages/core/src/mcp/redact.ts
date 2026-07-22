@@ -73,9 +73,12 @@ export async function redactStringArray(
 }
 
 /**
- * Scans a reference's free-text `ref` and `url`. A `url` is a prime credential
- * carrier (userinfo, presigned-URL signatures), so it is scanned and, if
- * flagged, replaced with a still-valid placeholder URL.
+ * Scans a reference's free-text `ref`, `url`, and `path`. A `url` is a prime
+ * credential carrier (userinfo, presigned-URL signatures), so it is scanned and,
+ * if flagged, replaced with a still-valid placeholder URL. `path` is a
+ * `relativePath` — which rejects only absolute/drive/`..` values and still
+ * accepts a credential-shaped substring (e.g. `config/x-https://u:tok@h/y`,
+ * verified) — so it is scanned too, not assumed safe.
  */
 export async function redactReference(
   reference: Reference,
@@ -104,16 +107,30 @@ export async function redactReference(
     }
   }
 
+  if (reference.path !== undefined) {
+    const path = await redactField(`${prefix}.path`, reference.path);
+    if (!path.ok) {
+      return err(path.error);
+    }
+    next.path = path.value.value;
+    if (path.value.redaction) {
+      redactions.push(path.value.redaction);
+    }
+  }
+
   return ok({ reference: next, redactions });
 }
 
 /**
- * Redacts every free-text field of a proposal — the prose (`title`/`summary`/
- * `body`), the `scope.symbols`, the `guard.tools`/`guard.denyCommands` (which
- * are exactly where a secret-bearing command would live), and each source's
- * `ref`/`url`. The remaining fields are not scanned because their formats
- * cannot carry a credential: `labels` (`[a-z0-9-]`), `scope.paths`/`guard.paths`
- * (relative paths), `scope.languages`, and the enum `type`/`enforcement` fields.
+ * Redacts every unconstrained free-text field of a proposal: the prose
+ * (`title`/`summary`/`body`), `scope.symbols`, `scope.paths`, the `guard.tools`/
+ * `guard.paths`/`guard.denyCommands`, each `relations[]` edge's `type`/`target`,
+ * and each source's `ref`/`url`/`path`. A relative-path field is NOT safe to
+ * skip: `relativePathSchema` rejects only absolute/drive/`..` values, so it
+ * still accepts a credential-shaped substring (e.g. `config/x-https://u:tok@h/y`,
+ * verified). The only fields left unscanned are the ones whose character set
+ * genuinely cannot express a credential: `labels` (`[a-z0-9]+(?:-[a-z0-9]+)*`),
+ * `scope.languages` (`[a-z0-9+#.-]{1,32}`), and the enum `type`/`enforcement`.
  */
 export async function redactProposal(
   proposal: KnowledgeProposal,
@@ -137,8 +154,16 @@ export async function redactProposal(
   if (!symbols.ok) {
     return err(symbols.error);
   }
-  redacted.scope = { ...proposal.scope, symbols: symbols.value.values };
-  redactions.push(...symbols.value.redactions);
+  const scopePaths = await redactStringArray(`${prefix}.scope.paths`, proposal.scope.paths);
+  if (!scopePaths.ok) {
+    return err(scopePaths.error);
+  }
+  redacted.scope = {
+    ...proposal.scope,
+    paths: scopePaths.value.values,
+    symbols: symbols.value.values,
+  };
+  redactions.push(...scopePaths.value.redactions, ...symbols.value.redactions);
 
   if (proposal.guard !== undefined) {
     const tools = await redactStringArray(`${prefix}.guard.tools`, proposal.guard.tools);
@@ -146,7 +171,12 @@ export async function redactProposal(
       return err(tools.error);
     }
     redactions.push(...tools.value.redactions);
-    const guard = { ...proposal.guard, tools: tools.value.values };
+    const paths = await redactStringArray(`${prefix}.guard.paths`, proposal.guard.paths);
+    if (!paths.ok) {
+      return err(paths.error);
+    }
+    redactions.push(...paths.value.redactions);
+    const guard = { ...proposal.guard, tools: tools.value.values, paths: paths.value.values };
     if (proposal.guard.denyCommands !== undefined) {
       const denyCommands = await redactStringArray(
         `${prefix}.guard.denyCommands`,
@@ -171,6 +201,28 @@ export async function redactProposal(
     redactions.push(...result.value.redactions);
   }
   redacted.sources = sources;
+
+  if (proposal.relations !== undefined) {
+    const relations: NonNullable<KnowledgeProposal["relations"]> = [];
+    for (const [index, relation] of proposal.relations.entries()) {
+      const type = await redactField(`${prefix}.relations[${index}].type`, relation.type);
+      if (!type.ok) {
+        return err(type.error);
+      }
+      if (type.value.redaction) {
+        redactions.push(type.value.redaction);
+      }
+      const target = await redactField(`${prefix}.relations[${index}].target`, relation.target);
+      if (!target.ok) {
+        return err(target.error);
+      }
+      if (target.value.redaction) {
+        redactions.push(target.value.redaction);
+      }
+      relations.push({ type: type.value.value, target: target.value.value });
+    }
+    redacted.relations = relations;
+  }
 
   return ok({ proposal: redacted, redactions });
 }

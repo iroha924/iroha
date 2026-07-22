@@ -29,6 +29,35 @@ describe("scanForSecrets", () => {
       expect(JSON.stringify(result.value)).not.toContain(base64Body);
     }
   });
+
+  it("detects an iroha session token (ist_) via the targeted pattern rule", async () => {
+    // The recommend preset has no rule for iroha's own `ist_<43 base64url>`
+    // session token (checkpoint.ts `sessionTokenSchema`); the added
+    // secretlint-rule-pattern entry closes that specific gap. Goes red without
+    // the pattern rule in the engine config.
+    const token = `ist_${"A".repeat(43)}`;
+    const result = await scanForSecrets(`# Notes\n\nsession: ${token}\n`);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.clean).toBe(false);
+      expect(
+        result.value.findings.some((f) => f.ruleId === "@secretlint/secretlint-rule-pattern"),
+      ).toBe(true);
+      // The finding must never carry the raw token value (maskSecrets).
+      expect(result.value.findings.every((f) => !f.message.includes(token))).toBe(true);
+      expect(JSON.stringify(result.value)).not.toContain(token);
+    }
+  });
+
+  it("does not flag an ist_-prefixed string that is too short to be a token", async () => {
+    // Guards against over-matching: the `{43}` length is exact, so a 42-char
+    // suffix must not trip the rule (no blanket entropy false-positive).
+    const result = await scanForSecrets(`# Notes\n\nist_${"A".repeat(42)}\n`);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.clean).toBe(true);
+    }
+  });
 });
 
 describe("scanForSecrets engine retry", () => {

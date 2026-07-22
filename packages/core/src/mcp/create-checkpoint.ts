@@ -92,6 +92,19 @@ async function redactCheckpoint(
       }
       next.symbol = symbol.value.value;
     }
+    // `file` is a `relativePath` (checkpoint.ts) — same unconstrained free-text
+    // class as `change`/`symbol` here and `scope.paths` in a proposal, so it is
+    // scanned too rather than passed through verbatim.
+    if (item.file !== undefined) {
+      const file = await redactField(`implementation[${index}].file`, item.file);
+      if (!file.ok) {
+        return err(file.error);
+      }
+      if (file.value.redaction) {
+        redactions.push(file.value.redaction);
+      }
+      next.file = file.value.value;
+    }
     implementation.push(next);
   }
 
