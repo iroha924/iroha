@@ -396,19 +396,35 @@ describe("syncCanonicalToDatabase", () => {
     expect(edges).toContain(`human:${idC}`); // other source → untouched
   });
 
-  it("tiers authority below 100 for a superseded document", async () => {
+  it("tiers authority below 100 by lifecycle status, at or above the search floor", async () => {
     await setup();
     if (!db || !canonicalDir) return;
-    const id = makeTypedId("dec", CLOCK, new CryptoRandomSource());
-    const doc = decisionCandidate(id, "Retired decision", 1);
-    doc.frontmatter.status = "superseded";
-    await writeCanonicalDocument(doc, canonicalDir, new CryptoRandomSource());
-    await syncCanonicalToDatabase(db, repositoryId, canonicalDir, CLOCK, new CryptoRandomSource());
+    // Both non-approved tiers stay >= DEFAULT_MINIMUM_AUTHORITY (60) so they are
+    // not excluded from default search after the candidate cap; they rank lower
+    // only via the missing 80+ boost.
+    for (const [status, expected] of [
+      ["superseded", 70],
+      ["archived", 60],
+    ] as const) {
+      const id = makeTypedId("dec", CLOCK, new CryptoRandomSource());
+      const doc = decisionCandidate(id, `${status} decision`, 1);
+      doc.frontmatter.status = status;
+      await writeCanonicalDocument(doc, canonicalDir, new CryptoRandomSource());
+      await syncCanonicalToDatabase(
+        db,
+        repositoryId,
+        canonicalDir,
+        CLOCK,
+        new CryptoRandomSource(),
+      );
 
-    const entity = await getEntityById(db, id);
-    expect(entity.ok && entity.value?.authority).toBe(60);
-    const searchDoc = await getSearchDocumentByEntityId(db, id);
-    expect(searchDoc.ok && searchDoc.value?.authority).toBe(60);
+      const entity = await getEntityById(db, id);
+      expect(entity.ok && entity.value?.authority, `entity authority for ${status}`).toBe(expected);
+      const searchDoc = await getSearchDocumentByEntityId(db, id);
+      expect(searchDoc.ok && searchDoc.value?.authority, `sdoc authority for ${status}`).toBe(
+        expected,
+      );
+    }
   });
 
   it("records a dirty marker for a relation whose target does not exist locally", async () => {

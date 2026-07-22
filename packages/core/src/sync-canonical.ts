@@ -36,19 +36,22 @@ import {
 /**
  * database-schema.md §6: approved canonical = 100 is the only documented tier. A
  * superseded/archived document must not tie current knowledge in ranking, so it is
- * tiered below (decision-log ID-048): `superseded` stays visible but unboosted at
- * the `DEFAULT_MINIMUM_AUTHORITY` floor (60); `archived` drops below it (40) — a
- * retired doc excluded from default search, findable only with an explicit lower
- * `minimumAuthority`. Applied to both the entity and search_document authority.
+ * tiered below (decision-log ID-048): `superseded = 70`, `archived = 60`. Both stay
+ * **at or above** the `DEFAULT_MINIMUM_AUTHORITY` floor (60) on purpose — dropping
+ * a status below it would exclude those rows only *after* the top-N FTS/vector
+ * candidate cap, so a burst of low-authority matches could starve the candidate set
+ * of visible knowledge. Being below the 80-99/100 boost buckets is enough to rank
+ * them under current knowledge without hiding them. Applied to both the entity and
+ * the search_document authority (the two ranking paths read different columns).
  */
 function authorityForStatus(status: "approved" | "superseded" | "archived"): number {
   switch (status) {
     case "approved":
       return 100;
     case "superseded":
-      return 60;
+      return 70;
     case "archived":
-      return 40;
+      return 60;
   }
 }
 const SYNC_PROVIDER = "canonical";
