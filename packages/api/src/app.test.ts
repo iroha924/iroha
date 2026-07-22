@@ -318,6 +318,52 @@ describe("dashboard API", () => {
     expect(raw.status).toBe(404);
   });
 
+  it("filters the knowledge list by type and status, and the candidate queue by status", async () => {
+    const repo = await setupApiRepo();
+    dir = repo.dir;
+    const { app } = makeApp(repo.dir);
+    const cookie = await exchange(app);
+    const { candidateId, revisionToken } = await seedDecision(repo.dbPath, repo.repositoryId);
+
+    const items = async (res: Response): Promise<{ id: string; type?: string }[]> =>
+      ((await res.json()) as { data: { items: { id: string; type?: string }[] } }).data.items;
+
+    // Pending by default; the approved status tab is empty until approval.
+    expect((await items(await get(app, "/api/v1/candidates?status=pending", cookie))).length).toBe(
+      1,
+    );
+    expect((await items(await get(app, "/api/v1/candidates?status=approved", cookie))).length).toBe(
+      0,
+    );
+
+    const approved = await post(app, `/api/v1/candidates/${candidateId}/approve`, cookie, {
+      revisionToken,
+      actor: { provider: "git", displayName: "Example Reviewer" },
+    });
+    expect(approved.status).toBe(200);
+
+    // Review history: the approved status tab now surfaces the candidate.
+    const approvedNow = await items(await get(app, "/api/v1/candidates?status=approved", cookie));
+    expect(approvedNow.map((i) => i.id)).toContain(candidateId);
+
+    // Knowledge default lists the approved decision.
+    const all = await items(await get(app, "/api/v1/knowledge", cookie));
+    expect(all.length).toBe(1);
+    expect(all[0]?.type).toBe("decision");
+
+    // `type` narrows: the matching type includes, a non-matching type excludes.
+    expect((await items(await get(app, "/api/v1/knowledge?type=decision", cookie))).length).toBe(1);
+    expect((await items(await get(app, "/api/v1/knowledge?type=rule", cookie))).length).toBe(0);
+
+    // `status` narrows: archived excludes the approved decision.
+    expect((await items(await get(app, "/api/v1/knowledge?status=archived", cookie))).length).toBe(
+      0,
+    );
+
+    // An out-of-enum `type` is ignored (never applied, never widened to non-knowledge).
+    expect((await items(await get(app, "/api/v1/knowledge?type=session", cookie))).length).toBe(1);
+  });
+
   it("forwards search filters to hybrid retrieval, rejects unknown filter keys, and has no suggestions route", async () => {
     const repo = await setupApiRepo();
     dir = repo.dir;

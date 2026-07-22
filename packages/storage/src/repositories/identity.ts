@@ -490,6 +490,12 @@ const KNOWLEDGE_ENTITY_TYPES = [
 export interface ListKnowledgeEntitiesFilter {
   /** Entity statuses to include; defaults to `["approved"]`. */
   statuses?: string[];
+  /**
+   * Knowledge `entity_type`s to include; defaults to all seven. Values outside
+   * the knowledge set are dropped, so the "knowledge documents only" invariant
+   * holds even if a caller passes `session_summary`.
+   */
+  entityTypes?: string[];
   /** Page size; the caller passes `limit + 1` to detect a next page. */
   limit: number;
   /** Keyset cursor: return rows strictly older than this `(updated_at, id)` pair. */
@@ -509,14 +515,24 @@ export async function listKnowledgeEntities(
   filter: ListKnowledgeEntitiesFilter,
 ): Promise<Result<EntityRow[], IrohaError>> {
   const statuses = filter.statuses ?? ["approved"];
-  const typePlaceholders = KNOWLEDGE_ENTITY_TYPES.map(() => "?").join(", ");
+  // Intersect the requested types with the knowledge set (never widen); an empty
+  // or absent request means "all seven".
+  const requestedTypes = filter.entityTypes?.filter(
+    (t): t is (typeof KNOWLEDGE_ENTITY_TYPES)[number] =>
+      (KNOWLEDGE_ENTITY_TYPES as readonly string[]).includes(t),
+  );
+  const entityTypes =
+    requestedTypes !== undefined && requestedTypes.length > 0
+      ? requestedTypes
+      : KNOWLEDGE_ENTITY_TYPES;
+  const typePlaceholders = entityTypes.map(() => "?").join(", ");
   const statusPlaceholders = statuses.map(() => "?").join(", ");
   const conditions = [
     "repository_id = ?",
     `entity_type IN (${typePlaceholders})`,
     `status IN (${statusPlaceholders})`,
   ];
-  const args: Array<string | number> = [repositoryId, ...KNOWLEDGE_ENTITY_TYPES, ...statuses];
+  const args: Array<string | number> = [repositoryId, ...entityTypes, ...statuses];
   if (filter.beforeUpdatedAt !== undefined && filter.beforeId !== undefined) {
     conditions.push("(updated_at, id) < (?, ?)");
     args.push(filter.beforeUpdatedAt, filter.beforeId);

@@ -385,6 +385,20 @@ export function createApp(config: AppConfig) {
           ...useCaseCtx,
           ...numOpt("limit", c.req.query("limit")),
           ...strOpt("cursor", c.req.query("cursor")),
+          ...enumArrOpt("statuses", c.req.queries("status"), [
+            "approved",
+            "superseded",
+            "archived",
+          ]),
+          ...enumArrOpt("entityTypes", c.req.queries("type"), [
+            "decision",
+            "rule",
+            "concept",
+            "insight",
+            "incident",
+            "pattern",
+            "review_learning",
+          ]),
         }),
       ),
     )
@@ -507,6 +521,17 @@ function enumOpt<T extends string>(
   return value !== undefined && (allowed as readonly string[]).includes(value)
     ? { [key]: value as T }
     : {};
+}
+
+/** Multi-value filter: keeps only allowed values from a repeated query param, omitting the key when none remain. */
+function enumArrOpt<T extends string>(
+  key: string,
+  values: string[] | undefined,
+  allowed: readonly T[],
+): Record<string, T[]> {
+  if (values === undefined) return {};
+  const filtered = values.filter((v): v is T => (allowed as readonly string[]).includes(v));
+  return filtered.length > 0 ? { [key]: filtered } : {};
 }
 
 async function readJson<T extends z.ZodType>(

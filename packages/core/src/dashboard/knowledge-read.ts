@@ -31,6 +31,7 @@ export interface ListKnowledgeInput {
   limit?: number;
   cursor?: string;
   statuses?: string[];
+  entityTypes?: string[];
 }
 
 /** Paginated approved-knowledge list (`GET /api/v1/knowledge`). */
@@ -53,6 +54,7 @@ export async function listKnowledge(
       const rows = await listKnowledgeEntities(ctx.db, ctx.repo.repositoryId, {
         limit: pageSize + 1,
         ...(input.statuses !== undefined ? { statuses: input.statuses } : {}),
+        ...(input.entityTypes !== undefined ? { entityTypes: input.entityTypes } : {}),
         ...(before !== undefined ? { beforeUpdatedAt: before.key, beforeId: before.id } : {}),
       });
       if (!rows.ok) {

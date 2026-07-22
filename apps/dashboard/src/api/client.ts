@@ -44,6 +44,44 @@ export interface SearchOptions {
   filters?: SearchFilters;
 }
 
+/** Review-queue statuses the API's `status` filter accepts (mirrors `CandidateStatus`). */
+export type CandidateStatusFilter = "pending" | "approved" | "rejected" | "superseded";
+/** Knowledge entity statuses the API's `status` filter accepts (mirrors the canonical status enum). */
+export type KnowledgeStatusFilter = "approved" | "superseded" | "archived";
+/** Agent platforms the API's Session `platform` filter accepts. */
+export type SessionPlatformFilter = "claude_code" | "codex";
+
+export interface CandidateListParams {
+  cursor?: string;
+  status?: CandidateStatusFilter;
+}
+export interface KnowledgeListParams {
+  cursor?: string;
+  statuses?: KnowledgeStatusFilter[];
+  types?: string[];
+}
+export interface SessionListParams {
+  cursor?: string;
+  platform?: SessionPlatformFilter;
+  from?: string;
+  to?: string;
+}
+
+/** Builds a query string, appending array values as repeated params; returns "" when empty. */
+function queryString(params: Record<string, string | string[] | undefined>): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined) continue;
+    if (Array.isArray(value)) {
+      for (const v of value) search.append(key, v);
+    } else {
+      search.append(key, value);
+    }
+  }
+  const s = search.toString();
+  return s.length > 0 ? `?${s}` : "";
+}
+
 /** A failed API envelope surfaced as a throwable, preserving the stable code and field errors. */
 export class ApiClientError extends Error {
   readonly code: string;
@@ -96,10 +134,10 @@ export const api = {
   bootstrap: () => request<BootstrapData>("GET", "/v1/bootstrap"),
   overview: () => request<OverviewData>("GET", "/v1/overview"),
 
-  candidates: (cursor?: string) =>
+  candidates: (params: CandidateListParams = {}) =>
     request<CandidateQueuePage>(
       "GET",
-      `/v1/candidates${cursor !== undefined ? `?cursor=${encodeURIComponent(cursor)}` : ""}`,
+      `/v1/candidates${queryString({ cursor: params.cursor, status: params.status })}`,
     ),
   candidate: (id: string) => request<CandidateDetailData>("GET", `/v1/candidates/${id}`),
   editCandidate: (id: string, revisionToken: string, draft: unknown) =>
@@ -118,20 +156,25 @@ export const api = {
   supersede: (id: string, revisionToken: string) =>
     request<CandidateStatusChangeData>("POST", `/v1/candidates/${id}/supersede`, { revisionToken }),
 
-  knowledge: (cursor?: string) =>
+  knowledge: (params: KnowledgeListParams = {}) =>
     request<KnowledgeListPage>(
       "GET",
-      `/v1/knowledge${cursor !== undefined ? `?cursor=${encodeURIComponent(cursor)}` : ""}`,
+      `/v1/knowledge${queryString({ cursor: params.cursor, status: params.statuses, type: params.types })}`,
     ),
   knowledgeDetail: (id: string) => request<KnowledgeDetailData>("GET", `/v1/knowledge/${id}`),
 
   search: (query: string, options: SearchOptions = {}) =>
     request<McpSearchData>("POST", "/v1/search", { query, ...options }),
 
-  sessions: (cursor?: string) =>
+  sessions: (params: SessionListParams = {}) =>
     request<SessionListPage>(
       "GET",
-      `/v1/sessions${cursor !== undefined ? `?cursor=${encodeURIComponent(cursor)}` : ""}`,
+      `/v1/sessions${queryString({
+        cursor: params.cursor,
+        platform: params.platform,
+        from: params.from,
+        to: params.to,
+      })}`,
     ),
   sessionDetail: (id: string) => request<SessionDetailData>("GET", `/v1/sessions/${id}`),
   runDetail: (sessionId: string, runId: string) =>
