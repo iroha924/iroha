@@ -17,7 +17,8 @@
     "build": "tsdown src/index.ts --dts",
     "lint": "biome check src",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests --exclude \"**/*.contract.test.ts\"",
+    "test:contracts": "vitest run contract.test"
   },
   "dependencies": {
     "zod": "catalog:"
