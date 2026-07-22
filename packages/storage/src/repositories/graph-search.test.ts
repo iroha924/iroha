@@ -115,6 +115,26 @@ describe("graph-search repositories", () => {
     }
   });
 
+  it("seeks both directions of getNeighbors via indexes, never a full relations scan", async () => {
+    const opened = await openMigratedTestDb();
+    tempDir = opened.dir;
+    db = opened.db;
+
+    // The exact query getNeighbors issues for the default direction "both".
+    // Before migration 003 (migrations/003_relations_reverse_index.sql) added
+    // the reverse `(to_entity_id, relation_type)` index, this fell back to a
+    // full `SCAN relations` — both indexes migration 001 declared led with the
+    // `repository_id` this predicate never constrains. Now it is a two-index
+    // MULTI-INDEX OR (the `from`-side UNIQUE autoindex + the reverse index).
+    const plan = await db.execute({
+      sql: "EXPLAIN QUERY PLAN SELECT * FROM relations WHERE (from_entity_id = ? OR to_entity_id = ?) ORDER BY id",
+      args: ["dec_00000000000000000000000x1", "dec_00000000000000000000000x1"],
+    });
+    const planText = JSON.stringify(plan.rows);
+    expect(planText).toContain("idx_relations_to_entity");
+    expect(planText).not.toContain("SCAN relations");
+  });
+
   it("finds neighbors filtered by direction and relation type", async () => {
     const opened = await openMigratedTestDb();
     tempDir = opened.dir;

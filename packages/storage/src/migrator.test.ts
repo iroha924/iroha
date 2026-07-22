@@ -51,6 +51,7 @@ describe("runMigrations", () => {
       expect(result.value).toEqual([
         { version: 1, name: "initial" },
         { version: 2, name: "session_tokens" },
+        { version: 3, name: "relations_reverse_index" },
       ]);
     }
 
@@ -62,12 +63,13 @@ describe("runMigrations", () => {
     const migrations = await opened.value.execute(
       "SELECT version, name, checksum FROM schema_migrations ORDER BY version",
     );
-    expect(migrations.rows.length).toBe(2);
+    expect(migrations.rows.length).toBe(3);
     expect(migrations.rows[0]?.version).toBe(1);
     expect(migrations.rows[1]?.version).toBe(2);
+    expect(migrations.rows[2]?.version).toBe(3);
 
     const userVersion = await opened.value.execute("PRAGMA user_version");
-    expect(userVersion.rows[0]?.user_version).toBe(2);
+    expect(userVersion.rows[0]?.user_version).toBe(3);
   });
 
   it("is a no-op the second time it runs against an already-migrated database", async () => {
@@ -116,8 +118,8 @@ describe("runMigrations", () => {
     const migrationsDir = await copyMigrationsDir();
     tempDirs.push(migrationsDir);
     await writeFile(
-      join(migrationsDir, "003_add_synthetic_table.sql"),
-      "BEGIN IMMEDIATE;\nCREATE TABLE synthetic_two (id INTEGER PRIMARY KEY);\nPRAGMA user_version = 3;\nCOMMIT;\n",
+      join(migrationsDir, "004_add_synthetic_table.sql"),
+      "BEGIN IMMEDIATE;\nCREATE TABLE synthetic_two (id INTEGER PRIMARY KEY);\nPRAGMA user_version = 4;\nCOMMIT;\n",
       "utf8",
     );
     const { dir, dbPath } = await createTempDbPath();
@@ -130,14 +132,14 @@ describe("runMigrations", () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.value.map((m) => m.version)).toEqual([1, 2, 3]);
+      expect(result.value.map((m) => m.version)).toEqual([1, 2, 3, 4]);
     }
     const userVersion = await opened.value.execute("PRAGMA user_version");
-    expect(userVersion.rows[0]?.user_version).toBe(3);
+    expect(userVersion.rows[0]?.user_version).toBe(4);
     const migrations = await opened.value.execute(
       "SELECT version FROM schema_migrations ORDER BY version",
     );
-    expect(migrations.rows.map((r) => r.version)).toEqual([1, 2, 3]);
+    expect(migrations.rows.map((r) => r.version)).toEqual([1, 2, 3, 4]);
   });
 
   it("backs up the database file before applying a migration to an existing database", async () => {
@@ -152,8 +154,8 @@ describe("runMigrations", () => {
     await runMigrations(opened.value, migrationsDir, dbPath, CLOCK);
 
     await writeFile(
-      join(migrationsDir, "003_add_synthetic_table.sql"),
-      "BEGIN IMMEDIATE;\nCREATE TABLE synthetic_two (id INTEGER PRIMARY KEY);\nPRAGMA user_version = 3;\nCOMMIT;\n",
+      join(migrationsDir, "004_add_synthetic_table.sql"),
+      "BEGIN IMMEDIATE;\nCREATE TABLE synthetic_two (id INTEGER PRIMARY KEY);\nPRAGMA user_version = 4;\nCOMMIT;\n",
       "utf8",
     );
 
@@ -175,8 +177,8 @@ describe("runMigrations", () => {
     await runMigrations(opened.value, migrationsDir, dbPath, CLOCK);
 
     await writeFile(
-      join(migrationsDir, "003_add_synthetic_table.sql"),
-      "BEGIN IMMEDIATE;\nCREATE TABLE synthetic_two (id INTEGER PRIMARY KEY);\nPRAGMA user_version = 3;\nCOMMIT;\n",
+      join(migrationsDir, "004_add_synthetic_table.sql"),
+      "BEGIN IMMEDIATE;\nCREATE TABLE synthetic_two (id INTEGER PRIMARY KEY);\nPRAGMA user_version = 4;\nCOMMIT;\n",
       "utf8",
     );
 
@@ -215,8 +217,8 @@ describe("runMigrations", () => {
     if (result.ok) {
       // Version 1 was backfilled (already applied by the simulated crash), not
       // re-executed — re-running its DDL would fail with "table already exists".
-      // Only the genuinely-pending version 2 was newly applied this call.
-      expect(result.value.map((m) => m.version)).toEqual([2]);
+      // Only the genuinely-pending versions 2 and 3 were newly applied this call.
+      expect(result.value.map((m) => m.version)).toEqual([2, 3]);
     }
     const afterRows = await opened.value.execute(
       "SELECT version, checksum FROM schema_migrations WHERE version = 1",
@@ -228,8 +230,8 @@ describe("runMigrations", () => {
     const newerMigrationsDir = await copyMigrationsDir();
     tempDirs.push(newerMigrationsDir);
     await writeFile(
-      join(newerMigrationsDir, "003_add_synthetic_table.sql"),
-      "BEGIN IMMEDIATE;\nCREATE TABLE synthetic_two (id INTEGER PRIMARY KEY);\nPRAGMA user_version = 3;\nCOMMIT;\n",
+      join(newerMigrationsDir, "004_add_synthetic_table.sql"),
+      "BEGIN IMMEDIATE;\nCREATE TABLE synthetic_two (id INTEGER PRIMARY KEY);\nPRAGMA user_version = 4;\nCOMMIT;\n",
       "utf8",
     );
     const { dir, dbPath } = await createTempDbPath();
@@ -238,13 +240,13 @@ describe("runMigrations", () => {
     if (!opened.ok) throw new Error("failed to open database");
     dbs.push(opened.value);
 
-    // A newer build applies all migrations, reaching user_version 3.
+    // A newer build applies all migrations, reaching user_version 4.
     const first = await runMigrations(opened.value, newerMigrationsDir, dbPath, CLOCK);
     expect(first.ok).toBe(true);
 
-    // A downgraded build ships only the real migrations (001, 002), not the
-    // synthetic 003 above — nothing is "pending" from its point of view, but
-    // its own repository code was written against version 2, not the version 3
+    // A downgraded build ships only the real migrations (001, 002, 003), not the
+    // synthetic 004 above — nothing is "pending" from its point of view, but
+    // its own repository code was written against version 3, not the version 4
     // this database is actually at.
     const olderMigrationsDir = await copyMigrationsDir();
     tempDirs.push(olderMigrationsDir);
@@ -274,23 +276,23 @@ describe("runMigrations", () => {
     const first = await runMigrations(opened.value, migrationsDir, dbPath, CLOCK);
     expect(first.ok).toBe(true);
     const userVersionAfterFirst = await opened.value.execute("PRAGMA user_version");
-    expect(userVersionAfterFirst.rows[0]?.user_version).toBe(2);
+    expect(userVersionAfterFirst.rows[0]?.user_version).toBe(3);
 
-    // Simulate schema_migrations already recording version 3 (e.g. a
+    // Simulate schema_migrations already recording version 4 (e.g. a
     // concurrent/other process's bookkeeping insert) without PRAGMA
-    // user_version having advanced to 3 yet.
+    // user_version having advanced to 4 yet.
     await opened.value.execute({
       sql: "INSERT INTO schema_migrations (version, name, checksum, applied_at) VALUES (?, ?, ?, ?)",
       args: [
-        3,
+        4,
         "orphaned",
         "sha256:0000000000000000000000000000000000000000000000000000000000000000",
         CLOCK.now().toISOString(),
       ],
     });
 
-    // This build's migrations directory only has versions 1 and 2 — it does
-    // not even know version 3 exists.
+    // This build's migrations directory only has versions 1, 2, and 3 — it does
+    // not even know version 4 exists.
     const result = await runMigrations(opened.value, migrationsDir, dbPath, CLOCK);
 
     expect(result.ok).toBe(false);

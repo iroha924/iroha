@@ -43,7 +43,7 @@ describe("iroha sync applies pending migrations", () => {
     expect(init.ok).toBe(true);
 
     // A plain (non-rebuild) `iroha sync` with the current migrations dir must
-    // apply the pending 002 migration.
+    // apply every pending migration (002 and 003).
     const synced = await runSync(repoDir, MIGRATIONS_DIR);
     expect(synced.ok).toBe(true);
 
@@ -53,7 +53,7 @@ describe("iroha sync applies pending migrations", () => {
     if (!opened.ok) throw new Error("db not opened");
     try {
       const userVersion = await opened.value.execute("PRAGMA user_version");
-      expect(userVersion.rows[0]?.user_version).toBe(2);
+      expect(userVersion.rows[0]?.user_version).toBe(3);
       const table = await opened.value.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'session_tokens'",
       );
