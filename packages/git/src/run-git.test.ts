@@ -16,6 +16,10 @@ describe("stripKnownDangerousEnvVars", () => {
       GIT_DIR: "/another/repo/.git",
       Git_Trace: "/tmp/trace.log",
       gIt_cEiLiNg_DiReCtOrIeS: "/some/repo",
+      GIT_CONFIG_GLOBAL: "/some/other/gitconfig",
+      git_config_system: "/etc/other/gitconfig",
+      GIT_CONFIG_NOSYSTEM: "1",
+      XDG_CONFIG_HOME: "/some/other/xdg",
       language: "ja_JP.UTF-8",
       PATH: "/usr/bin",
     });
@@ -178,17 +182,19 @@ describe("runGit", () => {
   it("redacts an absolute path Git itself embeds in stderr, not just credentialed URLs", async () => {
     const configDir = await mkdtemp(join(tmpdir(), "iroha-git-badconfig-test-"));
     const badConfigFile = join(configDir, "gitconfig");
-    const previousConfigGlobal = process.env.GIT_CONFIG_GLOBAL;
     try {
-      // Confirmed by manual reproduction: a malformed file referenced via
-      // GIT_CONFIG_GLOBAL makes Git print its own absolute path in stderr
-      // (e.g. "fatal: bad config line 1 in file /tmp/xxx/gitconfig") — a
-      // path Git generated itself, with no credential-URL shape for
-      // redactUrlLikeCredentialsInText alone to catch.
+      // Confirmed by manual reproduction: pointing Git at a malformed config
+      // file makes it print that file's absolute path in stderr (e.g. "fatal:
+      // bad config line 1 in file /tmp/xxx/gitconfig") — a path Git generated
+      // itself, with no credential-URL shape for redactUrlLikeCredentialsInText
+      // alone to catch. The file is supplied via `--file` (an argument runGit
+      // drops from the error entirely, so it can only reach the error through
+      // stderr) rather than GIT_CONFIG_GLOBAL, because runGit now strips that
+      // env var before Git runs — an inherited GIT_CONFIG_GLOBAL can no longer
+      // trigger this (see the "ignores an inherited GIT_CONFIG_GLOBAL" test).
       await writeFile(badConfigFile, "[bad\n", "utf8");
-      process.env.GIT_CONFIG_GLOBAL = badConfigFile;
 
-      const result = await runGit(["rev-parse", "--show-toplevel"], { cwd: repoDir });
+      const result = await runGit(["config", "--file", badConfigFile, "--list"], { cwd: repoDir });
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
@@ -197,12 +203,75 @@ describe("runGit", () => {
         expect(details?.stderr?.includes(configDir)).toBe(false);
       }
     } finally {
+      await removeTempDir(configDir);
+    }
+  });
+
+  it("ignores an inherited GIT_CONFIG_GLOBAL pointing at a malformed config", async () => {
+    const configDir = await mkdtemp(join(tmpdir(), "iroha-git-globalconfig-test-"));
+    const badConfigFile = join(configDir, "gitconfig");
+    const previousConfigGlobal = process.env.GIT_CONFIG_GLOBAL;
+    try {
+      // Confirmed by manual reproduction: with GIT_CONFIG_GLOBAL exported to a
+      // malformed file, `git rev-parse --show-toplevel` reads it and fails
+      // ("fatal: bad config line 1 ..."), whereas with it cleared the same
+      // command succeeds. An ambient GIT_CONFIG_GLOBAL in the parent process
+      // would therefore let a config chosen by something other than the user
+      // redirect Git's behavior; runGit must strip it. This goes red on the
+      // pre-strip code (rev-parse fails instead of succeeding).
+      await writeFile(badConfigFile, "[bad\n", "utf8");
+      process.env.GIT_CONFIG_GLOBAL = badConfigFile;
+
+      const result = await runGit(["rev-parse", "--show-toplevel"], { cwd: repoDir });
+
+      expect(result.ok).toBe(true);
+    } finally {
       if (previousConfigGlobal === undefined) {
         delete process.env.GIT_CONFIG_GLOBAL;
       } else {
         process.env.GIT_CONFIG_GLOBAL = previousConfigGlobal;
       }
       await removeTempDir(configDir);
+    }
+  });
+
+  it("ignores an inherited XDG_CONFIG_HOME pointing at a malformed global config", async () => {
+    const xdgDir = await mkdtemp(join(tmpdir(), "iroha-git-xdg-test-"));
+    const gitConfigDir = join(xdgDir, "git");
+    await mkdir(gitConfigDir);
+    const badConfigFile = join(gitConfigDir, "config");
+    const previousXdg = process.env.XDG_CONFIG_HOME;
+    const previousConfigGlobal = process.env.GIT_CONFIG_GLOBAL;
+    try {
+      // Confirmed by manual reproduction: Git reads its global config from
+      // `$XDG_CONFIG_HOME/git/config`, so an ambient XDG_CONFIG_HOME is the
+      // same "parent environment chooses Git's global config" vector as
+      // GIT_CONFIG_GLOBAL — and once GIT_CONFIG_GLOBAL is cleared Git falls
+      // back to exactly this file. A malformed one makes `git rev-parse
+      // --show-toplevel` fail; runGit must strip XDG_CONFIG_HOME too, or the
+      // GIT_CONFIG_GLOBAL fix is bypassable via this pivot. GIT_CONFIG_GLOBAL
+      // is cleared here so that, on the pre-fix code, Git actually falls back
+      // to XDG instead of an ambient GIT_CONFIG_GLOBAL masking it. This goes
+      // red on code that strips only GIT_CONFIG_GLOBAL.
+      await writeFile(badConfigFile, "[bad\n", "utf8");
+      process.env.XDG_CONFIG_HOME = xdgDir;
+      delete process.env.GIT_CONFIG_GLOBAL;
+
+      const result = await runGit(["rev-parse", "--show-toplevel"], { cwd: repoDir });
+
+      expect(result.ok).toBe(true);
+    } finally {
+      if (previousXdg === undefined) {
+        delete process.env.XDG_CONFIG_HOME;
+      } else {
+        process.env.XDG_CONFIG_HOME = previousXdg;
+      }
+      if (previousConfigGlobal === undefined) {
+        delete process.env.GIT_CONFIG_GLOBAL;
+      } else {
+        process.env.GIT_CONFIG_GLOBAL = previousConfigGlobal;
+      }
+      await removeTempDir(xdgDir);
     }
   });
 

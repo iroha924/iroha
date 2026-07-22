@@ -76,13 +76,44 @@ const GIT_TRACE_ENV_VARS = [
   "GIT_TRACE2_CONFIG_PARAMS",
 ];
 
+// Not part of `git rev-parse --local-env-vars` (that list governs repository
+// *discovery*); these are its config-*resolution* counterpart. An inherited
+// GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM makes Git read a config file chosen by
+// the ambient parent environment instead of the user's real config, and
+// XDG_CONFIG_HOME relocates Git's `$XDG_CONFIG_HOME/git/config` global file to
+// an ambient-chosen directory — the same cwd-context subversion class as
+// GIT_DIR/GIT_CONFIG (already listed above); GIT_CONFIG_NOSYSTEM toggles the
+// same surface. Clearing all of them is safe because HOME is kept: Git falls
+// back to the user's real `~/.gitconfig` and `$HOME/.config/git/config`.
+// Confirmed by manual reproduction that these are siblings, not one variable:
+// with GIT_CONFIG_GLOBAL cleared but an inherited XDG_CONFIG_HOME pointing at a
+// dir whose `git/config` is malformed, `git rev-parse --show-toplevel` still
+// fails reading that file — i.e. stripping only GIT_CONFIG_GLOBAL leaves the
+// XDG pivot open; clearing both, it succeeds. This denylist still cannot strip
+// a config env var Git may add later; replacing it wholesale with an allowlist
+// was deferred (decision-log ID-049) because the allowlist's dropped-variable
+// risk lands on Windows, which is Tier 2 and absent from CI, so the change
+// would ship unvalidated.
+// https://git-scm.com/docs/git-config#ENVIRONMENT
+const GIT_CONFIG_RESOLUTION_ENV_VARS = [
+  "GIT_CONFIG_GLOBAL",
+  "GIT_CONFIG_SYSTEM",
+  "GIT_CONFIG_NOSYSTEM",
+  "XDG_CONFIG_HOME",
+];
+
 // `location.ts`/`remote.ts` pattern-match specific English stderr prefixes
 // ("fatal: not a git repository", "No such remote") to distinguish known
 // conditions from other failures. Git's UI strings are gettext-wrapped and
 // translated under a non-English locale, which would make those matches
 // silently stop working. `LANGUAGE` takes priority over `LC_ALL`/`LANG` for
 // GNU gettext lookup, so it must be stripped too, not just overridden.
-const ALWAYS_STRIPPED_ENV_VARS = [...LOCAL_GIT_ENV_VARS, ...GIT_TRACE_ENV_VARS, "LANGUAGE"];
+const ALWAYS_STRIPPED_ENV_VARS = [
+  ...LOCAL_GIT_ENV_VARS,
+  ...GIT_CONFIG_RESOLUTION_ENV_VARS,
+  ...GIT_TRACE_ENV_VARS,
+  "LANGUAGE",
+];
 
 /**
  * Case-insensitively removes every known-dangerous key from `source`.
