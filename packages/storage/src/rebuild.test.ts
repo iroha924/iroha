@@ -59,8 +59,78 @@ describe("replaceDatabaseAtomically", () => {
     expect(result.ok).toBe(true);
     expect(await readFile(dbPath, "utf8")).toBe("new-content");
     if (result.ok) {
-      expect(await readFile(result.value.backupPath, "utf8")).toBe("old-content");
+      const { backupPath } = result.value;
+      expect(backupPath).not.toBeNull();
+      if (backupPath !== null) {
+        expect(await readFile(backupPath, "utf8")).toBe("old-content");
+      }
     }
+  });
+
+  it("installs the rebuilt sibling with no backup when there is no current database (fresh clone)", async () => {
+    const { dir, dbPath } = await createTempDbPath();
+    tempDir = dir;
+    // No primary database at `dbPath`: the state right after `git clone`, before
+    // any `iroha init` created the git-ignored index.db locally (issue #27).
+    const siblingPath = join(dir, "index.rebuild-abc.db");
+    await writeFile(siblingPath, "new-content", "utf8");
+
+    const result = await replaceDatabaseAtomically(dbPath, siblingPath, CLOCK);
+
+    expect(result.ok).toBe(true);
+    expect(await readFile(dbPath, "utf8")).toBe("new-content");
+    if (result.ok) {
+      expect(result.value.backupPath).toBeNull();
+    }
+    // Nothing to back up, so no timestamped backup file is left behind.
+    const entries = await readdir(dir);
+    expect(entries.some((entry) => entry.includes(".backup-"))).toBe(false);
+  });
+
+  it("removes stale primary -wal/-shm sidecars when bootstrapping with no main database", async () => {
+    const { dir, dbPath } = await createTempDbPath();
+    tempDir = dir;
+    // No primary main file, but stale sidecars linger from a primary that was
+    // partially deleted or removed by an interrupted process (Codex #55). Left
+    // next to the freshly installed database, SQLite would recover this
+    // unrelated WAL on the next open and resurrect old/corrupt local state.
+    await writeFile(`${dbPath}-wal`, "stale-wal", "utf8");
+    await writeFile(`${dbPath}-shm`, "stale-shm", "utf8");
+    const siblingPath = join(dir, "index.rebuild-abc.db");
+    await writeFile(siblingPath, "new-content", "utf8");
+
+    const result = await replaceDatabaseAtomically(dbPath, siblingPath, CLOCK);
+
+    expect(result.ok).toBe(true);
+    expect(await readFile(dbPath, "utf8")).toBe("new-content");
+    if (result.ok) {
+      expect(result.value.backupPath).toBeNull();
+    }
+    // The stale sidecars are gone — nothing left for SQLite to recover.
+    await expect(readFile(`${dbPath}-wal`, "utf8")).rejects.toThrow();
+    await expect(readFile(`${dbPath}-shm`, "utf8")).rejects.toThrow();
+  });
+
+  it("cleans up the promoted database when a bootstrap sidecar move fails", async () => {
+    const { dir, dbPath } = await createTempDbPath();
+    tempDir = dir;
+    // Bootstrap (no primary main file), but the rebuilt sibling has a `-wal`.
+    const siblingPath = join(dir, "index.rebuild-abc.db");
+    await writeFile(siblingPath, "new-content", "utf8");
+    await writeFile(`${siblingPath}-wal`, "new-wal", "utf8");
+    // Pre-create the sibling `-wal`'s destination as a directory so the sidecar
+    // rename onto it fails after the main file has already been promoted — a
+    // real I/O failure, not a mock (see the sibling `restores ... moving it
+    // aside` test for the same technique and its Windows caveat).
+    await mkdir(`${dbPath}-wal`);
+
+    const result = await replaceDatabaseAtomically(dbPath, siblingPath, CLOCK);
+
+    expect(result.ok).toBe(false);
+    // The half-installed primary main file must not survive — the repository
+    // returns to the clean "no local database" state a re-run can bootstrap
+    // from again, rather than a main file missing its WAL data.
+    await expect(readFile(dbPath, "utf8")).rejects.toThrow();
   });
 
   it("restores the original database if a sidecar rename fails while moving it aside", async () => {
@@ -131,8 +201,12 @@ describe("replaceDatabaseAtomically", () => {
     expect(result.ok).toBe(true);
     expect(await readFile(`${dbPath}-wal`, "utf8")).toBe("new-wal");
     if (result.ok) {
-      expect(await readFile(`${result.value.backupPath}-wal`, "utf8")).toBe("old-wal");
-      expect(await readFile(`${result.value.backupPath}-shm`, "utf8")).toBe("old-shm");
+      const { backupPath } = result.value;
+      expect(backupPath).not.toBeNull();
+      if (backupPath !== null) {
+        expect(await readFile(`${backupPath}-wal`, "utf8")).toBe("old-wal");
+        expect(await readFile(`${backupPath}-shm`, "utf8")).toBe("old-shm");
+      }
     }
     // The sibling never had a `-shm` file, so no stray `-shm` should exist
     // at the promoted primary path either.

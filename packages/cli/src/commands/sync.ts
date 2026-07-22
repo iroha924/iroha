@@ -5,8 +5,11 @@ import { printError, printSuccess } from "../output.js";
 
 function formatSync(data: RunSyncResult): string {
   if (data.rebuilt) {
+    const { backupPath } = data.rebuild;
     return [
-      `Rebuilt the local database (backup at ${data.rebuild.backupPath}).`,
+      backupPath === null
+        ? "Built the local database from canonical data (no previous database to back up)."
+        : `Rebuilt the local database (backup at ${backupPath}).`,
       formatSyncCounts(data.rebuild.sync),
     ].join("\n");
   }
