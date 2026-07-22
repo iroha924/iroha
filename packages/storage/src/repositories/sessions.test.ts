@@ -20,6 +20,7 @@ import {
   insertTurn,
   listCheckpointsBySession,
   listToolEventsByTurn,
+  listToolEventsByTurns,
   touchAgentSessionLastSeen,
   updateTurnCheckpointState,
 } from "./sessions.js";
@@ -367,6 +368,67 @@ describe("session repositories", () => {
     expect(events.ok).toBe(true);
     if (events.ok) {
       expect(events.value.map((e) => e.toolName)).toEqual(["Read", "Edit"]);
+    }
+  });
+
+  it("listToolEventsByTurns batches many turns, grouped by turn_id in occurred_at order", async () => {
+    const opened = await openMigratedTestDb();
+    tempDir = opened.dir;
+    db = opened.db;
+    const { sessionId } = await seedRepositoryAndSession(db, "tb", "tb");
+    const runIdValue = runId("tb");
+    await insertSessionRun(db, {
+      id: runIdValue,
+      sessionId,
+      startSource: "startup",
+      cwdFingerprint: "cwd-tb",
+      startedAt: NOW,
+    });
+    const turnA = trnId("tba");
+    const turnB = trnId("tbb");
+    const turnEmpty = trnId("tbe");
+    for (const id of [turnA, turnB, turnEmpty]) {
+      await insertTurn(db, { id, runId: runIdValue, startedAt: NOW });
+    }
+    // turnA: two events (must come back in occurred_at order); turnB: one; turnEmpty: none.
+    await insertToolEvent(db, {
+      id: evtId("tb1"),
+      turnId: turnA,
+      toolName: "Read",
+      phase: "post",
+      status: "succeeded",
+      occurredAt: NOW,
+    });
+    await insertToolEvent(db, {
+      id: evtId("tb2"),
+      turnId: turnA,
+      toolName: "Edit",
+      phase: "post",
+      status: "succeeded",
+      occurredAt: LATER,
+    });
+    await insertToolEvent(db, {
+      id: evtId("tb3"),
+      turnId: turnB,
+      toolName: "Bash",
+      phase: "post",
+      status: "succeeded",
+      occurredAt: NOW,
+    });
+
+    const empty = await listToolEventsByTurns(db, []);
+    expect(empty.ok).toBe(true);
+    if (empty.ok) {
+      expect(empty.value.size).toBe(0);
+    }
+
+    const grouped = await listToolEventsByTurns(db, [turnA, turnB, turnEmpty]);
+    expect(grouped.ok).toBe(true);
+    if (grouped.ok) {
+      expect(grouped.value.get(turnA)?.map((e) => e.toolName)).toEqual(["Read", "Edit"]);
+      expect(grouped.value.get(turnB)?.map((e) => e.toolName)).toEqual(["Bash"]);
+      // A turn with no events is absent (callers read with `?? []`).
+      expect(grouped.value.has(turnEmpty)).toBe(false);
     }
   });
 

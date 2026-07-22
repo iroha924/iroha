@@ -369,6 +369,39 @@ export async function getEntityById(
   }
 }
 
+/**
+ * Batched `getEntityById`: fetches many entities in one `IN (...)` query, keyed
+ * by `id`. Returns an empty Map (with no query) for empty input — never emits
+ * `IN ()`. Missing ids are simply absent from the Map, exactly like a `null`
+ * from `getEntityById`. Callers pass bounded id sets (search ranking: ≤90
+ * candidates / ≤50 top-result neighbours; dashboard graph read: ≤200 nodes),
+ * all well under libSQL's ~32766-bound-variable limit (SQLite ≥3.32; verified
+ * against @libsql/client 0.17.4 — not the older 999), so no chunking is needed.
+ */
+export async function getEntitiesByIds(
+  db: Executor,
+  ids: readonly string[],
+): Promise<Result<Map<string, EntityRow>, IrohaError>> {
+  const byId = new Map<string, EntityRow>();
+  if (ids.length === 0) {
+    return ok(byId);
+  }
+  try {
+    const placeholders = ids.map(() => "?").join(", ");
+    const result = await db.execute({
+      sql: `SELECT * FROM entities WHERE id IN (${placeholders})`,
+      args: [...ids],
+    });
+    for (const row of result.rows) {
+      const entity = rowToEntity(row);
+      byId.set(entity.id, entity);
+    }
+    return ok(byId);
+  } catch (cause) {
+    return err(mapLibsqlError(cause, "Failed to read entities"));
+  }
+}
+
 export async function updateEntityStatus(
   db: Executor,
   id: string,
@@ -598,6 +631,37 @@ export async function getCanonicalDocumentByEntityId(
     return ok(row === undefined ? null : rowToCanonicalDocument(row));
   } catch (cause) {
     return err(mapLibsqlError(cause, "Failed to read canonical document"));
+  }
+}
+
+/**
+ * Batched `getCanonicalDocumentByEntityId`: fetches many canonical documents in
+ * one `IN (...)` query, keyed by `entity_id`. Empty input → empty Map, no query
+ * (never `IN ()`). An entity with no canonical document is simply absent from
+ * the Map (same as a `null` from the single-row read). Bounded id sets only
+ * (see `getEntitiesByIds`), so no chunking.
+ */
+export async function getCanonicalDocumentsByEntityIds(
+  db: Executor,
+  entityIds: readonly string[],
+): Promise<Result<Map<string, CanonicalDocumentRow>, IrohaError>> {
+  const byEntityId = new Map<string, CanonicalDocumentRow>();
+  if (entityIds.length === 0) {
+    return ok(byEntityId);
+  }
+  try {
+    const placeholders = entityIds.map(() => "?").join(", ");
+    const result = await db.execute({
+      sql: `SELECT * FROM canonical_documents WHERE entity_id IN (${placeholders})`,
+      args: [...entityIds],
+    });
+    for (const row of result.rows) {
+      const doc = rowToCanonicalDocument(row);
+      byEntityId.set(doc.entityId, doc);
+    }
+    return ok(byEntityId);
+  } catch (cause) {
+    return err(mapLibsqlError(cause, "Failed to read canonical documents"));
   }
 }
 

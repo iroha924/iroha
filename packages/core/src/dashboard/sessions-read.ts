@@ -8,7 +8,7 @@ import {
   listCheckpointsBySession,
   listRunsBySession,
   listSessions,
-  listToolEventsByTurn,
+  listToolEventsByTurns,
   listTurnsByRun,
   type SessionPlatform,
   type SessionSummaryStatus,
@@ -247,19 +247,24 @@ export async function getRunDetail(
       if (!turnsResult.ok) {
         return turnsResult;
       }
+      // One batched query for every turn's tool events (was one per turn),
+      // grouped by turn_id; each turn keeps its ORDER BY occurred_at.
+      const eventsByTurn = await listToolEventsByTurns(
+        ctx.db,
+        turnsResult.value.map((turn) => turn.id),
+      );
+      if (!eventsByTurn.ok) {
+        return eventsByTurn;
+      }
       const turns: TurnDetail[] = [];
       for (const turn of turnsResult.value) {
-        const eventsResult = await listToolEventsByTurn(ctx.db, turn.id);
-        if (!eventsResult.ok) {
-          return eventsResult;
-        }
         turns.push({
           id: turn.id,
           intentSummary: turn.intentSummary,
           startedAt: turn.startedAt,
           status: turn.status,
           checkpointState: turn.checkpointState,
-          toolEvents: eventsResult.value.map((event) => ({
+          toolEvents: (eventsByTurn.value.get(turn.id) ?? []).map((event) => ({
             id: event.id,
             toolName: event.toolName,
             phase: event.phase,

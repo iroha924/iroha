@@ -204,6 +204,95 @@ export async function getNeighbors(
 }
 
 /**
+ * Batched `getNeighbors` for a whole BFS frontier: one query returning every
+ * relation incident to ANY of `entityIds` (`from_entity_id IN (...) OR
+ * to_entity_id IN (...)`, `ORDER BY id`), so `getPath`/`getSubgraph` expand a
+ * level in a single round-trip instead of one query per frontier node. There is
+ * deliberately no per-node `limit` (the BFS callers never pass one, and a SQL
+ * `LIMIT` here would be global rather than per node). Empty input → empty
+ * result with no query (never `IN ()`). In the `both` direction this binds
+ * 2×`entityIds.length` variables. `getSubgraph`'s frontier is capped by
+ * `maxEdges` (≤200), so it stays well under libSQL's ~32766-variable limit
+ * (SQLite ≥3.32; verified against @libsql/client 0.17.4 — not the older 999).
+ * `getPath`'s frontier is NOT capped, so a single BFS level reaching >16383
+ * not-yet-visited nodes would exceed the limit and error — where the pre-batch
+ * per-node loop could not. Unreachable at iroha v0.1's graph scale; chunk the
+ * `IN` list here (deduping relations by id before grouping) if it is approached.
+ */
+export async function getNeighborsForNodes(
+  db: Executor,
+  entityIds: readonly string[],
+  options: { direction?: RelationDirection; relationTypes?: RelationType[] } = {},
+): Promise<Result<RelationRow[], IrohaError>> {
+  if (entityIds.length === 0) {
+    return ok([]);
+  }
+  const direction = options.direction ?? "both";
+  const idPlaceholders = entityIds.map(() => "?").join(", ");
+  const conditions: string[] = [];
+  const args: Array<string | number> = [];
+  if (direction === "outgoing") {
+    conditions.push(`from_entity_id IN (${idPlaceholders})`);
+    args.push(...entityIds);
+  } else if (direction === "incoming") {
+    conditions.push(`to_entity_id IN (${idPlaceholders})`);
+    args.push(...entityIds);
+  } else {
+    conditions.push(
+      `(from_entity_id IN (${idPlaceholders}) OR to_entity_id IN (${idPlaceholders}))`,
+    );
+    args.push(...entityIds, ...entityIds);
+  }
+  if (options.relationTypes !== undefined && options.relationTypes.length > 0) {
+    conditions.push(`relation_type IN (${options.relationTypes.map(() => "?").join(", ")})`);
+    args.push(...options.relationTypes);
+  }
+  try {
+    const result = await db.execute({
+      sql: `SELECT * FROM relations WHERE ${conditions.join(" AND ")} ORDER BY id`,
+      args,
+    });
+    return ok(result.rows.map(rowToRelation));
+  } catch (cause) {
+    return err(mapLibsqlError(cause, "Failed to read neighbors"));
+  }
+}
+
+/**
+ * Regroups the flat, id-ordered list from `getNeighborsForNodes` back into
+ * per-frontier-node incident lists — reproducing exactly what a per-node
+ * `getNeighbors(node, { direction: "both" })` returns for each node (same rows,
+ * same `ORDER BY id`). A relation with BOTH endpoints in the frontier lands in
+ * both nodes' lists; a self-loop lands once (the endpoint Set dedupes) — matching
+ * the per-node semantics `getPath`/`getSubgraph` depend on.
+ */
+function groupIncidentRelations(
+  nodeIds: readonly string[],
+  relations: readonly RelationRow[],
+): Map<string, RelationRow[]> {
+  const inFrontier = new Set(nodeIds);
+  const byNode = new Map<string, RelationRow[]>();
+  for (const relation of relations) {
+    const endpoints = new Set<string>();
+    if (inFrontier.has(relation.fromEntityId)) {
+      endpoints.add(relation.fromEntityId);
+    }
+    if (inFrontier.has(relation.toEntityId)) {
+      endpoints.add(relation.toEntityId);
+    }
+    for (const endpoint of endpoints) {
+      let list = byNode.get(endpoint);
+      if (list === undefined) {
+        list = [];
+        byNode.set(endpoint, list);
+      }
+      list.push(relation);
+    }
+  }
+  return byNode;
+}
+
+/**
  * Matches implementation/database-schema.md §11: `getPath(fromId, toId, maxDepth = 4)`.
  * Implemented as breadth-first search in application code, one `getNeighbors`
  * call per frontier node, rather than a single recursive SQL CTE: SQLite's
@@ -226,13 +315,17 @@ export async function getPath(
   let frontier: Array<{ entityId: string; path: RelationRow[] }> = [{ entityId: fromId, path: [] }];
 
   for (let depth = 0; depth < maxDepth && frontier.length > 0; depth++) {
+    const frontierIds = frontier.map((node) => node.entityId);
+    const levelResult = await getNeighborsForNodes(db, frontierIds, { direction: "both" });
+    if (!levelResult.ok) {
+      return levelResult;
+    }
+    const incident = groupIncidentRelations(frontierIds, levelResult.value);
     const nextFrontier: Array<{ entityId: string; path: RelationRow[] }> = [];
+    // Identical traversal to the pre-batch per-node version: frontier nodes in
+    // order, each node's incident relations in `id` order (via `incident`).
     for (const node of frontier) {
-      const neighborsResult = await getNeighbors(db, node.entityId, { direction: "both" });
-      if (!neighborsResult.ok) {
-        return neighborsResult;
-      }
-      for (const relation of neighborsResult.value) {
+      for (const relation of incident.get(node.entityId) ?? []) {
         const neighborId =
           relation.fromEntityId === node.entityId ? relation.toEntityId : relation.fromEntityId;
         if (visited.has(neighborId)) {
@@ -271,6 +364,16 @@ export async function getPath(
  * carve-out, calling with multiple explicit roots connected by
  * `DUPLICATES` silently drops that edge, hiding a relationship the caller
  * asked about directly rather than one merely discovered via traversal.
+ *
+ * Fetch-vs-cap tradeoff (deliberate): each level fetches EVERY relation
+ * incident to the whole frontier in one `getNeighborsForNodes` before the
+ * `maxEdges` guard consumes them, so the rows read scale with frontier degree,
+ * not with `maxEdges` — the pre-batch per-node loop could instead stop after
+ * the first node filled the cap. The returned edge list is identical either
+ * way (surplus rows are discarded); this only trades a possible over-read for
+ * one round-trip per level. Acceptable because a curated knowledge graph's
+ * relation degree is low and `maxEdges`(≤200) bounds the output; if entities
+ * ever become very high-degree, expand the frontier in `maxEdges`-sized slices.
  */
 export async function getSubgraph(
   db: Executor,
@@ -288,16 +391,20 @@ export async function getSubgraph(
     depth < maxDepth && frontier.length > 0 && collectedRelations.size < maxEdges;
     depth++
   ) {
+    const levelResult = await getNeighborsForNodes(db, frontier, { direction: "both" });
+    if (!levelResult.ok) {
+      return levelResult;
+    }
+    const incident = groupIncidentRelations(frontier, levelResult.value);
     const nextFrontier: string[] = [];
+    // Identical traversal to the pre-batch per-node version: frontier nodes in
+    // order, each node's incident relations in `id` order, the same `maxEdges`
+    // break/continue, DUPLICATES-cycle carve-out, and visited bookkeeping.
     for (const entityId of frontier) {
       if (collectedRelations.size >= maxEdges) {
         break;
       }
-      const neighborsResult = await getNeighbors(db, entityId, { direction: "both" });
-      if (!neighborsResult.ok) {
-        return neighborsResult;
-      }
-      for (const relation of neighborsResult.value) {
+      for (const relation of incident.get(entityId) ?? []) {
         if (collectedRelations.size >= maxEdges || collectedRelations.has(relation.id)) {
           continue;
         }

@@ -1,14 +1,16 @@
 import { type IrohaError, ok, type Result, type TypedId } from "@iroha/domain";
 import type { MatchSource } from "@iroha/search";
 import {
+  type CanonicalDocumentRow,
   type EntityRow,
   type EntityType,
   type Executor,
-  getCanonicalDocumentByEntityId,
-  getEntityById,
+  getCanonicalDocumentsByEntityIds,
+  getEntitiesByIds,
   getNeighbors,
   getSubgraph,
   getWorkItemByExternalId,
+  type RelationRow,
   type RelationType,
 } from "@iroha/storage";
 
@@ -174,29 +176,30 @@ export function pathMatches(scopePath: string, requested: string): boolean {
   return requested === scopePath || requested.startsWith(`${scopePath}/`);
 }
 
-async function loadFacets(
-  db: Executor,
-  entityId: string,
-): Promise<Result<EntityFacets, IrohaError>> {
-  const doc = await getCanonicalDocumentByEntityId(db, entityId);
-  if (!doc.ok) {
-    return doc;
-  }
-  if (doc.value === null) {
-    return ok(EMPTY_FACETS);
+/**
+ * Derives an entity's facets from its (already-fetched) canonical document.
+ * Pure — no DB read — so `rankCandidates` can prefetch every candidate's
+ * document in ONE batched query and map over the results, instead of the
+ * previous per-candidate `getCanonicalDocumentByEntityId` round-trip. Behaviour
+ * is identical to the old `loadFacets`: `null` doc → `EMPTY_FACETS`; a
+ * frontmatter parse failure → empty facets but keep the body.
+ */
+function facetsFromDoc(doc: CanonicalDocumentRow | null): EntityFacets {
+  if (doc === null) {
+    return EMPTY_FACETS;
   }
   try {
-    const fm = JSON.parse(doc.value.frontmatterJson) as Record<string, unknown>;
+    const fm = JSON.parse(doc.frontmatterJson) as Record<string, unknown>;
     const scope = (fm.scope ?? {}) as Record<string, unknown>;
-    return ok({
+    return {
       scopePaths: toStringArray(scope.paths),
       scopeSymbols: toStringArray(scope.symbols),
       labels: toStringArray(fm.labels),
       sources: parseSources(fm.sources),
-      body: doc.value.body,
-    });
+      body: doc.body,
+    };
   } catch {
-    return ok({ ...EMPTY_FACETS, body: doc.value.body });
+    return { ...EMPTY_FACETS, body: doc.body };
   }
 }
 
@@ -338,33 +341,55 @@ interface Survivor {
   pathHit: boolean;
 }
 
-async function buildRelations(
+/**
+ * Builds the bounded relation previews for every top result at once. Each
+ * entity's neighbours are still read per entity (preserving the exact
+ * `MAX_RELATION_PREVIEWS` limit and `ORDER BY id` per entity), but the
+ * neighbour-title lookups — the previous per-neighbour `getEntityById` N+1
+ * (up to `limit` × `MAX_RELATION_PREVIEWS` round-trips) — are collapsed into a
+ * single `getEntitiesByIds` over every neighbour id across all top results. A
+ * missing neighbour entity falls back to its id as the title, exactly as before.
+ */
+async function buildRelationsForEntities(
   db: Executor,
-  entityId: string,
-): Promise<Result<RelationPreview[], IrohaError>> {
-  const neighbours = await getNeighbors(db, entityId, {
-    direction: "both",
-    limit: MAX_RELATION_PREVIEWS,
-  });
-  if (!neighbours.ok) {
-    return neighbours;
-  }
-  const previews: RelationPreview[] = [];
-  for (const edge of neighbours.value) {
-    const outgoing = edge.fromEntityId === entityId;
-    const otherId = outgoing ? edge.toEntityId : edge.fromEntityId;
-    const other = await getEntityById(db, otherId);
-    if (!other.ok) {
-      return other;
-    }
-    previews.push({
-      relationType: edge.relationType,
-      direction: outgoing ? "outgoing" : "incoming",
-      entityId: otherId,
-      title: other.value?.title ?? otherId,
+  entityIds: readonly string[],
+): Promise<Result<Map<string, RelationPreview[]>, IrohaError>> {
+  const neighboursByEntity = new Map<string, RelationRow[]>();
+  const neighbourIds = new Set<string>();
+  for (const entityId of entityIds) {
+    const neighbours = await getNeighbors(db, entityId, {
+      direction: "both",
+      limit: MAX_RELATION_PREVIEWS,
     });
+    if (!neighbours.ok) {
+      return neighbours;
+    }
+    neighboursByEntity.set(entityId, neighbours.value);
+    for (const edge of neighbours.value) {
+      neighbourIds.add(edge.fromEntityId === entityId ? edge.toEntityId : edge.fromEntityId);
+    }
   }
-  return ok(previews);
+  const titlesResult = await getEntitiesByIds(db, [...neighbourIds]);
+  if (!titlesResult.ok) {
+    return titlesResult;
+  }
+  const titles = titlesResult.value;
+  const previewsByEntity = new Map<string, RelationPreview[]>();
+  for (const entityId of entityIds) {
+    const previews: RelationPreview[] = [];
+    for (const edge of neighboursByEntity.get(entityId) ?? []) {
+      const outgoing = edge.fromEntityId === entityId;
+      const otherId = outgoing ? edge.toEntityId : edge.fromEntityId;
+      previews.push({
+        relationType: edge.relationType,
+        direction: outgoing ? "outgoing" : "incoming",
+        entityId: otherId,
+        title: titles.get(otherId)?.title ?? otherId,
+      });
+    }
+    previewsByEntity.set(entityId, previews);
+  }
+  return ok(previewsByEntity);
 }
 
 /**
@@ -386,15 +411,27 @@ export async function rankCandidates(
     return issueAnchors;
   }
 
+  // Prefetch every candidate's entity row and canonical document in two batched
+  // queries (was one `getEntityById` + one `getCanonicalDocumentByEntityId` per
+  // candidate — an N+1 over up to ~90 fused candidates). The filter loop below
+  // reads from these Maps and is otherwise byte-for-byte the same as before.
+  const candidateIds = candidates.map((candidate) => candidate.entityId);
+  const entitiesResult = await getEntitiesByIds(db, candidateIds);
+  if (!entitiesResult.ok) {
+    return entitiesResult;
+  }
+  const entitiesById = entitiesResult.value;
+  const docsResult = await getCanonicalDocumentsByEntityIds(db, candidateIds);
+  if (!docsResult.ok) {
+    return docsResult;
+  }
+  const docsByEntityId = docsResult.value;
+
   const survivors: Survivor[] = [];
   const scopeAnchors: string[] = [];
   for (const candidate of candidates) {
-    const entityResult = await getEntityById(db, candidate.entityId);
-    if (!entityResult.ok) {
-      return entityResult;
-    }
-    const entity = entityResult.value;
-    if (entity === null || entity.authority < params.filters.minimumAuthority) {
+    const entity = entitiesById.get(candidate.entityId);
+    if (entity === undefined || entity.authority < params.filters.minimumAuthority) {
       continue;
     }
     if (params.filters.statuses !== undefined && !params.filters.statuses.includes(entity.status)) {
@@ -409,11 +446,7 @@ export async function rankCandidates(
     if (!inDateRange(entity.updatedAt, params.filters.from, params.filters.to)) {
       continue;
     }
-    const facetsResult = await loadFacets(db, candidate.entityId);
-    if (!facetsResult.ok) {
-      return facetsResult;
-    }
-    const facets = facetsResult.value;
+    const facets = facetsFromDoc(docsByEntityId.get(candidate.entityId) ?? null);
     if (
       params.filters.labels !== undefined &&
       params.filters.labels.length > 0 &&
@@ -482,19 +515,23 @@ export async function rankCandidates(
   scored.sort((a, b) => b.score - a.score);
   const top = scored.slice(0, params.limit);
 
+  const relationsByEntity = await buildRelationsForEntities(
+    db,
+    top.map((item) => item.candidate.entityId),
+  );
+  if (!relationsByEntity.ok) {
+    return relationsByEntity;
+  }
+
   const results: RankedResult[] = [];
   let bodyBudget = INCLUDE_BODY_MAX_CHARS;
   for (const item of top) {
-    const relations = await buildRelations(db, item.candidate.entityId);
-    if (!relations.ok) {
-      return relations;
-    }
     const result: RankedResult = {
       entity: item.entity,
       score: item.score,
       whyRelevant: item.reasons,
       sources: item.facets.sources,
-      relations: relations.value,
+      relations: relationsByEntity.value.get(item.candidate.entityId) ?? [],
     };
     if (
       params.includeBody &&

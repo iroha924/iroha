@@ -584,6 +584,43 @@ export async function listToolEventsByTurn(
   }
 }
 
+/**
+ * Batched `listToolEventsByTurn`: one query for many turns, grouped by `turn_id`
+ * in memory. Each turn's events keep `ORDER BY occurred_at` — the global result
+ * is occurred_at-ordered, so each turn_id group is too (same as the per-turn
+ * query; neither has an id tie-breaker, so tie order is equally unspecified in
+ * both). Empty input → empty Map, no query. A turn with no events is simply
+ * absent from the Map (callers read with `?? []`).
+ */
+export async function listToolEventsByTurns(
+  db: Executor,
+  turnIds: readonly TypedId<"trn">[],
+): Promise<Result<Map<string, ToolEventRow[]>, IrohaError>> {
+  const byTurn = new Map<string, ToolEventRow[]>();
+  if (turnIds.length === 0) {
+    return ok(byTurn);
+  }
+  try {
+    const placeholders = turnIds.map(() => "?").join(", ");
+    const result = await db.execute({
+      sql: `SELECT * FROM tool_events WHERE turn_id IN (${placeholders}) ORDER BY occurred_at`,
+      args: [...turnIds],
+    });
+    for (const row of result.rows) {
+      const event = rowToToolEvent(row);
+      let list = byTurn.get(event.turnId);
+      if (list === undefined) {
+        list = [];
+        byTurn.set(event.turnId, list);
+      }
+      list.push(event);
+    }
+    return ok(byTurn);
+  } catch (cause) {
+    return err(mapLibsqlError(cause, "Failed to list tool events"));
+  }
+}
+
 // --- checkpoints ---------------------------------------------------
 
 export type CheckpointOutcome = "completed" | "partial" | "blocked" | "no_change";

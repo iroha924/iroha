@@ -2,7 +2,7 @@ import type { Clock, IrohaError, RandomSource, Result } from "@iroha/domain";
 import { err, IrohaError as IrohaErrorClass, ok } from "@iroha/domain";
 import {
   type Executor,
-  getEntityById,
+  getEntitiesByIds,
   getNeighbors,
   getPath,
   getSubgraph,
@@ -56,19 +56,25 @@ async function resolveNodes(
     ids.add(edge.from);
     ids.add(edge.to);
   }
+  // Fetch every referenced entity in one batched query (was one getEntityById
+  // per id — up to MAX_NODES round-trips). The loop below is otherwise
+  // identical: same insertion order, same MAX_NODES cap on resolved nodes, same
+  // skip of ids with no entity row, same `truncated` semantics.
+  const idList = [...ids];
+  const entitiesResult = await getEntitiesByIds(db, idList);
+  if (!entitiesResult.ok) {
+    return entitiesResult;
+  }
+  const entitiesById = entitiesResult.value;
   let truncated = false;
   const nodes: GraphNode[] = [];
-  for (const id of ids) {
+  for (const id of idList) {
     if (nodes.length >= MAX_NODES) {
       truncated = true;
       break;
     }
-    const entityResult = await getEntityById(db, id);
-    if (!entityResult.ok) {
-      return entityResult;
-    }
-    const entity = entityResult.value;
-    if (entity !== null) {
+    const entity = entitiesById.get(id);
+    if (entity !== undefined) {
       nodes.push({
         id: entity.id,
         type: entity.entityType,

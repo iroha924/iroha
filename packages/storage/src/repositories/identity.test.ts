@@ -7,6 +7,8 @@ import {
   getActorByProviderExternalId,
   getCanonicalDocumentByEntityId,
   getCanonicalDocumentByPath,
+  getCanonicalDocumentsByEntityIds,
+  getEntitiesByIds,
   getEntityById,
   getRepositoryById,
   getRepositoryByRootFingerprint,
@@ -210,6 +212,106 @@ describe("identity repositories", () => {
     if (updated.ok) {
       expect(updated.value?.status).toBe("approved");
       expect(updated.value?.authority).toBe(100);
+    }
+  });
+
+  it("getEntitiesByIds batches many entities into one keyed Map, and empty input skips the query", async () => {
+    const opened = await openMigratedTestDb();
+    tempDir = opened.dir;
+    db = opened.db;
+    const repositoryId = repoId("bei");
+    await insertRepository(db, {
+      id: repositoryId,
+      rootFingerprint: "fp-bei",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    const a = "dec_000000000000000000000bei1";
+    const b = "dec_000000000000000000000bei2";
+    for (const [id, authority] of [
+      [a, 100],
+      [b, 40],
+    ] as const) {
+      await insertEntity(db, {
+        id,
+        repositoryId,
+        entityType: "decision",
+        title: id,
+        status: "approved",
+        authority,
+        sourceKind: "canonical",
+        createdAt: NOW,
+        updatedAt: NOW,
+      });
+    }
+
+    // Empty input must NOT emit `IN ()` — it returns an empty Map with no query.
+    const empty = await getEntitiesByIds(db, []);
+    expect(empty.ok).toBe(true);
+    if (empty.ok) {
+      expect(empty.value.size).toBe(0);
+    }
+
+    // A missing id is simply absent (same as a null from getEntityById).
+    const result = await getEntitiesByIds(db, [a, b, "dec_00000000000000000000missng"]);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.size).toBe(2);
+      expect(result.value.get(a)?.authority).toBe(100);
+      expect(result.value.get(b)?.authority).toBe(40);
+      expect(result.value.has("dec_00000000000000000000missng")).toBe(false);
+    }
+  });
+
+  it("getCanonicalDocumentsByEntityIds batches docs keyed by entity_id, absent when no doc exists", async () => {
+    const opened = await openMigratedTestDb();
+    tempDir = opened.dir;
+    db = opened.db;
+    const repositoryId = repoId("bcd");
+    await insertRepository(db, {
+      id: repositoryId,
+      rootFingerprint: "fp-bcd",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    const withDoc = "dec_000000000000000000000bcd1";
+    const withoutDoc = "dec_000000000000000000000bcd2";
+    for (const id of [withDoc, withoutDoc]) {
+      await insertEntity(db, {
+        id,
+        repositoryId,
+        entityType: "decision",
+        title: id,
+        status: "approved",
+        authority: 100,
+        sourceKind: "canonical",
+        createdAt: NOW,
+        updatedAt: NOW,
+      });
+    }
+    await upsertCanonicalDocument(db, {
+      entityId: withDoc,
+      canonicalPath: `knowledge/decisions/${withDoc}.md`,
+      revision: 1,
+      frontmatterJson: '{"labels":["x"]}',
+      body: "body",
+      fileHash: "sha256:bb",
+      approvedAt: NOW,
+      importedAt: NOW,
+    });
+
+    const empty = await getCanonicalDocumentsByEntityIds(db, []);
+    expect(empty.ok).toBe(true);
+    if (empty.ok) {
+      expect(empty.value.size).toBe(0);
+    }
+
+    const result = await getCanonicalDocumentsByEntityIds(db, [withDoc, withoutDoc]);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.size).toBe(1);
+      expect(result.value.get(withDoc)?.body).toBe("body");
+      expect(result.value.has(withoutDoc)).toBe(false);
     }
   });
 
