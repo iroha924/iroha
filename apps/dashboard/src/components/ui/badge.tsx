@@ -16,6 +16,12 @@ const badgeVariants = cva(
         outline: "border-border text-foreground [a]:hover:bg-muted [a]:hover:text-muted-foreground",
         ghost: "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
         link: "text-primary underline-offset-4 hover:underline",
+        // Brand status tints (matcha/amber/persimmon/paper) — soft, tone-based
+        // pills for approved / pending / rejected / neutral state (brand-and-design.md).
+        approve: "bg-approve-tint text-approve",
+        pending: "bg-warn-tint text-warn",
+        reject: "bg-persimmon-tint text-persimmon-hover",
+        neutral: "bg-paper-inset text-ink-muted",
       },
     },
     defaultVariants: {

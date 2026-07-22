@@ -2,8 +2,11 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { NavLink, Route, Routes } from "react-router-dom";
 import { ApiClientError, api } from "@/api/client.js";
-import { Card, Mark } from "@/components/ui.js";
+import { Mark } from "@/components/brand.js";
+import { Card, CardContent } from "@/components/ui/card.js";
+import { Toaster } from "@/components/ui/sonner.js";
 import { type Locale, useI18n } from "@/i18n/index.js";
+import { cn } from "@/lib/utils";
 import { Doctor } from "@/pages/Doctor.js";
 import { Graph } from "@/pages/Graph.js";
 import { KnowledgeDetail } from "@/pages/KnowledgeDetail.js";
@@ -20,16 +23,17 @@ import { Settings } from "@/pages/Settings.js";
 function LanguageToggle() {
   const { locale, setLocale } = useI18n();
   return (
-    <div className="flex gap-1">
+    <div className="flex items-center rounded-full border border-hairline bg-paper p-0.5">
       {(["en", "ja"] as Locale[]).map((l) => (
         <button
           type="button"
           key={l}
           onClick={() => setLocale(l)}
           aria-pressed={locale === l}
-          className={`rounded-full px-2.5 py-1 text-[11.5px] font-semibold transition-colors ${
-            locale === l ? "bg-matcha text-paper-raised" : "text-ink-faint hover:text-ink-muted"
-          }`}
+          className={cn(
+            "rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-wide transition-colors",
+            locale === l ? "bg-matcha text-paper-raised" : "text-ink-faint hover:text-ink-muted",
+          )}
         >
           {l.toUpperCase()}
         </button>
@@ -44,11 +48,12 @@ function NavItem({ to, label }: { to: string; label: string }) {
       to={to}
       end={to === "/"}
       className={({ isActive }) =>
-        `border-b-2 pb-0.5 text-sm transition-colors ${
+        cn(
+          "relative py-4 text-sm transition-colors",
           isActive
-            ? "border-matcha font-medium text-ink"
-            : "border-transparent text-ink-muted hover:text-ink"
-        }`
+            ? "font-medium text-ink after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:rounded-full after:bg-matcha"
+            : "text-ink-muted hover:text-ink",
+        )
       }
     >
       {label}
@@ -72,9 +77,11 @@ export function App() {
   ) {
     return (
       <main className="mx-auto flex min-h-screen max-w-md items-center px-6">
-        <Card className="w-full text-center">
-          <Mark className="mx-auto mb-4 h-12 w-12" />
-          <p className="text-ink-muted">{t("auth.required")}</p>
+        <Card className="w-full">
+          <CardContent className="flex flex-col items-center gap-4 py-10 text-center">
+            <Mark className="h-12 w-12" />
+            <p className="text-ink-muted">{t("auth.required")}</p>
+          </CardContent>
         </Card>
       </main>
     );
@@ -82,11 +89,11 @@ export function App() {
 
   return (
     <div className="min-h-screen">
-      <header className="border-b border-hairline bg-paper-raised">
-        <div className="mx-auto flex h-14 max-w-[1120px] items-center justify-between px-6">
+      <header className="sticky top-0 z-40 border-b border-hairline bg-paper-raised/85 backdrop-blur">
+        <div className="mx-auto flex h-14 max-w-[1120px] items-center justify-between gap-6 px-6">
           <div className="flex items-center gap-8">
             <img src="/iroha-lockup-horizontal.svg" alt="iroha" className="h-6 w-auto" />
-            <nav className="flex gap-5">
+            <nav className="flex items-center gap-6">
               <NavItem to="/" label={t("nav.overview")} />
               <NavItem to="/sessions" label={t("nav.sessions")} />
               <NavItem to="/review" label={t("nav.review")} />
@@ -95,8 +102,8 @@ export function App() {
               <NavItem to="/search" label={t("nav.search")} />
             </nav>
           </div>
-          <div className="flex items-center gap-4">
-            <nav className="flex gap-4 text-sm">
+          <div className="flex items-center gap-5">
+            <nav className="flex items-center gap-5">
               <NavItem to="/settings" label={t("nav.settings")} />
               <NavItem to="/doctor" label={t("nav.doctor")} />
             </nav>
@@ -104,7 +111,7 @@ export function App() {
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-[1120px] px-6 py-8">
+      <main className="mx-auto max-w-[1120px] px-6 py-10">
         <Routes>
           <Route path="/" element={<Overview />} />
           <Route path="/sessions" element={<Sessions />} />
@@ -120,6 +127,7 @@ export function App() {
           <Route path="/doctor" element={<Doctor />} />
         </Routes>
       </main>
+      <Toaster position="bottom-right" />
     </div>
   );
 }
