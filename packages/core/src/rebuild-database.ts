@@ -99,7 +99,8 @@ async function reuseEmbeddings(
 export interface RebuildDatabaseResult {
   repositoryId: TypedId<"repo">;
   dbPath: string;
-  backupPath: string;
+  /** `null` when the rebuild bootstrapped a fresh clone that had no local database to back up (issue #27). */
+  backupPath: string | null;
   sync: SyncCanonicalResult;
 }
 
@@ -112,6 +113,13 @@ export interface RebuildDatabaseResult {
  * live database. A canonical parse/schema error, or any integrity
  * violation, discards the sibling and leaves the primary database
  * untouched (§12: "fail the rebuild without replacing the current DB").
+ *
+ * On a fresh clone that has never been initialized locally — the git-tracked
+ * `.iroha/` canonical files are present but the git-ignored primary `index.db`
+ * does not exist yet — this bootstraps that database instead of failing
+ * (requirements.md Scenario E, issue #27): `resolveInitializedRepository`
+ * succeeds from `.iroha/config.yaml`, and `replaceDatabaseAtomically` installs
+ * the rebuilt sibling with no backup (`backupPath: null`).
  */
 export async function rebuildDatabase(
   cwd: string,

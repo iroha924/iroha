@@ -59,8 +59,32 @@ describe("replaceDatabaseAtomically", () => {
     expect(result.ok).toBe(true);
     expect(await readFile(dbPath, "utf8")).toBe("new-content");
     if (result.ok) {
-      expect(await readFile(result.value.backupPath, "utf8")).toBe("old-content");
+      const { backupPath } = result.value;
+      expect(backupPath).not.toBeNull();
+      if (backupPath !== null) {
+        expect(await readFile(backupPath, "utf8")).toBe("old-content");
+      }
     }
+  });
+
+  it("installs the rebuilt sibling with no backup when there is no current database (fresh clone)", async () => {
+    const { dir, dbPath } = await createTempDbPath();
+    tempDir = dir;
+    // No primary database at `dbPath`: the state right after `git clone`, before
+    // any `iroha init` created the git-ignored index.db locally (issue #27).
+    const siblingPath = join(dir, "index.rebuild-abc.db");
+    await writeFile(siblingPath, "new-content", "utf8");
+
+    const result = await replaceDatabaseAtomically(dbPath, siblingPath, CLOCK);
+
+    expect(result.ok).toBe(true);
+    expect(await readFile(dbPath, "utf8")).toBe("new-content");
+    if (result.ok) {
+      expect(result.value.backupPath).toBeNull();
+    }
+    // Nothing to back up, so no timestamped backup file is left behind.
+    const entries = await readdir(dir);
+    expect(entries.some((entry) => entry.includes(".backup-"))).toBe(false);
   });
 
   it("restores the original database if a sidecar rename fails while moving it aside", async () => {
@@ -131,8 +155,12 @@ describe("replaceDatabaseAtomically", () => {
     expect(result.ok).toBe(true);
     expect(await readFile(`${dbPath}-wal`, "utf8")).toBe("new-wal");
     if (result.ok) {
-      expect(await readFile(`${result.value.backupPath}-wal`, "utf8")).toBe("old-wal");
-      expect(await readFile(`${result.value.backupPath}-shm`, "utf8")).toBe("old-shm");
+      const { backupPath } = result.value;
+      expect(backupPath).not.toBeNull();
+      if (backupPath !== null) {
+        expect(await readFile(`${backupPath}-wal`, "utf8")).toBe("old-wal");
+        expect(await readFile(`${backupPath}-shm`, "utf8")).toBe("old-shm");
+      }
     }
     // The sibling never had a `-shm` file, so no stray `-shm` should exist
     // at the promoted primary path either.

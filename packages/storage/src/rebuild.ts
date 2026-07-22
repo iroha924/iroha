@@ -14,7 +14,13 @@ export function createSiblingDatabasePath(primaryDbPath: string, random: RandomS
 }
 
 export interface ReplaceDatabaseResult {
-  backupPath: string;
+  /**
+   * Path of the timestamped backup of the previous database, or `null` when
+   * there was no previous database to back up — a fresh clone that ran
+   * `sync --rebuild` before any `iroha init` created `index.db` locally
+   * (requirements.md Scenario E). See `replaceDatabaseAtomically`.
+   */
+  backupPath: string | null;
 }
 
 const WAL_SUFFIXES = ["-wal", "-shm"] as const;
@@ -84,6 +90,13 @@ async function renameSidecarIfExists(fromBase: string, toBase: string): Promise<
  * data left only in its `-wal` file — confirmed by reproduction that
  * `PRAGMA wal_checkpoint(TRUNCATE)` plus closing the connection does not by
  * itself delete these files, only truncate their content.
+ *
+ * Bootstrap case (requirements.md Scenario E, issue #27): when `primaryDbPath`
+ * does not exist — a teammate who ran `sync --rebuild` on a fresh clone before
+ * any `iroha init` created the git-ignored `index.db` locally — the move-aside
+ * fails with `ENOENT`. There is then no current database to back up, so this
+ * moves the rebuilt sibling straight into place and returns `backupPath: null`,
+ * making `sync --rebuild` on a never-initialized clone just work.
  */
 export async function replaceDatabaseAtomically(
   primaryDbPath: string,
@@ -92,34 +105,47 @@ export async function replaceDatabaseAtomically(
 ): Promise<Result<ReplaceDatabaseResult, IrohaError>> {
   const timestamp = clock.now().toISOString().replace(/[:.]/g, "-");
   const backupPath = `${primaryDbPath}.backup-${timestamp}`;
+  let bootstrapped = false;
   try {
     await renameWithRetry(primaryDbPath, backupPath);
     await renameSidecarIfExists(primaryDbPath, backupPath);
   } catch (cause) {
-    // Best-effort recovery, mirroring the catch block below: if the main
-    // rename succeeded but a sidecar rename then failed (plausible on
-    // Windows, where this file already documents transient EBUSY/EPERM
-    // issues), undo the partial move so this does not leave the repository
-    // without a database at `primaryDbPath`. A no-op when the main rename
-    // itself is what failed, since there is then nothing to move back.
-    await rename(backupPath, primaryDbPath).catch(() => undefined);
-    await renameSidecarIfExists(backupPath, primaryDbPath).catch(() => undefined);
-    return err(
-      new IrohaError("INTERNAL_ERROR", "Failed to move aside the current database", { cause }),
-    );
+    if ((cause as NodeJS.ErrnoException).code === "ENOENT") {
+      // No current database to move aside — a fresh clone bootstrapping its
+      // local index (see the doc comment above). `ENOENT` here can only mean
+      // the move-aside source is missing: `renameSidecarIfExists` swallows its
+      // own `ENOENT`, and the backup destination lives in the sibling's own
+      // directory, which necessarily exists. Fall through to install the
+      // sibling with no backup.
+      bootstrapped = true;
+    } else {
+      // Best-effort recovery, mirroring the catch block below: if the main
+      // rename succeeded but a sidecar rename then failed (plausible on
+      // Windows, where this file already documents transient EBUSY/EPERM
+      // issues), undo the partial move so this does not leave the repository
+      // without a database at `primaryDbPath`.
+      await rename(backupPath, primaryDbPath).catch(() => undefined);
+      await renameSidecarIfExists(backupPath, primaryDbPath).catch(() => undefined);
+      return err(
+        new IrohaError("INTERNAL_ERROR", "Failed to move aside the current database", { cause }),
+      );
+    }
   }
   try {
     await renameWithRetry(siblingDbPath, primaryDbPath);
     await renameSidecarIfExists(siblingDbPath, primaryDbPath);
   } catch (cause) {
-    // Best-effort recovery: restore the original database (and its
-    // sidecars) so a failed rebuild does not leave the repository without
-    // any database at all.
-    await rename(backupPath, primaryDbPath).catch(() => undefined);
-    await renameSidecarIfExists(backupPath, primaryDbPath).catch(() => undefined);
+    // Best-effort recovery: restore the original database (and its sidecars)
+    // so a failed rebuild does not leave the repository without any database
+    // at all. When bootstrapping there was no prior database to restore — the
+    // repository simply stays without one, exactly as it was before this call.
+    if (!bootstrapped) {
+      await rename(backupPath, primaryDbPath).catch(() => undefined);
+      await renameSidecarIfExists(backupPath, primaryDbPath).catch(() => undefined);
+    }
     return err(
       new IrohaError("INTERNAL_ERROR", "Failed to move the rebuilt database into place", { cause }),
     );
   }
-  return ok({ backupPath });
+  return ok({ backupPath: bootstrapped ? null : backupPath });
 }
