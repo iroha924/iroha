@@ -235,7 +235,7 @@ export function Graph() {
           {t("graph.pathNotFound")}
         </p>
       )}
-      {graph.nodes.length === 0 && !busy && !pathMissing && (
+      {graph.nodes.length === 0 && !busy && !pathMissing && !failed && (
         <EmptyState message={t("graph.empty")} />
       )}
 

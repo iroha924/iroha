@@ -98,6 +98,8 @@ describe("Graph", () => {
     await userEvent.click(screen.getByRole("button", { name: /Load graph/ }));
 
     expect(await screen.findByText(/Something went wrong/)).toBeInTheDocument();
+    // The error replaces the empty-state prompt — they never render together.
+    expect(screen.queryByText(/Select one or more entities/)).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Clear" }));
     await waitFor(() => expect(screen.queryByText(/Something went wrong/)).not.toBeInTheDocument());
   });
