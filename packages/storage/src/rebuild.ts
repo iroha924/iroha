@@ -1,4 +1,4 @@
-import { rename } from "node:fs/promises";
+import { rename, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { type Clock, err, IrohaError, ok, type RandomSource, type Result } from "@iroha/domain";
 
@@ -55,6 +55,13 @@ async function renameWithRetry(from: string, to: string): Promise<void> {
       }
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
+  }
+}
+
+/** Removes `<base>-wal`/`<base>-shm` if present; a no-op otherwise. Best-effort. */
+async function removeSidecars(base: string): Promise<void> {
+  for (const suffix of WAL_SUFFIXES) {
+    await rm(`${base}${suffix}`, { force: true }).catch(() => undefined);
   }
 }
 
@@ -115,9 +122,15 @@ export async function replaceDatabaseAtomically(
       // local index (see the doc comment above). `ENOENT` here can only mean
       // the move-aside source is missing: `renameSidecarIfExists` swallows its
       // own `ENOENT`, and the backup destination lives in the sibling's own
-      // directory, which necessarily exists. Fall through to install the
-      // sibling with no backup.
+      // directory, which necessarily exists.
       bootstrapped = true;
+      // Stale `-wal`/`-shm` sidecars can still linger from a primary database
+      // that was partially deleted or removed by an interrupted process. They
+      // belong to a primary that no longer exists; left next to the sibling we
+      // are about to install, SQLite would recover that unrelated WAL on the
+      // next open and silently resurrect old/corrupt local state over the
+      // canonical rebuild. Remove them so the bootstrap installs a clean DB.
+      await removeSidecars(primaryDbPath);
     } else {
       // Best-effort recovery, mirroring the catch block below: if the main
       // rename succeeded but a sidecar rename then failed (plausible on
@@ -135,11 +148,19 @@ export async function replaceDatabaseAtomically(
     await renameWithRetry(siblingDbPath, primaryDbPath);
     await renameSidecarIfExists(siblingDbPath, primaryDbPath);
   } catch (cause) {
-    // Best-effort recovery: restore the original database (and its sidecars)
-    // so a failed rebuild does not leave the repository without any database
-    // at all. When bootstrapping there was no prior database to restore — the
-    // repository simply stays without one, exactly as it was before this call.
-    if (!bootstrapped) {
+    if (bootstrapped) {
+      // Bootstrap failure: there was no prior database to restore. Discard the
+      // partially-promoted primary (its main file may already have been renamed
+      // into place without its sidecar) so the repository returns to the clean
+      // "no local database" state a re-run `sync --rebuild` can bootstrap from
+      // again, rather than leaving a half-installed index whose next open sees
+      // a main file missing the WAL data that was meant to move with it.
+      await rm(primaryDbPath, { force: true }).catch(() => undefined);
+      await removeSidecars(primaryDbPath);
+    } else {
+      // Best-effort recovery: restore the original database (and its sidecars)
+      // so a failed rebuild does not leave the repository without any database
+      // at all.
       await rename(backupPath, primaryDbPath).catch(() => undefined);
       await renameSidecarIfExists(backupPath, primaryDbPath).catch(() => undefined);
     }
