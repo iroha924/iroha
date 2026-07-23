@@ -55,7 +55,7 @@ export function Sessions() {
 
   return (
     <section>
-      <PageHeader eyebrow={t("nav.sessions")} title={t("sessions.title")} />
+      <PageHeader title={t("sessions.title")} />
 
       <div className="mb-6 flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2">

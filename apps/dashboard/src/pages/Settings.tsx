@@ -76,7 +76,7 @@ export function Settings() {
 
   return (
     <section className="max-w-2xl">
-      <PageHeader eyebrow={t("nav.settings")} title={t("settings.title")} />
+      <PageHeader title={t("settings.title")} />
 
       {notice !== null && (
         <p className="mb-4 rounded-xl bg-approve-tint px-3 py-2 text-sm text-approve">{notice}</p>

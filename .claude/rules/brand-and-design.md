@@ -50,7 +50,7 @@ iroha's visual identity is **organic color** (an unbleached-cream ("kinari") bas
 2. **The three-circle motif** (matcha/clay/persimmon) recurs in the loader, empty state, and active nav (`Mark` in `components/ui.tsx`).
 3. **Depth from tone, not shadow** (the three layers paper / raised / inset).
 4. **matcha focus / selection** (unify `::selection` and the focus ring to matcha).
-5. **An editorial eyebrow + a sumi-ink top rule** (a 2px ink rule above the page title, an uppercase tracked-out label).
+5. **A sumi-ink top rule + an optional editorial eyebrow** (a 2px ink rule above the page title; an uppercase tracked-out label). The ink rule is the constant; the eyebrow is used **only when it adds a distinct kicker** — never a repeat of the page title (an "Sessions" eyebrow over a "Sessions" title reads as an AI tic, not editorial).
 
 ## Related
 

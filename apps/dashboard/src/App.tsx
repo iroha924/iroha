@@ -49,13 +49,26 @@ function NavItem({ to, label }: { to: string; label: string }) {
       className={({ isActive }) =>
         cn(
           "relative py-4 text-sm transition-colors",
-          isActive
-            ? "font-medium text-ink after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:rounded-full after:bg-matcha"
-            : "text-ink-muted hover:text-ink",
+          isActive ? "font-medium text-ink" : "text-ink-muted hover:text-ink",
         )
       }
     >
-      {label}
+      {({ isActive }) => (
+        <>
+          {label}
+          {/* Active indicator carries the three-circle brand motif (matcha/clay/persimmon), not a plain underline. */}
+          {isActive && (
+            <span
+              aria-hidden="true"
+              className="absolute inset-x-0 -bottom-px flex h-0.5 overflow-hidden rounded-full"
+            >
+              <span className="flex-1 bg-matcha" />
+              <span className="flex-1 bg-clay" />
+              <span className="flex-1 bg-persimmon" />
+            </span>
+          )}
+        </>
+      )}
     </NavLink>
   );
 }
@@ -88,7 +101,7 @@ export function App() {
 
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-40 border-b border-hairline bg-paper-raised/85 backdrop-blur">
+      <header className="sticky top-0 z-40 border-b border-hairline bg-paper-raised">
         <div className="mx-auto flex h-14 max-w-[1120px] items-center justify-between gap-6 px-6">
           <div className="flex items-center gap-8">
             <img src="/iroha-lockup-horizontal.svg" alt="iroha" className="h-6 w-auto" />

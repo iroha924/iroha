@@ -265,7 +265,7 @@ export function Graph() {
               nodesConnectable={false}
               proOptions={{ hideAttribution: true }}
             >
-              <Background color="#E6DCC8" />
+              <Background color="var(--color-hairline)" />
             </ReactFlow>
           </div>
 

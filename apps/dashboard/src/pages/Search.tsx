@@ -51,7 +51,7 @@ export function Search() {
 
   return (
     <section>
-      <PageHeader eyebrow={t("nav.search")} title={t("search.title")} />
+      <PageHeader title={t("search.title")} />
 
       <form onSubmit={onSubmit} className="mb-4 flex gap-2">
         <Input

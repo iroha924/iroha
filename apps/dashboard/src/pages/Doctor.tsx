@@ -34,7 +34,6 @@ export function Doctor() {
   return (
     <section>
       <PageHeader
-        eyebrow={t("nav.doctor")}
         title={t("doctor.title")}
         actions={
           <>
