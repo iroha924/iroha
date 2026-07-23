@@ -219,12 +219,15 @@ describe("runHook", () => {
     expect(runs[0]?.git_branch).toBe("b".repeat(200));
   });
 
-  it("drops a secret-shaped branch name instead of storing it", async () => {
-    // A session token is a legal ref name, so a branch can carry one into the
-    // at-rest store; the sha is still recorded.
+  it.each([
+    ["a bare token", `ist_${"a".repeat(43)}`],
+    // The token followed by a suffix passes the shared scanner's exact-43
+    // boundary, so a branch-specific check has to catch it.
+    ["a token with a suffix", `fix-ist_${"a".repeat(43)}-work`],
+  ])("drops a branch carrying %s, keeping the sha", async (_label, branchName) => {
     repoDir = await initedRepo();
     await commitFile(repoDir, "a.txt", "a");
-    const checkout = await runGit(["checkout", "-b", `ist_${"a".repeat(43)}`], { cwd: repoDir });
+    const checkout = await runGit(["checkout", "-b", branchName], { cwd: repoDir });
     expect(checkout.ok).toBe(true);
 
     await hook(repoDir, "claude_code", {

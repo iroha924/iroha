@@ -79,6 +79,21 @@ async function resolveSessionId(
 const MAX_BRANCH_CHARS = 200;
 
 /**
+ * An iroha session token embedded anywhere in a string — `ist_` followed by 43
+ * base64url characters, `sessionTokenSchema`'s shape without its anchors. The
+ * shared `scanForSecrets` deliberately requires the token to be followed by a
+ * non-token character (a canonical-write tradeoff, decision-log ID-050) so it
+ * does not over-reject prose, which means a token glued to a suffix
+ * (`…ist_<43>-work`) passes it. For a branch name that leniency is wrong: the
+ * value is short opaque provenance, dropping it costs only a `NULL` (the same as
+ * a detached HEAD), and a legitimate branch has no reason to carry a 43-char
+ * token run — so here the token is dropped whatever follows it. A verbose branch
+ * whose own words happen to spell `…ist_` + 43 identifier characters is dropped
+ * too; that false-drop is an acceptable price for a best-effort annotation.
+ */
+const EMBEDDED_SESSION_TOKEN = /ist_[A-Za-z0-9_-]{43}/;
+
+/**
  * HEAD as it stands for this hook invocation, or `null` when Git cannot answer
  * — an unborn HEAD, a Git failure, or no Git at all. Fail-open like the rest of
  * the hook path (hooks-contract.md §2/§7): the Run is still recorded, just
@@ -93,8 +108,10 @@ const MAX_BRANCH_CHARS = 200;
  * rather than blanked, which makes it indistinguishable from a detached HEAD;
  * that is the right trade for a rare case in a best-effort annotation. The scan
  * is fail-closed — an error drops the branch — and costs ~13ms cold, against a
- * §7 budget of 1.5s at the tightest calling event. The sha needs no scan: it
- * has already been checked against the object-id format.
+ * §7 budget of 1.5s at the tightest calling event. A supplementary check drops
+ * an embedded iroha token the shared scanner's canonical-tuned boundary lets
+ * through (`EMBEDDED_SESSION_TOKEN`). The sha needs no scan: it has already been
+ * checked against the object-id format.
  */
 async function readHeadOrNull(ctx: HookDispatchContext): Promise<HeadState | null> {
   const head = await readHeadState(ctx.repo.gitLocation.root);
@@ -106,6 +123,9 @@ async function readHeadOrNull(ctx: HookDispatchContext): Promise<HeadState | nul
     return { sha, branch: null };
   }
   const bounded = branch.slice(0, MAX_BRANCH_CHARS);
+  if (EMBEDDED_SESSION_TOKEN.test(bounded)) {
+    return { sha, branch: null };
+  }
   const scan = await scanForSecrets(bounded);
   return { sha, branch: scan.ok && scan.value.clean ? bounded : null };
 }
