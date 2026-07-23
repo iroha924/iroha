@@ -7,7 +7,6 @@ import { App } from "@/App.js";
 import { api } from "@/api/client.js";
 import "@/index.css";
 import { I18nProvider } from "@/i18n/index.js";
-import { cspNonce } from "@/lib/csp.js";
 
 /**
  * dashboard-api.md §3: read the one-time launch token from the URL fragment,
@@ -36,7 +35,7 @@ if (rootElement === null) {
 exchangeFragmentToken().finally(() => {
   createRoot(rootElement).render(
     <StrictMode>
-      <CSPProvider nonce={cspNonce()} disableStyleElements>
+      <CSPProvider disableStyleElements>
         <QueryClientProvider client={queryClient}>
           <I18nProvider>
             <BrowserRouter>

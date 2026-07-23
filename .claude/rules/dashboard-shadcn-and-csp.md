@@ -24,11 +24,12 @@ Knowledge from adopting shadcn/ui into `apps/dashboard`. Apply it when adding/re
 - **CSSOM runtime positioning is NOT blocked.** Floating UI (Popover / Select / Dropdown / Tooltip / Menu positioning) writes `element.style.transform` at runtime — CSP `style-src` governs markup `<style>`/`style=""`, not CSSOM mutation. React's `style={{…}}` prop is also CSSOM. So all the floating overlays work under the strict CSP with no nonce.
 - **Injected `<style>` ELEMENTS are blocked** (`style-src-elem`). Anything that does `document.head.appendChild(styleEl)` at runtime is refused unless it carries the matching nonce.
 
-How the dashboard stays clean:
+How the dashboard stays clean — `style-src 'self'` with **no nonce**:
 
-- **Base UI**: the app is wrapped in `<CSPProvider nonce={cspNonce()} disableStyleElements>` (`main.tsx`). `disableStyleElements` makes Base UI **never inject a `<style>`** — shadcn already styles every component with Tailwind classes, so Base UI's injected styles are redundant. This is the robust fix: it removes the CSP surface instead of depending on the nonce round-trip.
-- **The per-process nonce** (for the one remaining injector, shadcn's Chart `ChartStyle`): generated in `security.ts` and cached on `globalThis` (`__irohaCspNonce__`) so a bundler that emits two copies of the module can't mint two nonces — **the CSP header and the injected `<meta name="csp-nonce">` MUST carry the identical value or every nonced style is refused**. `static.ts` injects the meta into the served HTML (`</head>` replace); `lib/csp.ts` `cspNonce()` reads it.
-- **Charts**: color bars via `<Cell fill="var(--chart-N)">` and keep the `ChartConfig` color-less — then `ChartStyle` returns null and injects nothing (Overview does this). If a chart uses config colors, `ChartStyle` injects a nonced `<style>` and relies on the meta/nonce round-trip.
+- **Base UI**: wrap the app in `<CSPProvider disableStyleElements>` (`main.tsx`). `disableStyleElements` makes Base UI **never inject a `<style>`** — shadcn styles every component with Tailwind classes, so Base UI's injected styles are redundant. This removes the CSP surface entirely rather than nonce-ing it.
+- **Charts**: color bars via `<Cell fill="var(--chart-N)">` and keep the `ChartConfig` color-less — then shadcn's `ChartStyle` returns null and injects nothing (Overview does this).
+- With those two, **nothing injects a runtime `<style>`, so `style-src 'self'` holds with no nonce** — matching `dashboard-api.md` §9 literally. A per-process CSP-nonce round-trip was built and then **removed as dead YAGNI code** once `disableStyleElements` + color-less charts covered every injector; do not re-add it speculatively.
+- **If a future component MUST inject a `<style>`** (a config-colored chart, a Dialog scroll-lock, a new library), the e2e gate below fails first. Only then add a per-process nonce back — server side in `security.ts` (`style-src 'self' 'nonce-…'`, cached on `globalThis` so a bundled duplicate can't mint two nonces) + a `<meta name="csp-nonce">` injected by `static.ts` + Base UI `CSPProvider nonce` — **and record it in `decision-log.md`**, because adding a `'nonce-…'` to `style-src` is a documented deviation from §9's `style-src 'self'`.
 
 ## Banned: sonner — and any library that injects an un-nonced `<style>`
 

@@ -1,3 +1,4 @@
+import { enUS, ja } from "date-fns/locale";
 import { CalendarIcon } from "lucide-react";
 import { Button } from "@/components/ui/button.js";
 import { Calendar } from "@/components/ui/calendar.js";
@@ -76,6 +77,7 @@ export function DateField({
         <Calendar
           mode="single"
           autoFocus
+          locale={locale === "ja" ? ja : enUS}
           selected={selected}
           {...(selected !== undefined ? { defaultMonth: selected } : {})}
           disabled={disabled}
