@@ -13,7 +13,7 @@ search:
     api_key_env: VOYAGE_API_KEY
 forge:
   provider: github
-  enabled: true
+  enabled: false
   api_token_env: GITHUB_TOKEN
   review_learning_threshold: 3
 privacy:

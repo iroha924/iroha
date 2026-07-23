@@ -183,6 +183,9 @@
      they never reach this rule. */
   button:not(:disabled),
   [role="button"],
+  [role="switch"],
+  [role="checkbox"],
+  [role="radio"],
   [role="tab"],
   [role="option"],
   [role="menuitem"],
