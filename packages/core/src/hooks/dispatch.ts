@@ -1,3 +1,4 @@
+import { scanForSecrets } from "@iroha/canonical";
 import { type Clock, makeTypedId, ok, type RandomSource, type TypedId } from "@iroha/domain";
 import { type HeadState, readHeadState } from "@iroha/git";
 import {
@@ -83,6 +84,17 @@ const MAX_BRANCH_CHARS = 200;
  * the hook path (hooks-contract.md §2/§7): the Run is still recorded, just
  * without the code state it acted on. A detached HEAD is not a failure; it
  * resolves to a sha with no branch.
+ *
+ * The branch name is bounded and then scanned before it can be stored: it is
+ * the one unconstrained free-text value this path persists, and
+ * `secure-subprocess-and-credentials.md` requires every such field to be
+ * scanned before it reaches the at-rest store, local and disposable though it
+ * is. A secret-shaped name (`ist_…` is a legal ref name — verified) is dropped
+ * rather than blanked, which makes it indistinguishable from a detached HEAD;
+ * that is the right trade for a rare case in a best-effort annotation. The scan
+ * is fail-closed — an error drops the branch — and costs ~13ms cold, against a
+ * §7 budget of 1.5s at the tightest calling event. The sha needs no scan: it
+ * has already been checked against the object-id format.
  */
 async function readHeadOrNull(ctx: HookDispatchContext): Promise<HeadState | null> {
   const head = await readHeadState(ctx.repo.gitLocation.root);
@@ -90,7 +102,12 @@ async function readHeadOrNull(ctx: HookDispatchContext): Promise<HeadState | nul
     return null;
   }
   const { branch, sha } = head.value;
-  return { sha, branch: branch === null ? null : branch.slice(0, MAX_BRANCH_CHARS) };
+  if (branch === null) {
+    return { sha, branch: null };
+  }
+  const bounded = branch.slice(0, MAX_BRANCH_CHARS);
+  const scan = await scanForSecrets(bounded);
+  return { sha, branch: scan.ok && scan.value.clean ? bounded : null };
 }
 
 /**

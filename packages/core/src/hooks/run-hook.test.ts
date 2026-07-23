@@ -219,6 +219,25 @@ describe("runHook", () => {
     expect(runs[0]?.git_branch).toBe("b".repeat(200));
   });
 
+  it("drops a secret-shaped branch name instead of storing it", async () => {
+    // A session token is a legal ref name, so a branch can carry one into the
+    // at-rest store; the sha is still recorded.
+    repoDir = await initedRepo();
+    await commitFile(repoDir, "a.txt", "a");
+    const checkout = await runGit(["checkout", "-b", `ist_${"a".repeat(43)}`], { cwd: repoDir });
+    expect(checkout.ok).toBe(true);
+
+    await hook(repoDir, "claude_code", {
+      session_id: "s1",
+      hook_event_name: "SessionStart",
+      source: "startup",
+    });
+
+    const runs = await sessionRuns(repoDir);
+    expect(runs[0]?.git_branch).toBe(null);
+    expect(String(runs[0]?.head_sha_start)).toMatch(/^[0-9a-f]{40}$/);
+  });
+
   it("records no branch or sha when HEAD cannot be read, without failing the hook", async () => {
     // A repository with no commits yet: `rev-parse HEAD` fails, and the Run is
     // still recorded (hooks-contract.md §2 fail-open).
