@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { toast } from "sonner";
 import { ApiClientError, api } from "@/api/client.js";
 import { BackLink, ErrorState, Loading } from "@/components/brand.js";
 import { Badge } from "@/components/ui/badge.js";
@@ -28,6 +27,7 @@ export function ReviewDetail() {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [reviewer, setReviewer] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
 
   // Sync the editable form from the loaded draft when navigating to a candidate
   // (keyed on the candidate id, not every refetch, so in-progress edits survive polling).
@@ -45,7 +45,7 @@ export function ReviewDetail() {
   };
 
   const onError = (error: unknown) => {
-    toast.error(t("common.error"));
+    setNotice(t("common.error"));
     if (error instanceof ApiClientError && error.code === "CONFLICT") {
       void queryClient.invalidateQueries({ queryKey: ["candidate", id] });
     }
@@ -58,7 +58,7 @@ export function ReviewDetail() {
       return api.editCandidate(id, d.revisionToken, { ...d.draft, title, body });
     },
     onSuccess: () => {
-      toast.success(t("common.saved"));
+      setNotice(t("common.saved"));
       invalidate();
     },
     onError,
@@ -100,6 +100,10 @@ export function ReviewDetail() {
   return (
     <section className="space-y-5">
       <BackLink to="/review">{t("common.back")}</BackLink>
+
+      {notice !== null && (
+        <p className="rounded-xl bg-warn-tint px-3 py-2 text-sm text-warn">{notice}</p>
+      )}
 
       <Card>
         <CardContent className="space-y-4">

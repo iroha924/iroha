@@ -1,7 +1,6 @@
 import type { RepositoryConfig } from "@iroha/api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useState } from "react";
-import { toast } from "sonner";
 import { api } from "@/api/client.js";
 import { ErrorState, Loading, PageHeader } from "@/components/brand.js";
 import { Badge } from "@/components/ui/badge.js";
@@ -52,6 +51,7 @@ export function Settings() {
   const queryClient = useQueryClient();
   const q = useQuery({ queryKey: ["settings"], queryFn: api.settings });
   const [config, setConfig] = useState<RepositoryConfig | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     if (q.data !== undefined) setConfig(q.data.shared);
@@ -63,11 +63,11 @@ export function Settings() {
       return api.updateSharedConfig(config);
     },
     onSuccess: () => {
-      toast.success(t("common.saved"));
+      setNotice(t("common.saved"));
       void queryClient.invalidateQueries({ queryKey: ["settings"] });
       void queryClient.invalidateQueries({ queryKey: ["bootstrap"] });
     },
-    onError: () => toast.error(t("common.error")),
+    onError: () => setNotice(t("common.error")),
   });
 
   if (q.isPending) return <Loading />;
@@ -77,6 +77,10 @@ export function Settings() {
   return (
     <section className="max-w-2xl">
       <PageHeader eyebrow={t("nav.settings")} title={t("settings.title")} />
+
+      {notice !== null && (
+        <p className="mb-4 rounded-xl bg-approve-tint px-3 py-2 text-sm text-approve">{notice}</p>
+      )}
 
       <Card>
         <CardContent className="divide-y divide-hairline">

@@ -10,8 +10,17 @@ import type { MiddlewareHandler } from "hono";
  * tag (see static.ts) so the client can stamp it on those elements. Runtime
  * CSSOM positioning (Floating UI) needs no nonce and stays under
  * `style-src 'self'`; only injected `<style>` ELEMENTS (style-src-elem) do.
+ *
+ * Stored on `globalThis` so the value is shared even if a bundler (the CLI/plugin
+ * pack `@iroha/api` with tsdown) emits more than one copy of this module: the
+ * CSP header and the injected `<meta>` MUST carry the identical nonce, or every
+ * nonced `<style>` is refused.
  */
-export const cspNonce = randomBytes(16).toString("base64url");
+const NONCE_GLOBAL_KEY = "__irohaCspNonce__";
+const globalWithNonce = globalThis as typeof globalThis & { [NONCE_GLOBAL_KEY]?: string };
+const nonce = globalWithNonce[NONCE_GLOBAL_KEY] ?? randomBytes(16).toString("base64url");
+globalWithNonce[NONCE_GLOBAL_KEY] = nonce;
+export const cspNonce: string = nonce;
 
 /**
  * dashboard-api.md §9 security headers. The CSP is deliberately strict — only

@@ -4,7 +4,6 @@ import { NavLink, Route, Routes } from "react-router-dom";
 import { ApiClientError, api } from "@/api/client.js";
 import { Mark } from "@/components/brand.js";
 import { Card, CardContent } from "@/components/ui/card.js";
-import { Toaster } from "@/components/ui/sonner.js";
 import { type Locale, useI18n } from "@/i18n/index.js";
 import { cn } from "@/lib/utils";
 import { Doctor } from "@/pages/Doctor.js";
@@ -127,7 +126,6 @@ export function App() {
           <Route path="/doctor" element={<Doctor />} />
         </Routes>
       </main>
-      <Toaster position="bottom-right" />
     </div>
   );
 }

@@ -36,7 +36,7 @@ if (rootElement === null) {
 exchangeFragmentToken().finally(() => {
   createRoot(rootElement).render(
     <StrictMode>
-      <CSPProvider nonce={cspNonce()}>
+      <CSPProvider nonce={cspNonce()} disableStyleElements>
         <QueryClientProvider client={queryClient}>
           <I18nProvider>
             <BrowserRouter>
