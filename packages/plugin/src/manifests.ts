@@ -114,7 +114,10 @@ function codexHookHandler(timeoutSeconds: number): CommandHook {
 
 export function buildCodexHooks(): { description: string; hooks: HookEventMap } {
   const events: Record<string, readonly HookGroup[]> = {};
-  for (const { event, timeoutSeconds } of HOOK_EVENTS) {
+  for (const { event, timeoutSeconds, claudeOnly } of HOOK_EVENTS) {
+    if (claudeOnly) {
+      continue;
+    }
     // Matcher omitted so the handler fires on every occurrence of the event; the
     // hook discriminates internally. (Codex matcher-optionality is not stated in
     // the docs — recorded as an assumption in decision-log ID-038.)
