@@ -1,5 +1,6 @@
-import { CircleAlertIcon } from "lucide-react";
+import { ArrowLeftIcon, CircleAlertIcon } from "lucide-react";
 import type { ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert.js";
 import { Button } from "@/components/ui/button.js";
 import { useI18n } from "@/i18n/index.js";
@@ -86,6 +87,19 @@ export function ErrorState({ message }: { message?: string }) {
       <AlertTitle>{t("common.error")}</AlertTitle>
       {message !== undefined && <AlertDescription>{message}</AlertDescription>}
     </Alert>
+  );
+}
+
+/** A back link for detail pages (a thin-line arrow + label). */
+export function BackLink({ to, children }: { to: string; children: ReactNode }) {
+  return (
+    <Link
+      to={to}
+      className="mb-4 inline-flex items-center gap-1.5 text-sm text-ink-muted transition-colors hover:text-ink"
+    >
+      <ArrowLeftIcon className="size-4" />
+      {children}
+    </Link>
   );
 }
 
