@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert.js";
 import { Button } from "@/components/ui/button.js";
 import { useI18n } from "@/i18n/index.js";
+import { cn } from "@/lib/utils";
 
 /**
  * The three-dot brand mark (matcha / clay / persimmon) — the recurring motif for
@@ -16,6 +17,26 @@ export function Mark({ className = "h-6 w-6" }: { className?: string }) {
       <circle cx="35" cy="60" r="24" fill="#BC9870" fillOpacity="0.82" />
       <circle cx="61" cy="60" r="24" fill="#C26A3C" fillOpacity="0.82" />
     </svg>
+  );
+}
+
+/**
+ * The brand mark as a loader: the three circles split, orbit while turning, and
+ * merge back upright into the logo (pure CSS — `.iroha-spinner` in index.css, so
+ * it stays CSP-safe). Scales with `size` (px), usable at any size. Decorative —
+ * label the loading state in the surrounding UI (see `Loading`).
+ */
+export function IrohaSpinner({ size = 28, className }: { size?: number; className?: string }) {
+  return (
+    <span
+      className={cn("iroha-spinner", className)}
+      style={{ fontSize: `${size}px` }}
+      aria-hidden="true"
+    >
+      <span className="iroha-spinner__orb iroha-spinner__orb--a" />
+      <span className="iroha-spinner__orb iroha-spinner__orb--b" />
+      <span className="iroha-spinner__orb iroha-spinner__orb--c" />
+    </span>
   );
 }
 
@@ -60,9 +81,9 @@ export function PageHeader({
 export function Loading({ label }: { label?: string }) {
   const { t } = useI18n();
   return (
-    <div className="flex items-center gap-2.5 py-10 text-ink-muted">
-      <Mark className="h-5 w-5 animate-pulse" />
-      <span className="text-sm">{label ?? t("common.loading")}</span>
+    <div className="flex items-center gap-3 py-10 text-ink-muted" role="status">
+      <IrohaSpinner size={26} />
+      <span className="iroha-ellipsis text-sm">{label ?? t("common.loading")}</span>
     </div>
   );
 }
