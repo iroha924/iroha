@@ -1,4 +1,4 @@
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type KnowledgeStatusFilter } from "@/api/client.js";
@@ -45,6 +45,9 @@ export function KnowledgeList() {
       }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
+    // Keep the current rows on screen while a filter change refetches, so
+    // toggling status/type never flashes the loader.
+    placeholderData: keepPreviousData,
   });
 
   const toggleStatus = (s: KnowledgeStatusFilter) =>

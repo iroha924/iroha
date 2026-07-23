@@ -176,4 +176,158 @@
     outline: 2px solid var(--color-matcha);
     outline-offset: 2px;
   }
+
+  /* shadcn/Base UI render buttons with the default cursor (matching native OS
+     buttons); restore the pointer on interactive elements — the equivalent of
+     `shadcn init --pointer`. Disabled controls use `pointer-events: none`, so
+     they never reach this rule. */
+  button:not(:disabled),
+  [role="button"],
+  [role="switch"],
+  [role="checkbox"],
+  [role="radio"],
+  [role="tab"],
+  [role="option"],
+  [role="menuitem"],
+  [role="menuitemcheckbox"],
+  [role="menuitemradio"],
+  label[for] {
+    cursor: pointer;
+  }
+}
+
+/*
+ * iroha loader — the three-circle mark splits, orbits while it turns, and merges
+ * back upright into the logo (a HashLoader × RotateLoader motion). Pure CSS so it
+ * stays under the strict `style-src 'self'` CSP; colours are brand tokens; the
+ * whole mark is 1em, so it scales with `font-size`. See `IrohaSpinner` (brand.tsx).
+ */
+.iroha-spinner {
+  position: relative;
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  animation: iroha-spin 1.25s ease-in-out infinite;
+}
+.iroha-spinner__orb {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0.52em;
+  height: 0.52em;
+  margin: -0.26em;
+  border-radius: 50%;
+  opacity: 0.85;
+  animation-duration: 1.25s;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+.iroha-spinner__orb--a {
+  background-color: var(--color-matcha);
+  animation-name: iroha-orb-a;
+}
+.iroha-spinner__orb--b {
+  background-color: var(--color-clay);
+  animation-name: iroha-orb-b;
+}
+.iroha-spinner__orb--c {
+  background-color: var(--color-persimmon);
+  animation-name: iroha-orb-c;
+}
+
+@keyframes iroha-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes iroha-orb-a {
+  0%,
+  100% {
+    transform: translate(0, -0.16em);
+  }
+  50% {
+    transform: translate(0, -0.416em);
+  }
+}
+@keyframes iroha-orb-b {
+  0%,
+  100% {
+    transform: translate(-0.145em, 0.085em);
+  }
+  50% {
+    transform: translate(-0.377em, 0.221em);
+  }
+}
+@keyframes iroha-orb-c {
+  0%,
+  100% {
+    transform: translate(0.145em, 0.085em);
+  }
+  50% {
+    transform: translate(0.377em, 0.221em);
+  }
+}
+
+/*
+ * Animated trailing dots for loading text: "Loading." → "Loading.." → "Loading…".
+ * A reserved-width `::after` cycles the content so the preceding text never shifts.
+ */
+.iroha-ellipsis::after {
+  content: "...";
+  display: inline-block;
+  width: 1.25ch;
+  text-align: left;
+  animation: iroha-ellipsis 1.4s infinite;
+}
+@keyframes iroha-ellipsis {
+  0%,
+  33% {
+    content: ".";
+  }
+  34%,
+  66% {
+    content: "..";
+  }
+  67%,
+  100% {
+    content: "...";
+  }
+}
+
+/*
+ * Delay-show the loader: it stays invisible for the first ~140ms, so a fast
+ * (local / cached) query that resolves before then never flashes the spinner on
+ * a tab switch. Slow loads fade it in gently. Opacity only — the accepted
+ * reduced-motion primitive — so no `prefers-reduced-motion` carve-out is needed.
+ */
+.iroha-loading {
+  animation: iroha-loading-in 200ms ease-out 140ms both;
+}
+@keyframes iroha-loading-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .iroha-spinner,
+  .iroha-spinner__orb {
+    animation: none;
+  }
+  .iroha-spinner__orb--a {
+    transform: translate(0, -0.16em);
+  }
+  .iroha-spinner__orb--b {
+    transform: translate(-0.145em, 0.085em);
+  }
+  .iroha-spinner__orb--c {
+    transform: translate(0.145em, 0.085em);
+  }
+  .iroha-ellipsis::after {
+    content: "…";
+    animation: none;
+  }
 }

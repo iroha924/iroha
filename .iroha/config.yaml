@@ -1,6 +1,6 @@
 schema_version: 1
 repository_id: repo_01KY12PJ3Z3ZJC685C0Z4486FC
-default_language: en
+default_language: ja
 canonical:
   require_human_approval: true
   session_auto_publish: false
@@ -14,6 +14,8 @@ search:
 forge:
   provider: github
   enabled: false
+  api_token_env: GITHUB_TOKEN
+  review_learning_threshold: 3
 privacy:
   canonical_prompt_content: false
   canonical_transcript_content: false

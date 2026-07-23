@@ -1,12 +1,20 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "@/api/client.js";
-import { EmptyState, ErrorState, FilterChip, Loading, PageHeader } from "@/components/brand.js";
+import {
+  EmptyState,
+  ErrorState,
+  FilterChip,
+  IrohaSpinner,
+  Loading,
+  PageHeader,
+} from "@/components/brand.js";
 import { Badge } from "@/components/ui/badge.js";
 import { Button } from "@/components/ui/button.js";
 import { Input } from "@/components/ui/input.js";
 import { useI18n } from "@/i18n/index.js";
+import { cn } from "@/lib/utils";
 
 /**
  * The knowledge entity types that can appear in search results — `search_documents`
@@ -37,6 +45,8 @@ export function Search() {
     queryFn: () =>
       api.search(submitted, types.length > 0 ? { filters: { entityTypes: types } } : {}),
     enabled: submitted.length > 0,
+    // Keep the current results on screen while a type-filter change refetches.
+    placeholderData: keepPreviousData,
   });
 
   const onSubmit = (event: FormEvent) => {
@@ -62,7 +72,10 @@ export function Search() {
           aria-label={t("search.title")}
           className="h-9 flex-1"
         />
-        <Button type="submit">{t("search.run")}</Button>
+        <Button type="submit" className="gap-2" disabled={q.isFetching}>
+          {q.isFetching && <IrohaSpinner size={16} />}
+          {t("search.run")}
+        </Button>
       </form>
 
       <div className="mb-6 flex flex-wrap items-center gap-2">
@@ -76,13 +89,22 @@ export function Search() {
         ))}
       </div>
 
-      {q.isFetching && <Loading />}
+      {/* Full spinner only on the first-ever search (no data yet). On a new term or a
+          type toggle, `keepPreviousData` shows the prior results dimmed while the next
+          fetch is in flight — feedback without the layout jump a spinner-over-results
+          would cause. */}
+      {q.isLoading && <Loading />}
       {q.isError && <ErrorState />}
       {q.data !== undefined && q.data.results.length === 0 && (
         <EmptyState message={t("search.empty")} />
       )}
       {q.data !== undefined && q.data.results.length > 0 && (
-        <ul className="divide-y divide-hairline overflow-hidden rounded-2xl border border-hairline bg-paper-raised">
+        <ul
+          className={cn(
+            "divide-y divide-hairline overflow-hidden rounded-2xl border border-hairline bg-paper-raised",
+            q.isPlaceholderData && "opacity-60 transition-opacity",
+          )}
+        >
           {q.data.results.map((r) => (
             <li key={r.id}>
               <Link
