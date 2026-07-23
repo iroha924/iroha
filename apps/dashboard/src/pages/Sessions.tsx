@@ -1,4 +1,4 @@
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type SessionPlatformFilter } from "@/api/client.js";
@@ -48,6 +48,10 @@ export function Sessions() {
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     refetchInterval: 5000,
+    // Keep the current rows on screen while a filter change refetches, so
+    // switching platform/date never flashes the loader (delay-show handles the
+    // very first load; this handles subsequent filter changes).
+    placeholderData: keepPreviousData,
   });
 
   const items = q.data !== undefined ? flattenPages(q.data.pages) : [];

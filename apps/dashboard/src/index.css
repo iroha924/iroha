@@ -276,6 +276,24 @@
   }
 }
 
+/*
+ * Delay-show the loader: it stays invisible for the first ~140ms, so a fast
+ * (local / cached) query that resolves before then never flashes the spinner on
+ * a tab switch. Slow loads fade it in gently. Opacity only — the accepted
+ * reduced-motion primitive — so no `prefers-reduced-motion` carve-out is needed.
+ */
+.iroha-loading {
+  animation: iroha-loading-in 200ms ease-out 140ms both;
+}
+@keyframes iroha-loading-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .iroha-spinner,
   .iroha-spinner__orb {

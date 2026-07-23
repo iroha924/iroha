@@ -81,7 +81,7 @@ export function PageHeader({
 export function Loading({ label }: { label?: string }) {
   const { t } = useI18n();
   return (
-    <div className="flex items-center gap-3 py-10 text-ink-muted" role="status">
+    <div className="iroha-loading flex items-center gap-3 py-10 text-ink-muted" role="status">
       <IrohaSpinner size={26} />
       <span className="iroha-ellipsis text-sm">{label ?? t("common.loading")}</span>
     </div>

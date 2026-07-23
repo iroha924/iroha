@@ -1,4 +1,4 @@
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type CandidateStatusFilter } from "@/api/client.js";
@@ -34,6 +34,8 @@ export function ReviewQueue() {
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     refetchInterval: 5000,
+    // Keep the current rows on screen while a status change refetches.
+    placeholderData: keepPreviousData,
   });
 
   const items = q.data !== undefined ? flattenPages(q.data.pages) : [];

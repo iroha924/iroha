@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "@/api/client.js";
@@ -37,6 +37,8 @@ export function Search() {
     queryFn: () =>
       api.search(submitted, types.length > 0 ? { filters: { entityTypes: types } } : {}),
     enabled: submitted.length > 0,
+    // Keep the current results on screen while a type-filter change refetches.
+    placeholderData: keepPreviousData,
   });
 
   const onSubmit = (event: FormEvent) => {
@@ -76,7 +78,7 @@ export function Search() {
         ))}
       </div>
 
-      {q.isFetching && <Loading />}
+      {q.isLoading && <Loading />}
       {q.isError && <ErrorState />}
       {q.data !== undefined && q.data.results.length === 0 && (
         <EmptyState message={t("search.empty")} />
