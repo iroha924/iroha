@@ -83,7 +83,11 @@ export function Loading({ label }: { label?: string }) {
   return (
     <div className="iroha-loading flex items-center gap-3 py-10 text-ink-muted" role="status">
       <IrohaSpinner size={26} />
-      <span className="iroha-ellipsis text-sm">{label ?? t("common.loading")}</span>
+      {/* Animated dots only decorate the default "Loading" text; a caller-supplied
+          label is shown verbatim (it carries its own punctuation). */}
+      <span className={cn("text-sm", label === undefined && "iroha-ellipsis")}>
+        {label ?? t("common.loading")}
+      </span>
     </div>
   );
 }
