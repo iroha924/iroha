@@ -95,7 +95,7 @@ Codex command hooks require explicit user trust. `iroha doctor` must distinguish
 | `AGENT_STARTED` | `SubagentStart` | `SubagentStart` | P1 |
 | `AGENT_STOPPED` | `SubagentStop` | `SubagentStop` | P1 |
 | `TURN_STOPPED` | `Stop` | `Stop` | P0 |
-| `SESSION_ENDED` | `SessionEnd` | unavailable | Claude enhancement |
+| `SESSION_ENDED` | `SessionEnd` | unavailable | P0, Claude only (FR-029) |
 | `TOOL_FAILED` | `PostToolUseFailure` | derive from `PostToolUse` response | P1 |
 | `TURN_FAILED` | `StopFailure` | unavailable | Claude enhancement |
 | `INSTRUCTIONS_OBSERVED` | `InstructionsLoaded` | unavailable | Claude enhancement |
@@ -128,7 +128,7 @@ Prompt and tool digests use repository-keyed HMAC-SHA-256, not a plain hash. Thi
 1. validate input and resolve repository;
 2. detect/repair stale active Runs as `interrupted`;
 3. map platform session to Agent Session;
-4. create a Run for `startup`, `resume`, or `clear`;
+4. create a Run for `startup`, `resume`, or `clear`, recording the branch and HEAD sha it starts on;
 5. keep the current Run for `compact`;
 6. compare canonical Git tree fingerprint and perform changed-file-only sync within budget;
 7. issue/refresh the local session token;
@@ -242,7 +242,7 @@ Continuation output:
 
 ### 6.7 SessionEnd and interruption
 
-Claude `SessionEnd` updates Run status only. It performs no Embedding, canonical write, or summary generation. The configured budget remains 1.5 seconds.
+Claude `SessionEnd` closes the Run: it updates Run status, records the HEAD sha the Run ended on, and, if the Run's most recent Turn is still `active`, transitions that Turn to `interrupted` in the same transaction — a Turn open when its Run closes never reached its own Stop, so it did not complete. Stale Run repair at the next `SessionStart` closes that Turn the same way. Only the most recent Turn is repaired; an earlier Turn left open by consecutive `UserPromptSubmit` events with no `Stop` between them is not. `SessionEnd` performs no Embedding, canonical write, or summary generation. The configured budget remains 1.5 seconds.
 
 Codex has no `SessionEnd`. Abrupt exit and user interruption are recovered at the next `SessionStart` by stale active Run detection. Therefore correctness never depends on an end Hook.
 

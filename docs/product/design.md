@@ -190,7 +190,7 @@ P0 Hook:
 4. `PostToolUse`: status/target/digestを保存し、意味ある変更ならCheckpoint pending。
 5. `PreCompact` / `PostCompact`: state flush、dirty marker、承認済みcontext再注入。
 6. `Stop`: Checkpoint不足時に最大1回だけ継続要求。transcriptは解析しない。
-7. Claude `SessionEnd`: status更新だけ。Codex correctnessは終了Hookへ依存しない。
+7. Claude `SessionEnd`: Run終了記録だけ（status、終了HEAD sha、開いたままのTurnの終了）。Codex correctnessは終了Hookへ依存しない。
 
 Hook内でEmbedding/Forge remote call、full rebuild、canonical publish、summary生成を行わない。timeout/DB busy時は原則fail-openとし、厳格な強制はCIと組み合わせる。
 

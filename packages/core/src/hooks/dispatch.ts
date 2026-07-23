@@ -1,4 +1,6 @@
-import { type Clock, makeTypedId, type RandomSource, type TypedId } from "@iroha/domain";
+import { scanForSecrets } from "@iroha/canonical";
+import { type Clock, makeTypedId, ok, type RandomSource, type TypedId } from "@iroha/domain";
+import { type HeadState, readHeadState } from "@iroha/git";
 import {
   contextOutput,
   continuationOutput,
@@ -26,6 +28,7 @@ import {
   type ToolEventTargetKind,
   touchAgentSessionLastSeen,
   updateTurnCheckpointState,
+  withTransaction,
 } from "@iroha/storage";
 import type { ResolvedRepository } from "../resolve-repository.js";
 import {
@@ -62,6 +65,121 @@ async function resolveSessionId(
     platformSessionId,
   );
   return found.ok && found.value ? found.value.id : null;
+}
+
+/**
+ * A branch name is chosen by whoever created the branch, and `git clone` names
+ * the local branch after the remote's HEAD — so a hostile repository controls
+ * this string. Git's own `check_refname_format` bans ASCII control characters
+ * and space but permits any non-ASCII byte (U+00A0 among them) and, since `/`
+ * is legal inside a ref name, a total length of several KB. `get_session_state`
+ * returns this field to the model, where every other value is bounded, so it is
+ * bounded here too — at the same 200 characters an entity title is cut to.
+ */
+const MAX_BRANCH_CHARS = 200;
+
+/**
+ * An iroha session token embedded anywhere in a string — `ist_` followed by 43
+ * base64url characters, `sessionTokenSchema`'s shape without its anchors. The
+ * shared `scanForSecrets` deliberately requires the token to be followed by a
+ * non-token character (a canonical-write tradeoff, decision-log ID-050) so it
+ * does not over-reject prose, which means a token glued to a suffix
+ * (`…ist_<43>-work`) passes it. For a branch name that leniency is wrong: the
+ * value is short opaque provenance, dropping it costs only a `NULL` (the same as
+ * a detached HEAD), and a legitimate branch has no reason to carry a 43-char
+ * token run — so here the token is dropped whatever follows it. A verbose branch
+ * whose own words happen to spell `…ist_` + 43 identifier characters is dropped
+ * too; that false-drop is an acceptable price for a best-effort annotation.
+ */
+const EMBEDDED_SESSION_TOKEN = /ist_[A-Za-z0-9_-]{43}/;
+
+/**
+ * HEAD as it stands for this hook invocation, or `null` when Git cannot answer
+ * — an unborn HEAD, a Git failure, or no Git at all. Fail-open like the rest of
+ * the hook path (hooks-contract.md §2/§7): the Run is still recorded, just
+ * without the code state it acted on. A detached HEAD is not a failure; it
+ * resolves to a sha with no branch.
+ *
+ * The branch name is bounded and then scanned before it can be stored: it is
+ * the one unconstrained free-text value this path persists, and
+ * `secure-subprocess-and-credentials.md` requires every such field to be
+ * scanned before it reaches the at-rest store, local and disposable though it
+ * is. A secret-shaped name (`ist_…` is a legal ref name — verified) is dropped
+ * rather than blanked, which makes it indistinguishable from a detached HEAD;
+ * that is the right trade for a rare case in a best-effort annotation. The scan
+ * is fail-closed — an error drops the branch — and costs ~13ms cold, against a
+ * §7 budget of 1.5s at the tightest calling event. A supplementary check drops
+ * an embedded iroha token the shared scanner's canonical-tuned boundary lets
+ * through (`EMBEDDED_SESSION_TOKEN`). The sha needs no scan: it has already been
+ * checked against the object-id format.
+ */
+async function readHeadOrNull(ctx: HookDispatchContext): Promise<HeadState | null> {
+  const head = await readHeadState(ctx.repo.gitLocation.root);
+  if (!head.ok) {
+    return null;
+  }
+  const { branch, sha } = head.value;
+  if (branch === null) {
+    return { sha, branch: null };
+  }
+  const bounded = branch.slice(0, MAX_BRANCH_CHARS);
+  if (EMBEDDED_SESSION_TOKEN.test(bounded)) {
+    return { sha, branch: null };
+  }
+  const scan = await scanForSecrets(bounded);
+  return { sha, branch: scan.ok && scan.value.clean ? bounded : null };
+}
+
+/**
+ * Closes a Run and, in the same transaction, the most recent Turn if it was
+ * left open.
+ *
+ * A Turn still `active` when its Run is closed never reached its own Stop
+ * (§6.6) — the work stopped without finishing — so it becomes `interrupted`,
+ * never `completed`. Without this, a closed Run can contain a Turn that still
+ * claims to be running, and nothing ever revisits it. `checkpoint_state` is
+ * left untouched: `pending` on such a Turn is the accurate record that a
+ * checkpoint was asked for and never saved.
+ *
+ * Only the most recent Turn is repaired. `handlePromptSubmitted` opens a Turn
+ * per prompt without closing the previous one, so consecutive prompts with no
+ * Stop between them can still leave an earlier Turn open — that is the prompt
+ * path's own gap, not this one's, and is out of scope here.
+ *
+ * Fail-open: callers ignore the result, and a rolled-back transaction leaves
+ * exactly the state that existed before.
+ */
+async function closeRunAndOpenTurn(
+  ctx: HookDispatchContext,
+  runId: TypedId<"run">,
+  input: {
+    to: "completed" | "interrupted";
+    endedAt: string;
+    endReason: SessionRunEndReason;
+    headShaEnd?: string;
+  },
+): Promise<void> {
+  await withTransaction(ctx.db, "write", async (tx) => {
+    const run = await closeSessionRun(tx, runId, { from: "active", ...input });
+    if (!run.ok) {
+      return run;
+    }
+    const turn = await getLatestTurnForRun(tx, runId);
+    if (!turn.ok) {
+      return turn;
+    }
+    if (turn.value?.status === "active") {
+      const closedTurn = await closeTurn(tx, turn.value.id, {
+        from: "active",
+        to: "interrupted",
+        stoppedAt: input.endedAt,
+      });
+      if (!closedTurn.ok) {
+        return closedTurn;
+      }
+    }
+    return ok(undefined);
+  });
 }
 
 async function handleSessionStart(
@@ -125,19 +243,26 @@ async function handleSessionStart(
     runId = activeRun.value.id;
   } else {
     if (activeRun.ok && activeRun.value) {
-      await closeSessionRun(ctx.db, activeRun.value.id, {
-        from: "active",
+      // No `headShaEnd`: HEAD now is where the *new* invocation starts, not
+      // where the abandoned Run actually stopped, and inventing that is worse
+      // than leaving it unknown.
+      await closeRunAndOpenTurn(ctx, activeRun.value.id, {
         to: "interrupted",
         endedAt: now,
         endReason: "interrupted",
       });
     }
+    // The branch and commit this Run acts on (dashboard-api.md §6): the only
+    // link from a recorded session back to the code state it saw.
+    const head = await readHeadOrNull(ctx);
     runId = makeTypedId("run", ctx.clock, ctx.random);
     const run = await insertSessionRun(ctx.db, {
       id: runId,
       sessionId,
       startSource: source === "compact" ? "startup" : source,
       cwdFingerprint: event.cwdFingerprint,
+      ...(head?.branch ? { gitBranch: head.branch } : {}),
+      ...(head === null ? {} : { headShaStart: head.sha }),
       startedAt: now,
     });
     if (!run.ok) {
@@ -430,11 +555,12 @@ async function handleSessionEnd(
   }
   const activeRun = await getActiveSessionRunForSession(ctx.db, sessionId);
   if (activeRun.ok && activeRun.value) {
-    await closeSessionRun(ctx.db, activeRun.value.id, {
-      from: "active",
+    const head = await readHeadOrNull(ctx);
+    await closeRunAndOpenTurn(ctx, activeRun.value.id, {
       to: "completed",
       endedAt: ctx.clock.now().toISOString(),
       endReason: mapSessionEndReason(event.payload.reason),
+      ...(head === null ? {} : { headShaEnd: head.sha }),
     });
   }
   return noOutput;

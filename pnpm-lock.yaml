@@ -891,6 +891,12 @@ importers:
       '@biomejs/biome':
         specifier: 'catalog:'
         version: 2.5.4
+      '@iroha/adapter-claude':
+        specifier: workspace:*
+        version: link:../adapter-claude
+      '@iroha/adapter-codex':
+        specifier: workspace:*
+        version: link:../adapter-codex
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.3
