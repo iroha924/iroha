@@ -2,7 +2,14 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "@/api/client.js";
-import { EmptyState, ErrorState, FilterChip, Loading, PageHeader } from "@/components/brand.js";
+import {
+  EmptyState,
+  ErrorState,
+  FilterChip,
+  IrohaSpinner,
+  Loading,
+  PageHeader,
+} from "@/components/brand.js";
 import { Badge } from "@/components/ui/badge.js";
 import { Button } from "@/components/ui/button.js";
 import { Input } from "@/components/ui/input.js";
@@ -65,7 +72,10 @@ export function Search() {
           aria-label={t("search.title")}
           className="h-9 flex-1"
         />
-        <Button type="submit">{t("search.run")}</Button>
+        <Button type="submit" className="gap-2" disabled={q.isFetching}>
+          {q.isFetching && <IrohaSpinner size={16} />}
+          {t("search.run")}
+        </Button>
       </form>
 
       <div className="mb-6 flex flex-wrap items-center gap-2">

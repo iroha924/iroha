@@ -158,7 +158,11 @@ export function LoadMore({ onClick, loading }: { onClick: () => void; loading: b
   return (
     <div className="mt-5 flex justify-center">
       <Button type="button" variant="outline" onClick={onClick} disabled={loading}>
-        {loading ? t("common.loading") : t("common.loadMore")}
+        {loading ? (
+          <span className="iroha-ellipsis">{t("common.loading")}</span>
+        ) : (
+          t("common.loadMore")
+        )}
       </Button>
     </div>
   );
