@@ -1,9 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api/client.js";
-import { btnPrimary, btnSecondary, Card, ErrorNote, Loading, Pill } from "@/components/ui.js";
+import { ErrorState, Loading, PageHeader } from "@/components/brand.js";
+import { Badge } from "@/components/ui/badge.js";
+import { Button } from "@/components/ui/button.js";
+import { Card, CardContent } from "@/components/ui/card.js";
 import { useI18n } from "@/i18n/index.js";
+import type { StatusTone } from "@/lib/status.js";
 
-function tone(status: string): "approve" | "pending" | "reject" | "neutral" {
+function tone(status: string): StatusTone {
   if (status === "ok") return "approve";
   if (status === "warning") return "pending";
   if (status === "error" || status === "blocked") return "reject";
@@ -25,39 +29,45 @@ export function Doctor() {
   });
 
   if (q.isPending) return <Loading />;
-  if (q.isError || q.data === undefined) return <ErrorNote />;
+  if (q.isError || q.data === undefined) return <ErrorState />;
 
   return (
     <section>
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="font-display text-[30px] font-semibold tracking-[-0.01em] text-ink">
-          {t("doctor.title")}
-        </h1>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => queryClient.invalidateQueries({ queryKey: ["doctor"] })}
-            className={btnSecondary}
-          >
-            {t("doctor.rerun")}
-          </button>
-          <button type="button" onClick={() => repair.mutate()} className={btnPrimary}>
-            {t("doctor.resync")}
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow={t("nav.doctor")}
+        title={t("doctor.title")}
+        actions={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => queryClient.invalidateQueries({ queryKey: ["doctor"] })}
+            >
+              {t("doctor.rerun")}
+            </Button>
+            <Button type="button" onClick={() => repair.mutate()} disabled={repair.isPending}>
+              {t("doctor.resync")}
+            </Button>
+          </>
+        }
+      />
+
       <Card>
-        <ul className="space-y-3">
-          {q.data.checks.map((c) => (
-            <li key={c.name} className="flex items-start gap-3">
-              <Pill tone={tone(c.status)}>{c.status}</Pill>
-              <div>
-                <div className="font-medium text-ink">{c.name}</div>
-                <div className="text-sm text-ink-muted">{c.message}</div>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <CardContent>
+          <ul className="divide-y divide-hairline">
+            {q.data.checks.map((c) => (
+              <li key={c.name} className="flex items-start gap-3 py-3.5 first:pt-0 last:pb-0">
+                <Badge variant={tone(c.status)} className="mt-0.5">
+                  {c.status}
+                </Badge>
+                <div className="min-w-0">
+                  <div className="font-medium text-ink">{c.name}</div>
+                  <div className="text-sm text-ink-muted">{c.message}</div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </CardContent>
       </Card>
     </section>
   );
