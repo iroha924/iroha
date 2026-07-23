@@ -10,16 +10,25 @@ export interface HeadState {
 }
 
 /**
- * Well under every hooks-contract.md §7 hook budget (SessionEnd's is the
- * tightest at 1.5s). The callers annotate a record with HEAD and degrade to
- * recording nothing, so a `rev-parse` slow enough to matter — a stale network
- * mount, a cold huge `.git` — must lose to the budget rather than spend it:
- * `runGit`'s own 10s default is longer than the hook is allowed to live, which
- * would turn "fail-open" into "hook killed".
+ * A fifth of the hooks-contract.md §7 budget of the tightest event that calls
+ * this today — SessionEnd, 1.5s (SessionStart is 3.0s). It is **not** below
+ * every §7 budget: PreToolUse's is 0.5s, so a caller on one of the tighter
+ * paths must not assume this cap fits its own.
+ *
+ * Sized this way because the value is an annotation and the callers degrade to
+ * recording nothing, while the write it precedes is mandatory: `runGit`'s own
+ * 10s default is longer than any hook is allowed to live, so a `rev-parse` slow
+ * enough to matter — a stale network mount, a cold huge `.git` — would spend the
+ * whole budget and take the Run/Turn close down with it. A normal `rev-parse`
+ * is single-digit milliseconds, so this only ever bites the pathological case
+ * it exists for.
  */
-const HEAD_READ_TIMEOUT_MS = 1_000;
+const HEAD_READ_TIMEOUT_MS = 300;
 
 const BRANCH_REF_PREFIX = "refs/heads/";
+
+/** SHA-1 (40) or SHA-256 (64) object id — Git's two object formats. */
+const OBJECT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 
 /**
  * Branch and commit HEAD currently points at, for recording the code state a
@@ -49,11 +58,12 @@ export async function readHeadState(cwd: string): Promise<Result<HeadState, Iroh
     return result;
   }
   // `runGit` strips only the trailing newline, so split tolerates a CRLF
-  // separator the same way it does. A success that is not two lines is
-  // rejected rather than defaulted: an empty string would be persisted as an
-  // empty `head_sha_start`, which is worse than recording nothing.
+  // separator the same way it does. The two values are identified by position,
+  // so the sha is checked against the object-id format rather than trusted:
+  // that is what turns a wrong assumption about the output shape into a
+  // recorded `NULL` instead of a branch name persisted as `head_sha_start`.
   const [sha, symbolic] = result.value.split(/\r?\n/);
-  if (!sha || !symbolic) {
+  if (!sha || !symbolic || !OBJECT_ID.test(sha)) {
     return err(new IrohaError("INTERNAL_ERROR", "git rev-parse did not report HEAD and its name"));
   }
   return ok({

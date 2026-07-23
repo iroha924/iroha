@@ -67,6 +67,17 @@ async function resolveSessionId(
 }
 
 /**
+ * A branch name is chosen by whoever created the branch, and `git clone` names
+ * the local branch after the remote's HEAD — so a hostile repository controls
+ * this string. Git's own `check_refname_format` bans ASCII control characters
+ * and space but permits any non-ASCII byte (U+00A0 among them) and, since `/`
+ * is legal inside a ref name, a total length of several KB. `get_session_state`
+ * returns this field to the model, where every other value is bounded, so it is
+ * bounded here too — at the same 200 characters an entity title is cut to.
+ */
+const MAX_BRANCH_CHARS = 200;
+
+/**
  * HEAD as it stands for this hook invocation, or `null` when Git cannot answer
  * — an unborn HEAD, a Git failure, or no Git at all. Fail-open like the rest of
  * the hook path (hooks-contract.md §2/§7): the Run is still recorded, just
@@ -75,7 +86,11 @@ async function resolveSessionId(
  */
 async function readHeadOrNull(ctx: HookDispatchContext): Promise<HeadState | null> {
   const head = await readHeadState(ctx.repo.gitLocation.root);
-  return head.ok ? head.value : null;
+  if (!head.ok) {
+    return null;
+  }
+  const { branch, sha } = head.value;
+  return { sha, branch: branch === null ? null : branch.slice(0, MAX_BRANCH_CHARS) };
 }
 
 /**

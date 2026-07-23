@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { CryptoRandomSource, FixedClock } from "@iroha/domain";
+import { runGit } from "@iroha/git";
 import { closeDatabase, openDatabase } from "@iroha/storage";
 import { afterEach, describe, expect, it } from "vitest";
 import { initRepository } from "../init-repository.js";
@@ -197,6 +198,25 @@ describe("runHook", () => {
     expect(runs[0]?.git_branch).toBe("main");
     expect(String(runs[0]?.head_sha_start)).toMatch(/^[0-9a-f]{40}$/);
     expect(runs[0]?.head_sha_end).toBe(null);
+  });
+
+  it("bounds a hostile branch name before it reaches the record", async () => {
+    // `git clone` names the local branch after the remote's HEAD, so a hostile
+    // repository controls this string; Git permits several KB of it.
+    repoDir = await initedRepo();
+    await commitFile(repoDir, "a.txt", "a");
+    const long = "b".repeat(250);
+    const checkout = await runGit(["checkout", "-b", long], { cwd: repoDir });
+    expect(checkout.ok).toBe(true);
+
+    await hook(repoDir, "claude_code", {
+      session_id: "s1",
+      hook_event_name: "SessionStart",
+      source: "startup",
+    });
+
+    const runs = await sessionRuns(repoDir);
+    expect(runs[0]?.git_branch).toBe("b".repeat(200));
   });
 
   it("records no branch or sha when HEAD cannot be read, without failing the hook", async () => {
