@@ -1,16 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { ApiClientError, api } from "@/api/client.js";
-import {
-  btnDanger,
-  btnPrimary,
-  btnSecondary,
-  Card,
-  ErrorNote,
-  Loading,
-  Pill,
-} from "@/components/ui.js";
+import { BackLink, ErrorState, Loading } from "@/components/brand.js";
+import { Badge } from "@/components/ui/badge.js";
+import { Button } from "@/components/ui/button.js";
+import { Card, CardContent } from "@/components/ui/card.js";
+import { Input } from "@/components/ui/input.js";
+import { Label } from "@/components/ui/label.js";
+import { Textarea } from "@/components/ui/textarea.js";
 import { useI18n } from "@/i18n/index.js";
 
 /**
@@ -60,7 +58,7 @@ export function ReviewDetail() {
       return api.editCandidate(id, d.revisionToken, { ...d.draft, title, body });
     },
     onSuccess: () => {
-      setNotice(null);
+      setNotice(t("common.saved"));
       invalidate();
     },
     onError,
@@ -93,7 +91,7 @@ export function ReviewDetail() {
   });
 
   if (q.isPending) return <Loading />;
-  if (q.isError || q.data === undefined) return <ErrorNote />;
+  if (q.isError || q.data === undefined) return <ErrorState />;
   const d = q.data;
   const secretBlocked = !d.validation.secretsClean;
   const canApprove =
@@ -101,50 +99,42 @@ export function ReviewDetail() {
 
   return (
     <section className="space-y-5">
-      <Link to="/review" className="text-sm text-ink-muted hover:text-ink">
-        ← {t("common.back")}
-      </Link>
+      <BackLink to="/review">{t("common.back")}</BackLink>
 
       {notice !== null && (
         <p className="rounded-xl bg-warn-tint px-3 py-2 text-sm text-warn">{notice}</p>
       )}
 
-      <Card className="space-y-4">
-        <div className="flex items-center gap-2">
-          <Pill tone="pending">{d.type}</Pill>
-        </div>
-        <div>
-          <label
-            className="mb-1 block text-[11.5px] font-semibold uppercase tracking-wider text-ink-faint"
-            htmlFor="cand-title"
-          >
-            Title
-          </label>
-          <input
-            id="cand-title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="h-10 w-full rounded-xl border border-hairline bg-paper-raised px-3 text-ink focus:border-matcha focus:outline-none"
-          />
-        </div>
-        <div>
-          <label
-            className="mb-1 block text-[11.5px] font-semibold uppercase tracking-wider text-ink-faint"
-            htmlFor="cand-body"
-          >
-            Markdown
-          </label>
-          <textarea
-            id="cand-body"
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            rows={10}
-            className="w-full rounded-xl border border-hairline bg-paper-inset px-3 py-2 font-mono text-[13px] text-ink focus:border-matcha focus:outline-none"
-          />
-          <button type="button" onClick={() => save.mutate()} className={`mt-2 ${btnSecondary}`}>
-            Save
-          </button>
-        </div>
+      <Card>
+        <CardContent className="space-y-4">
+          <Badge variant="pending" className="w-fit">
+            {d.type}
+          </Badge>
+          <div className="space-y-1.5">
+            <Label htmlFor="cand-title">{t("review.fieldTitle")}</Label>
+            <Input id="cand-title" value={title} onChange={(e) => setTitle(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="cand-body">{t("review.fieldBody")}</Label>
+            <Textarea
+              id="cand-body"
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              rows={10}
+              className="bg-paper-inset font-mono text-[13px]"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-1"
+              onClick={() => save.mutate()}
+              disabled={save.isPending}
+            >
+              {t("common.save")}
+            </Button>
+          </div>
+        </CardContent>
       </Card>
 
       <div>
@@ -181,43 +171,33 @@ export function ReviewDetail() {
           <h2 className="mb-2 text-[11.5px] font-semibold uppercase tracking-wider text-ink-faint">
             {t("review.preview")}
           </h2>
-          <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-xl border border-hairline bg-paper-inset p-4 font-mono text-xs leading-relaxed text-ink">
+          <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-2xl border border-hairline bg-paper-inset p-4 font-mono text-xs leading-relaxed text-ink">
             {d.canonicalPreview}
           </pre>
         </div>
       )}
 
       <div className="flex flex-wrap items-end gap-3">
-        <div>
-          <label
-            className="mb-1 block text-[11.5px] font-semibold uppercase tracking-wider text-ink-faint"
-            htmlFor="reviewer"
-          >
-            {t("review.reviewer")}
-          </label>
-          <input
+        <div className="space-y-1.5">
+          <Label htmlFor="reviewer">{t("review.reviewer")}</Label>
+          <Input
             id="reviewer"
             value={reviewer}
             onChange={(e) => setReviewer(e.target.value)}
-            className="h-10 rounded-xl border border-hairline bg-paper-raised px-3 text-ink focus:border-matcha focus:outline-none"
+            className="w-56"
           />
         </div>
-        <button
-          type="button"
-          onClick={() => approve.mutate()}
-          disabled={!canApprove}
-          className={btnPrimary}
-        >
+        <Button type="button" onClick={() => approve.mutate()} disabled={!canApprove}>
           {t("review.approve")}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="destructive"
           onClick={() => reject.mutate()}
           disabled={d.status !== "pending"}
-          className={btnDanger}
         >
           {t("review.reject")}
-        </button>
+        </Button>
       </div>
     </section>
   );

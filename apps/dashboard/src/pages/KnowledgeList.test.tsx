@@ -53,7 +53,7 @@ describe("KnowledgeList", () => {
     renderWithProviders(<KnowledgeList />);
     await screen.findByText(/No approved knowledge/);
 
-    await userEvent.click(screen.getByRole("button", { name: "decision" }));
+    await userEvent.click(screen.getByRole("button", { name: "Decision" }));
     await waitFor(() =>
       expect(
         fn.mock.calls.some((c) =>

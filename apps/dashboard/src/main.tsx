@@ -1,3 +1,4 @@
+import { CSPProvider } from "@base-ui/react/csp-provider";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
@@ -34,13 +35,15 @@ if (rootElement === null) {
 exchangeFragmentToken().finally(() => {
   createRoot(rootElement).render(
     <StrictMode>
-      <QueryClientProvider client={queryClient}>
-        <I18nProvider>
-          <BrowserRouter>
-            <App />
-          </BrowserRouter>
-        </I18nProvider>
-      </QueryClientProvider>
+      <CSPProvider disableStyleElements>
+        <QueryClientProvider client={queryClient}>
+          <I18nProvider>
+            <BrowserRouter>
+              <App />
+            </BrowserRouter>
+          </I18nProvider>
+        </QueryClientProvider>
+      </CSPProvider>
     </StrictMode>,
   );
 });

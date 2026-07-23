@@ -169,6 +169,16 @@ test.afterAll(async () => {
 test("approve a fixture candidate, write canonical, and read it as approved knowledge", async ({
   page,
 }) => {
+  // Chromium logs a console error for every inline style the CSP blocks; collect
+  // them across the whole journey and assert none at the end.
+  const cspViolations: string[] = [];
+  page.on("console", (msg) => {
+    const text = msg.text();
+    if (/Content Security Policy|Refused to (apply|load)/i.test(text)) {
+      cspViolations.push(text);
+    }
+  });
+
   // The launch URL already carries the one-time token in its fragment; the SPA
   // exchanges it for the session cookie, then strips it from history.
   await page.goto(launchUrl);
@@ -208,4 +218,11 @@ test("approve a fixture candidate, write canonical, and read it as approved know
   // A direct-route reload is served by the packaged server's SPA fallback.
   await page.reload();
   await expect(page.getByText(DECISION_TITLE).first()).toBeVisible();
+
+  // The strict `style-src 'self'` header (no nonce) must have refused nothing across
+  // the journey (Overview → Review → Review detail → Knowledge → Knowledge detail) —
+  // guarding that no shadcn/Base UI component injects a runtime `<style>` (Base UI runs
+  // with `disableStyleElements` and the chart is color-less). If a future component must
+  // inject one, this gate fails first and a nonce is added back via an ADR.
+  expect(cspViolations, `unexpected CSP violations: ${cspViolations.join(" | ")}`).toEqual([]);
 });

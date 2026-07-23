@@ -3,6 +3,7 @@ import { ok } from "@iroha/domain";
 import {
   getOverviewCounts,
   getSyncCursor,
+  type KnowledgeEntityType,
   listOpenDirtyMarkers,
   listSessions,
   probeCapabilities,
@@ -22,6 +23,8 @@ export interface OverviewData {
   pendingCandidates: number;
   oldestPendingCreatedAt: string | null;
   approvedKnowledge: number;
+  /** Approved-knowledge composition by canonical type (feeds the Overview chart). */
+  approvedKnowledgeByType: Record<KnowledgeEntityType, number>;
   sessions: number;
   openDirtyMarkers: number;
   recentSessions: OverviewRecentSession[];
@@ -65,6 +68,7 @@ export async function getOverview(
         pendingCandidates: counts.value.pendingCandidates,
         oldestPendingCreatedAt: counts.value.oldestPendingCreatedAt,
         approvedKnowledge: counts.value.approvedKnowledge,
+        approvedKnowledgeByType: counts.value.approvedKnowledgeByType,
         sessions: counts.value.sessions,
         openDirtyMarkers: dirty.value.length,
         recentSessions: recent.value.map((row) => ({

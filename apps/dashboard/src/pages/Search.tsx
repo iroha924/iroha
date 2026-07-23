@@ -2,7 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "@/api/client.js";
-import { btnPrimary, EmptyState, ErrorNote, Loading, PageTitle } from "@/components/ui.js";
+import { EmptyState, ErrorState, FilterChip, Loading, PageHeader } from "@/components/brand.js";
+import { Badge } from "@/components/ui/badge.js";
+import { Button } from "@/components/ui/button.js";
+import { Input } from "@/components/ui/input.js";
 import { useI18n } from "@/i18n/index.js";
 
 /**
@@ -48,45 +51,33 @@ export function Search() {
 
   return (
     <section>
-      <PageTitle>{t("search.title")}</PageTitle>
+      <PageHeader title={t("search.title")} />
+
       <form onSubmit={onSubmit} className="mb-4 flex gap-2">
-        <input
+        <Input
           type="search"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder={t("search.placeholder")}
           aria-label={t("search.title")}
-          className="h-10 flex-1 rounded-xl border border-hairline bg-paper-raised px-3 text-ink placeholder:text-ink-faint focus:border-matcha focus:outline-none"
+          className="h-9 flex-1"
         />
-        <button type="submit" className={btnPrimary}>
-          {t("search.run")}
-        </button>
+        <Button type="submit">{t("search.run")}</Button>
       </form>
+
       <div className="mb-6 flex flex-wrap items-center gap-2">
-        <span className="text-xs uppercase tracking-wide text-ink-faint">
+        <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-ink-faint">
           {t("search.filterByType")}
         </span>
-        {KNOWLEDGE_TYPES.map((type) => {
-          const active = types.includes(type);
-          return (
-            <button
-              key={type}
-              type="button"
-              aria-pressed={active}
-              onClick={() => toggleType(type)}
-              className={`rounded-full border px-3 py-1 text-xs transition-colors ${
-                active
-                  ? "border-matcha bg-matcha text-paper-raised"
-                  : "border-hairline bg-paper-raised text-ink-muted hover:bg-paper-inset"
-              }`}
-            >
-              {type}
-            </button>
-          );
-        })}
+        {KNOWLEDGE_TYPES.map((type) => (
+          <FilterChip key={type} active={types.includes(type)} onClick={() => toggleType(type)}>
+            {t(`ktype.${type}`)}
+          </FilterChip>
+        ))}
       </div>
+
       {q.isFetching && <Loading />}
-      {q.isError && <ErrorNote />}
+      {q.isError && <ErrorState />}
       {q.data !== undefined && q.data.results.length === 0 && (
         <EmptyState message={t("search.empty")} />
       )}
@@ -98,10 +89,15 @@ export function Search() {
                 to={`/knowledge/${r.id}`}
                 className="block px-5 py-4 transition-colors hover:bg-paper-inset"
               >
-                <div className="font-medium text-ink">{r.title}</div>
-                <div className="mt-0.5 text-sm text-ink-muted">{r.summary}</div>
-                <div className="mt-1.5 text-xs text-ink-faint">
-                  {r.type} · {t("knowledge.authority")} {r.authority}
+                <div className="flex items-center gap-2.5">
+                  <Badge variant="neutral">{t(`ktype.${r.type}`)}</Badge>
+                  <span className="font-medium text-ink">{r.title}</span>
+                </div>
+                {r.summary !== null && (
+                  <p className="mt-1.5 line-clamp-2 text-sm text-ink-muted">{r.summary}</p>
+                )}
+                <div className="mt-1.5 text-xs tabular-nums text-ink-faint">
+                  {t("knowledge.authority")} {r.authority}
                 </div>
               </Link>
             </li>

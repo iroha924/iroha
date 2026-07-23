@@ -5,13 +5,13 @@ import { api, type KnowledgeStatusFilter } from "@/api/client.js";
 import { flattenPages } from "@/api/pagination.js";
 import {
   EmptyState,
-  ErrorNote,
+  ErrorState,
   FilterChip,
   Loading,
   LoadMore,
-  PageTitle,
-  Pill,
-} from "@/components/ui.js";
+  PageHeader,
+} from "@/components/brand.js";
+import { Badge } from "@/components/ui/badge.js";
 import { useI18n } from "@/i18n/index.js";
 
 const KNOWLEDGE_STATUSES: readonly KnowledgeStatusFilter[] = ["approved", "superseded", "archived"];
@@ -57,10 +57,11 @@ export function KnowledgeList() {
 
   return (
     <section>
-      <PageTitle>{t("knowledge.title")}</PageTitle>
+      <PageHeader eyebrow={t("nav.knowledge")} title={t("knowledge.title")} />
+
       <div className="mb-6 flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs uppercase tracking-wide text-ink-faint">
+          <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-ink-faint">
             {t("common.status")}
           </span>
           {KNOWLEDGE_STATUSES.map((s) => (
@@ -70,18 +71,19 @@ export function KnowledgeList() {
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs uppercase tracking-wide text-ink-faint">
+          <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-ink-faint">
             {t("search.filterByType")}
           </span>
           {KNOWLEDGE_TYPES.map((ty) => (
             <FilterChip key={ty} active={types.includes(ty)} onClick={() => toggleType(ty)}>
-              {ty}
+              {t(`ktype.${ty}`)}
             </FilterChip>
           ))}
         </div>
       </div>
+
       {q.isPending && <Loading />}
-      {q.isError && <ErrorNote />}
+      {q.isError && <ErrorState />}
       {q.data !== undefined &&
         (items.length === 0 ? (
           <EmptyState message={filtered ? t("common.noMatches") : t("knowledge.empty")} />
@@ -92,11 +94,11 @@ export function KnowledgeList() {
                 <li key={item.id}>
                   <Link
                     to={`/knowledge/${item.id}`}
-                    className="flex items-center gap-3 px-5 py-3.5 transition-colors hover:bg-paper-inset"
+                    className="flex items-center gap-3 px-5 py-4 transition-colors hover:bg-paper-inset"
                   >
-                    <Pill tone="neutral">{item.type}</Pill>
-                    <span className="flex-1 font-medium text-ink">{item.title}</span>
-                    <span className="text-xs tabular-nums text-ink-faint">
+                    <Badge variant="neutral">{t(`ktype.${item.type}`)}</Badge>
+                    <span className="flex-1 truncate font-medium text-ink">{item.title}</span>
+                    <span className="shrink-0 text-xs tabular-nums text-ink-faint">
                       {t("knowledge.authority")} {item.authority}
                     </span>
                   </Link>
