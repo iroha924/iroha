@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge.js";
 import { Button } from "@/components/ui/button.js";
 import { Input } from "@/components/ui/input.js";
 import { useI18n } from "@/i18n/index.js";
+import { cn } from "@/lib/utils";
 
 /**
  * The knowledge entity types that can appear in search results — `search_documents`
@@ -78,13 +79,22 @@ export function Search() {
         ))}
       </div>
 
+      {/* Full spinner only on the first-ever search (no data yet). On a new term or a
+          type toggle, `keepPreviousData` shows the prior results dimmed while the next
+          fetch is in flight — feedback without the layout jump a spinner-over-results
+          would cause. */}
       {q.isLoading && <Loading />}
       {q.isError && <ErrorState />}
       {q.data !== undefined && q.data.results.length === 0 && (
         <EmptyState message={t("search.empty")} />
       )}
       {q.data !== undefined && q.data.results.length > 0 && (
-        <ul className="divide-y divide-hairline overflow-hidden rounded-2xl border border-hairline bg-paper-raised">
+        <ul
+          className={cn(
+            "divide-y divide-hairline overflow-hidden rounded-2xl border border-hairline bg-paper-raised",
+            q.isPlaceholderData && "opacity-60 transition-opacity",
+          )}
+        >
           {q.data.results.map((r) => (
             <li key={r.id}>
               <Link
