@@ -12,15 +12,15 @@ import {
 import "@xyflow/react/dist/style.css";
 import { useState } from "react";
 import { api } from "@/api/client.js";
+import { EmptyState, ErrorState, FilterChip, Loading, PageHeader } from "@/components/brand.js";
+import { Button } from "@/components/ui/button.js";
 import {
-  btnPrimary,
-  btnSecondary,
-  EmptyState,
-  ErrorNote,
-  FilterChip,
-  Loading,
-  PageTitle,
-} from "@/components/ui.js";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select.js";
 import { useI18n } from "@/i18n/index.js";
 import { mergeNeighbors, seedLayout } from "./graph-merge.js";
 
@@ -161,14 +161,14 @@ export function Graph() {
 
   return (
     <section>
-      <PageTitle>{t("graph.title")}</PageTitle>
+      <PageHeader eyebrow={t("nav.graph")} title={t("graph.title")} />
 
       <div className="mb-4 rounded-2xl border border-hairline bg-paper-raised p-4">
-        <div className="mb-3 text-xs uppercase tracking-wide text-ink-faint">
+        <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-faint">
           {t("graph.selectSeeds")}
         </div>
         {seedsLoading && <Loading />}
-        {seedsError && <ErrorNote />}
+        {seedsError && <ErrorState />}
         {!seedsLoading && !seedsError && !hasSeeds && (
           <p className="text-sm text-ink-muted">{t("graph.noSeeds")}</p>
         )}
@@ -186,41 +186,41 @@ export function Graph() {
         />
         {hasSeeds && <p className="mt-1 text-[11px] text-ink-faint">{t("graph.seedNote")}</p>}
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <label className="flex items-center gap-1.5 text-xs text-ink-muted">
-            {t("graph.depth")}
-            <select
-              value={depth}
-              onChange={(e) => setDepth(Number(e.target.value))}
-              className="h-9 rounded-xl border border-hairline bg-paper-raised px-2 text-sm text-ink focus:border-matcha focus:outline-none"
-            >
-              {DEPTHS.map((d) => (
-                <option key={d} value={d}>
-                  {d}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
+          <div className="flex items-center gap-1.5 text-xs text-ink-muted">
+            <span>{t("graph.depth")}</span>
+            <Select value={String(depth)} onValueChange={(value) => setDepth(Number(value))}>
+              <SelectTrigger size="sm" aria-label={t("graph.depth")} className="w-16">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DEPTHS.map((d) => (
+                  <SelectItem key={d} value={String(d)}>
+                    {d}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button
             type="button"
             disabled={selected.length === 0 || selected.length > MAX_ROOTS || busy}
             onClick={() => loadGraph.mutate({ roots: selected, depth })}
-            className={btnPrimary}
           >
             {t("graph.loadGraph")}
             {selected.length > 0 && ` (${selected.length})`}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="outline"
             disabled={selected.length !== 2 || busy}
             onClick={runFindPath}
-            className={btnSecondary}
           >
             {t("graph.findPath")}
-          </button>
+          </Button>
           {(graph.nodes.length > 0 || selected.length > 0) && (
-            <button type="button" disabled={busy} onClick={clear} className={btnSecondary}>
+            <Button type="button" variant="outline" disabled={busy} onClick={clear}>
               {t("common.clear")}
-            </button>
+            </Button>
           )}
         </div>
         {selected.length > MAX_ROOTS && (
@@ -229,7 +229,7 @@ export function Graph() {
       </div>
 
       {busy && <Loading />}
-      {failed && <ErrorNote />}
+      {failed && <ErrorState />}
       {pathMissing && (
         <p className="rounded-xl bg-warn-tint px-3 py-2 text-sm text-warn">
           {t("graph.pathNotFound")}
