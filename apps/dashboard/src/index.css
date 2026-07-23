@@ -176,6 +176,21 @@
     outline: 2px solid var(--color-matcha);
     outline-offset: 2px;
   }
+
+  /* shadcn/Base UI render buttons with the default cursor (matching native OS
+     buttons); restore the pointer on interactive elements — the equivalent of
+     `shadcn init --pointer`. Disabled controls use `pointer-events: none`, so
+     they never reach this rule. */
+  button:not(:disabled),
+  [role="button"],
+  [role="tab"],
+  [role="option"],
+  [role="menuitem"],
+  [role="menuitemcheckbox"],
+  [role="menuitemradio"],
+  label[for] {
+    cursor: pointer;
+  }
 }
 
 /*
