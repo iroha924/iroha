@@ -20,17 +20,22 @@ export interface ResolvedRepository {
  * config.yaml` (shared by `rebuildDatabase` and the CLI's `sync` command —
  * `initRepository` has its own variant of this because it must also handle
  * the "not yet initialized" case by bootstrapping rather than failing).
+ *
+ * `gitTimeoutMs` caps each `git` call. The CLI/doctor/dashboard omit it (a slow
+ * mount should wait, not fail — `runGit`'s 10s default); only the latency-bound
+ * hook path passes its §7 budget so a hung `git` fails open within budget.
  */
 export async function resolveInitializedRepository(
   cwd: string,
+  gitTimeoutMs?: number,
 ): Promise<Result<ResolvedRepository, IrohaError>> {
-  const locationResult = await resolveGitLocation(cwd);
+  const locationResult = await resolveGitLocation(cwd, gitTimeoutMs);
   if (!locationResult.ok) {
     return locationResult;
   }
   const gitLocation = locationResult.value;
 
-  const irohaPathResult = await resolveGitPath(cwd, "iroha");
+  const irohaPathResult = await resolveGitPath(cwd, "iroha", gitTimeoutMs);
   if (!irohaPathResult.ok) {
     return irohaPathResult;
   }

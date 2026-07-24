@@ -1,0 +1,15 @@
+# osv-scanner ignore list. Each entry records why a detected advisory is not
+# actionable for this repo, and an expiry that forces periodic re-evaluation.
+
+[[IgnoredVulns]]
+id = "GHSA-qwww-vcr4-c8h2"
+ignoreUntil = 2027-01-25
+# CSRF in react-router's unstable RSC (React Server Components) mode only —
+# "only affects your application if you are using the unstable RSC APIs".
+# apps/dashboard is a client-only SPA (BrowserRouter/Routes/Link, Vite build
+# served as static files by the Hono server) that uses no RSC/data-mode APIs,
+# so this is unreachable. No 7.x fix exists: react-router-dom is frozen at
+# 7.18.1 (no 8.x published) and the fix ships only in react-router 8.3.0, which
+# requires migrating off react-router-dom to react-router v8. Re-evaluate at
+# expiry (has the dashboard moved to v8, or a 7.x-compatible fix appeared).
+reason = "react-router GHSA-qwww-vcr4-c8h2 is RSC-mode-only; the dashboard is a client SPA with no RSC usage, so it is unreachable. No 7.x fix exists."

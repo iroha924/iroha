@@ -30,8 +30,9 @@ export interface GitLocation {
 async function resolveGitRevParsePath(
   cwd: string,
   args: readonly string[],
+  timeoutMs?: number,
 ): Promise<Result<string, IrohaError>> {
-  const result = await runGit(args, { cwd });
+  const result = await runGit(args, { cwd, ...(timeoutMs === undefined ? {} : { timeoutMs }) });
   if (!result.ok) {
     const stderr = (result.error.details as { stderr?: string } | undefined)?.stderr;
     if (stderr !== undefined && NOT_A_REPOSITORY.test(stderr)) {
@@ -54,18 +55,21 @@ async function resolveGitRevParsePath(
   }
 }
 
-export async function resolveGitLocation(cwd: string): Promise<Result<GitLocation, IrohaError>> {
-  const root = await resolveGitRevParsePath(cwd, ["rev-parse", "--show-toplevel"]);
+export async function resolveGitLocation(
+  cwd: string,
+  timeoutMs?: number,
+): Promise<Result<GitLocation, IrohaError>> {
+  const root = await resolveGitRevParsePath(cwd, ["rev-parse", "--show-toplevel"], timeoutMs);
   if (!root.ok) {
     return root;
   }
 
-  const commonDir = await resolveGitRevParsePath(cwd, ["rev-parse", "--git-common-dir"]);
+  const commonDir = await resolveGitRevParsePath(cwd, ["rev-parse", "--git-common-dir"], timeoutMs);
   if (!commonDir.ok) {
     return commonDir;
   }
 
-  const gitDir = await resolveGitRevParsePath(cwd, ["rev-parse", "--git-dir"]);
+  const gitDir = await resolveGitRevParsePath(cwd, ["rev-parse", "--git-dir"], timeoutMs);
   if (!gitDir.ok) {
     return gitDir;
   }
@@ -93,12 +97,13 @@ export async function resolveGitLocation(cwd: string): Promise<Result<GitLocatio
 export async function resolveGitPath(
   cwd: string,
   name: string,
+  timeoutMs?: number,
 ): Promise<Result<string, IrohaError>> {
-  const path = await resolveGitRevParsePath(cwd, ["rev-parse", "--git-path", name]);
+  const path = await resolveGitRevParsePath(cwd, ["rev-parse", "--git-path", name], timeoutMs);
   if (!path.ok) {
     return path;
   }
-  const commonDir = await resolveGitRevParsePath(cwd, ["rev-parse", "--git-common-dir"]);
+  const commonDir = await resolveGitRevParsePath(cwd, ["rev-parse", "--git-common-dir"], timeoutMs);
   if (!commonDir.ok) {
     return commonDir;
   }
