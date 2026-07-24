@@ -8,11 +8,14 @@ import type {
 } from "@iroha/domain";
 import { err, IrohaError as IrohaErrorClass, makeTypedId, ok } from "@iroha/domain";
 import {
+  type Executor,
+  getEntityById,
   getLatestTurnForRun,
   getTurnById,
   insertCandidate,
   insertCheckpoint,
   insertEntity,
+  insertRelation,
   updateTurnCheckpointState,
 } from "@iroha/storage";
 import { runIdempotentWrite } from "./idempotency.js";
@@ -184,6 +187,52 @@ function storedToData(responseJson: string): McpCreateCheckpointData {
 }
 
 /**
+ * Materializes a checkpoint's `references[]` as graph edges (mcp-contract.md
+ * §6.6 step 6). Resolve-only, matching how canonical `relations[]` are imported
+ * (`sync-canonical.ts` `insertCanonicalDocumentRelations`) and how forge sync
+ * links work items: a `ref` that resolves to an existing entity becomes a
+ * `checkpoint RELATED_TO entity` edge (`source_kind = 'inferred'`); a `ref` that
+ * names no known entity is left recorded on the checkpoint but not linked — this
+ * tool never invents placeholder entities (§6.8). The reference `type` is not
+ * modeled as the relation type: a checkpoint referencing an artifact does not
+ * assert a specific semantic (ADDRESSES/AFFECTS/…), so the honest edge is the
+ * generic `RELATED_TO`. Duplicate edges (the same entity referenced twice, or a
+ * retried checkpoint) collapse via `insertRelation`'s `ON CONFLICT DO NOTHING`.
+ */
+async function materializeReferenceRelations(
+  tx: Executor,
+  repositoryId: TypedId<"repo">,
+  checkpointId: TypedId<"chk">,
+  references: CheckpointInput["references"],
+  nowIso: string,
+  clock: Clock,
+  random: RandomSource,
+): Promise<Result<void, IrohaError>> {
+  for (const reference of references) {
+    const target = await getEntityById(tx, reference.ref);
+    if (!target.ok) {
+      return err(target.error);
+    }
+    if (target.value === null) {
+      continue;
+    }
+    const inserted = await insertRelation(tx, {
+      id: makeTypedId("rel", clock, random),
+      repositoryId,
+      fromEntityId: checkpointId,
+      relationType: "RELATED_TO",
+      toEntityId: reference.ref,
+      sourceKind: "inferred",
+      createdAt: nowIso,
+    });
+    if (!inserted.ok) {
+      return err(inserted.error);
+    }
+  }
+  return ok(undefined);
+}
+
+/**
  * Saves a structured Checkpoint and its knowledge candidates (mcp-contract.md
  * §6.6). Fixed order: authenticate the session token, secret-scan/redact every
  * free-text field, resolve the Turn, then — under the idempotency contract, in
@@ -306,6 +355,19 @@ export async function mcpCreateCheckpoint(
               return err(candidate.error);
             }
             candidateIds.push(candidateId);
+          }
+
+          const referenceRelations = await materializeReferenceRelations(
+            tx,
+            repositoryId,
+            checkpointId,
+            redacted.value.references,
+            nowIso,
+            ctx.clock,
+            ctx.random,
+          );
+          if (!referenceRelations.ok) {
+            return err(referenceRelations.error);
           }
 
           if (resolvedTurnId !== undefined) {
