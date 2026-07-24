@@ -9,6 +9,7 @@ import {
   insertApproval,
   insertCandidate,
   listApprovalsByCandidate,
+  listApprovedRulesForRepository,
   listCandidatesByStatus,
   updateCandidatePayload,
   updateCandidateStatus,
@@ -131,6 +132,44 @@ describe("knowledge repositories", () => {
       expect(read.value?.enforcement).toBe("guardrail");
       expect(read.value?.guardSpecJson).toBe('{"tools":["Bash"],"paths":[]}');
       expect(read.value?.severity).toBe("error");
+    }
+  });
+
+  it("lists approved rules with null severity on a DB from before migration 004", async () => {
+    const opened = await openMigratedTestDb();
+    tempDir = opened.dir;
+    db = opened.db;
+    const repositoryId = await seedRepository(db, "presev");
+    const id = "rul_0000000000000000000000022";
+    await insertEntity(db, {
+      id,
+      repositoryId,
+      entityType: "rule",
+      title: "Validate boundaries",
+      status: "approved",
+      authority: 100,
+      sourceKind: "canonical",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    await upsertKnowledgeItem(db, {
+      id,
+      knowledgeType: "rule",
+      body: "Validate every boundary.",
+      scopeJson: "{}",
+      enforcement: "advisory",
+      severity: "warning",
+    });
+
+    // Simulate the pre-004 schema: the hook guardrail path and the MCP server
+    // read an un-migrated DB, so the query must not error on the missing column.
+    await db.execute("ALTER TABLE knowledge_items DROP COLUMN severity");
+
+    const listed = await listApprovedRulesForRepository(db, repositoryId);
+    expect(listed.ok).toBe(true);
+    if (listed.ok) {
+      expect(listed.value.map((r) => r.id)).toEqual([id]);
+      expect(listed.value[0]?.severity).toBe(null);
     }
   });
 

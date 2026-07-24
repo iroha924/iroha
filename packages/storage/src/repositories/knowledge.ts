@@ -150,39 +150,66 @@ export interface ActiveRuleRow {
 }
 
 /**
+ * `k.severity` was added by migration 004; a `SELECT` naming it errors on a DB
+ * still at an older schema. This builds the query with severity as either the
+ * real column or a `NULL` literal so the same reader works before and after the
+ * migration (see `listApprovedRulesForRepository`).
+ */
+function approvedRulesSql(severityExpr: string): string {
+  return `SELECT e.id AS id, e.title AS title, e.summary AS summary,
+      k.enforcement AS enforcement, ${severityExpr} AS severity, k.scope_json AS scope_json,
+      k.guard_spec_json AS guard_spec_json, k.canonical_path AS canonical_path
+    FROM knowledge_items k
+    JOIN entities e ON e.id = k.id
+    WHERE e.repository_id = ? AND k.knowledge_type = 'rule' AND e.status = 'approved'
+    ORDER BY e.authority DESC, e.id DESC`;
+}
+
+/** SQLite/libSQL's "no such column" error text is its own (not gettext-localized), so match on it. */
+function isMissingSeverityColumn(cause: unknown): boolean {
+  const message = cause instanceof Error ? cause.message : String(cause);
+  return /no such column/i.test(message) && /severity/i.test(message);
+}
+
+/**
  * Lists a repository's approved Rule knowledge items (both advisory and
  * guardrail enforcement) with their entity title/summary, for the MCP
  * `get_active_rules` tool (mcp-contract.md §6.3). Only `status = 'approved'`
  * entities are returned — pending candidates are never included.
+ *
+ * Tolerates a DB from before migration 004 (the hook guardrail path and the MCP
+ * server open the DB without migrating — only init/sync/doctor migrate,
+ * database-schema.md §3): if `severity` does not exist yet, it degrades to a
+ * `NULL`-severity read rather than erroring, so guardrail evaluation keeps
+ * working in the window between a package upgrade and the next sync/init.
  */
 export async function listApprovedRulesForRepository(
   db: Executor,
   repositoryId: TypedId<"repo">,
 ): Promise<Result<ActiveRuleRow[], IrohaError>> {
+  const toRows = (rows: Record<string, unknown>[]): ActiveRuleRow[] =>
+    rows.map((row) => ({
+      id: String(row.id),
+      title: String(row.title),
+      summary: nullableString(row.summary),
+      enforcement: row.enforcement as "advisory" | "guardrail",
+      severity: nullableString(row.severity) as RuleSeverity | null,
+      scopeJson: String(row.scope_json),
+      guardSpecJson: nullableString(row.guard_spec_json),
+      canonicalPath: nullableString(row.canonical_path),
+    }));
   try {
-    const result = await db.execute({
-      sql: `SELECT e.id AS id, e.title AS title, e.summary AS summary,
-          k.enforcement AS enforcement, k.severity AS severity, k.scope_json AS scope_json,
-          k.guard_spec_json AS guard_spec_json, k.canonical_path AS canonical_path
-        FROM knowledge_items k
-        JOIN entities e ON e.id = k.id
-        WHERE e.repository_id = ? AND k.knowledge_type = 'rule' AND e.status = 'approved'
-        ORDER BY e.authority DESC, e.id DESC`,
-      args: [repositoryId],
-    });
-    return ok(
-      result.rows.map((row) => ({
-        id: String(row.id),
-        title: String(row.title),
-        summary: nullableString(row.summary),
-        enforcement: row.enforcement as "advisory" | "guardrail",
-        severity: nullableString(row.severity) as RuleSeverity | null,
-        scopeJson: String(row.scope_json),
-        guardSpecJson: nullableString(row.guard_spec_json),
-        canonicalPath: nullableString(row.canonical_path),
-      })),
-    );
+    const result = await db.execute({ sql: approvedRulesSql("k.severity"), args: [repositoryId] });
+    return ok(toRows(result.rows));
   } catch (cause) {
+    if (isMissingSeverityColumn(cause)) {
+      try {
+        const fallback = await db.execute({ sql: approvedRulesSql("NULL"), args: [repositoryId] });
+        return ok(toRows(fallback.rows));
+      } catch (fallbackCause) {
+        return err(mapLibsqlError(fallbackCause, "Failed to list approved rules"));
+      }
+    }
     return err(mapLibsqlError(cause, "Failed to list approved rules"));
   }
 }
