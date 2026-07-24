@@ -77,8 +77,8 @@ describe("evaluateGuardrails", () => {
   });
 
   it("denies writes matched by full-glob shapes the prefix matcher silently missed", () => {
-    // These shapes (leading `**/`, mid-path `**`, a dotfile, `*.ext`) previously
-    // no-op'd — the guard read as active but let the protected write through.
+    // These shapes (leading `**/`, mid-path `**`, a dotfile, `*.ext`) a prefix matcher
+    // misses: the guard reads as active but lets the protected write through.
     const cases: Array<[string, string]> = [
       ["**/*.env", ".env"],
       ["**/*.env", "config/prod.env"],
@@ -104,8 +104,7 @@ describe("evaluateGuardrails", () => {
   it("protects the whole subtree of a bare-directory or single-star guard path", () => {
     // A guard path protects everything under it: picomatch alone would match
     // only the literal entry, so a bare `src/generated` or `src/*` guard would
-    // silently protect nothing under it — narrower than the pre-picomatch
-    // matcher, a protection regression the subtree match closes.
+    // silently protect nothing under it.
     const bareDir = guardrailRule("rul_bare", { tools: ["Edit"], paths: ["src/generated"] });
     expect(
       evaluateGuardrails([bareDir], [target("src/generated/client.ts", "write")]),

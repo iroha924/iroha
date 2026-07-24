@@ -13,7 +13,7 @@ describe("scanForSecrets", () => {
 
   it("detects a private key and masks the value in the finding", async () => {
     // 100+ char base64 body starting with "MI" is required for secretlint's
-    // privatekey rule to match — confirmed by reproduction.
+    // privatekey rule to match.
     const base64Body =
       "MIIEowIBAAKCAQEA1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyz+/==";
     const content = `# Notes\n\n-----BEGIN RSA PRIVATE KEY-----\n${base64Body}\n-----END RSA PRIVATE KEY-----\n`;
@@ -104,13 +104,13 @@ describe("scanForSecrets engine retry", () => {
   });
 
   it("retries engine creation on the next call after a transient createEngine failure", async () => {
-    // Regression test (confirmed by review): the module-level engine
-    // promise must not permanently pin a rejected `createEngine()` call —
-    // otherwise one transient failure (e.g. a filesystem hiccup resolving
-    // a rule package) would break every future scan for the rest of the
-    // process's life. `@secretlint/node` is a third-party dependency, so
-    // mocking it here (unlike this project's own filesystem/subprocess
-    // code) is the only way to force a specific, real failure mode.
+    // The module-level engine promise must not permanently pin a rejected
+    // `createEngine()` call — otherwise one transient failure (e.g. a
+    // filesystem hiccup resolving a rule package) would break every future
+    // scan for the rest of the process's life. `@secretlint/node` is a
+    // third-party dependency, so mocking it here (unlike this project's own
+    // filesystem/subprocess code) is the only way to force a specific, real
+    // failure mode.
     let callCount = 0;
     vi.doMock("@secretlint/node", () => ({
       createEngine: vi.fn(() => {

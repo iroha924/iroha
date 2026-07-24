@@ -16,7 +16,7 @@ const TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 /**
  * The salt-keyed HMAC-SHA-256 of a plaintext token, in `hmac-sha256:<hex>` form
  * — the only representation of the token that is ever persisted (mcp-contract.md
- * §5). Verification (a later work package) recomputes this from the presented
+ * §5). Verification recomputes this from the presented
  * token and looks it up; a leaked database alone yields no usable token.
  */
 export function hashSessionToken(salt: Uint8Array, token: string): string {

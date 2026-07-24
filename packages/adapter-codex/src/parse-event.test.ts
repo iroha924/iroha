@@ -142,7 +142,7 @@ describe("parseCodexEvent — apply_patch and Bash targets", () => {
   it("extracts a `Move to:` rename as a delete of the source and a write to the destination", () => {
     const { ctx } = makeFakeCtx();
     // A move INTO a protected path — the destination write must be surfaced so
-    // the Guardrail sees it (was silently dropped, a Codex-only bypass).
+    // the Guardrail sees it.
     const patch = [
       "*** Begin Patch",
       "*** Update File: src/scratch/tmp.ts",

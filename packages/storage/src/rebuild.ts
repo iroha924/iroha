@@ -26,20 +26,14 @@ export interface ReplaceDatabaseResult {
 const WAL_SUFFIXES = ["-wal", "-shm"] as const;
 
 /**
- * `rename()` with a bounded retry on `EBUSY`/`EPERM` — confirmed by
- * reproduction (Windows CI): a native libSQL connection's file-handle
- * teardown can still be in flight after this package's own
- * `closeDatabase()` call returns, so a `rename()` immediately following a
- * close can transiently fail even though every caller of this function has
- * already closed its connections per its own contract. This is the one
- * rename in this file that is on the actual product-required path
- * (database-schema.md §12 step 11, "atomically replace the DB"), so it gets
- * a real retry — but only a modest one: chasing a longer and longer budget
- * to make an occasional multi-second Windows CI stall disappear (observed up
- * to ~9s at least once, plausibly antivirus-related) is not a guarantee this
- * function needs to provide. If the lock genuinely does not clear within a
- * few seconds, surfacing a real, retryable error to the caller is the
- * correct behavior.
+ * `rename()` with a bounded retry on `EBUSY`/`EPERM`: on Windows a native
+ * libSQL connection's file-handle teardown can still be in flight after this
+ * package's `closeDatabase()` returns, so a `rename()` immediately following a
+ * close can transiently fail even though every caller has already closed its
+ * connections per contract. This is the one rename on the product-required path
+ * (database-schema.md §12 step 11), so it gets a real retry — but only a modest
+ * one: if the lock does not clear within a few seconds, surfacing a retryable
+ * error to the caller is correct rather than chasing an ever-longer budget.
  */
 async function renameWithRetry(from: string, to: string): Promise<void> {
   const maxAttempts = 10;
@@ -80,30 +74,25 @@ async function renameSidecarIfExists(fromBase: string, toBase: string): Promise<
 
 /**
  * implementation/database-schema.md §12 steps 11–12: atomically swaps the
- * rebuilt sibling database into place and retains the previous database as
- * a timestamped backup. Callers must close every connection to both
+ * rebuilt sibling database into place and retains the previous database as a
+ * timestamped backup. Callers must close every connection to both
  * `primaryDbPath` and `siblingDbPath` first — this function only renames
- * files, it does not manage connection lifecycle or WAL checkpointing
- * (`migrator.ts`'s `backupDatabaseFile` shows the checkpoint-before-copy
- * pattern this rebuild flow relies on its caller having already applied to
- * the sibling before calling this).
+ * files, it does not manage connection lifecycle or WAL checkpointing.
  *
  * Renames `primaryDbPath` out of the way before moving `siblingDbPath` into
- * its place, so neither `rename()` call ever needs to overwrite an existing
- * destination (Node's `fs.rename` does support overwriting on both POSIX
- * and Windows, but avoiding it removes that platform-behavior dependency
- * entirely). Also moves each side's `-wal`/`-shm` sidecar files if present,
- * so a sibling not fully checkpointed by its caller doesn't silently lose
- * data left only in its `-wal` file — confirmed by reproduction that
- * `PRAGMA wal_checkpoint(TRUNCATE)` plus closing the connection does not by
- * itself delete these files, only truncate their content.
+ * its place, so neither `rename()` ever overwrites an existing destination
+ * (Node's `fs.rename` supports overwriting, but avoiding it removes that
+ * platform-behavior dependency). Also moves each side's `-wal`/`-shm` sidecars
+ * if present, so a sibling not fully checkpointed by its caller doesn't lose
+ * data left only in its `-wal` file — `PRAGMA wal_checkpoint(TRUNCATE)` plus
+ * closing the connection truncates these files' content but does not delete
+ * them.
  *
- * Bootstrap case (requirements.md Scenario E, issue #27): when `primaryDbPath`
- * does not exist — a teammate who ran `sync --rebuild` on a fresh clone before
- * any `iroha init` created the git-ignored `index.db` locally — the move-aside
+ * Bootstrap case (requirements.md Scenario E): when `primaryDbPath` does not
+ * exist — a teammate who ran `sync --rebuild` on a fresh clone before any
+ * `iroha init` created the git-ignored `index.db` locally — the move-aside
  * fails with `ENOENT`. There is then no current database to back up, so this
- * moves the rebuilt sibling straight into place and returns `backupPath: null`,
- * making `sync --rebuild` on a never-initialized clone just work.
+ * moves the rebuilt sibling straight into place and returns `backupPath: null`.
  */
 export async function replaceDatabaseAtomically(
   primaryDbPath: string,

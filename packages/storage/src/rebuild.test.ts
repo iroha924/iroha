@@ -71,7 +71,7 @@ describe("replaceDatabaseAtomically", () => {
     const { dir, dbPath } = await createTempDbPath();
     tempDir = dir;
     // No primary database at `dbPath`: the state right after `git clone`, before
-    // any `iroha init` created the git-ignored index.db locally (issue #27).
+    // any `iroha init` created the git-ignored index.db locally.
     const siblingPath = join(dir, "index.rebuild-abc.db");
     await writeFile(siblingPath, "new-content", "utf8");
 
@@ -91,9 +91,9 @@ describe("replaceDatabaseAtomically", () => {
     const { dir, dbPath } = await createTempDbPath();
     tempDir = dir;
     // No primary main file, but stale sidecars linger from a primary that was
-    // partially deleted or removed by an interrupted process (Codex #55). Left
-    // next to the freshly installed database, SQLite would recover this
-    // unrelated WAL on the next open and resurrect old/corrupt local state.
+    // partially deleted or removed by an interrupted process. Left next to the
+    // freshly installed database, SQLite would recover this unrelated WAL on
+    // the next open and resurrect old/corrupt local state.
     await writeFile(`${dbPath}-wal`, "stale-wal", "utf8");
     await writeFile(`${dbPath}-shm`, "stale-shm", "utf8");
     const siblingPath = join(dir, "index.rebuild-abc.db");
@@ -141,21 +141,17 @@ describe("replaceDatabaseAtomically", () => {
     const siblingPath = join(dir, "index.rebuild-abc.db");
     await writeFile(siblingPath, "new-content", "utf8");
 
-    // CLOCK is fixed, so the backup path this call computes is
-    // predictable. Pre-create its `-wal` destination as a directory so
+    // CLOCK is fixed, so the backup path this call computes is predictable.
+    // Pre-create its `-wal` destination as a directory so
     // `renameSidecarIfExists`'s rename onto it fails — a real I/O failure
-    // (Node's rename() cannot move a regular file onto an existing
-    // directory), not a mock.
+    // (Node's rename() cannot move a regular file onto an existing directory),
+    // not a mock.
     //
-    // Confirmed by CI reproduction (windows-2025): this specific
-    // file-vs-directory collision, once the recovery path renames the
-    // leftover empty directory back, can land a directory (not the
-    // restored file) at `${dbPath}-wal` on Windows — a quirk of this
-    // artificial collision technique itself, not a realistic production
-    // state (a directory never legitimately appears at a `-wal` path).
-    // This assertion only checks the primary concern the finding raised —
-    // that `index.db` itself is restored — rather than the sidecar's exact
-    // content, to stay meaningful across platforms.
+    // On Windows (windows-2025) this file-vs-directory collision can, once the
+    // recovery path renames the leftover empty directory back, land a directory
+    // (not the restored file) at `${dbPath}-wal` — a quirk of this artificial
+    // technique, not a realistic production state. So this assertion checks only
+    // that `index.db` itself is restored, not the sidecar's exact content.
     const timestamp = CLOCK.now().toISOString().replace(/[:.]/g, "-");
     const backupPath = `${dbPath}.backup-${timestamp}`;
     await mkdir(`${backupPath}-wal`);

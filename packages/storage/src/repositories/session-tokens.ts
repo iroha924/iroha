@@ -6,8 +6,7 @@ import { mapLibsqlError } from "../errors.js";
 // issues a 256-bit token to the agent; only its salt-keyed HMAC-SHA-256 digest
 // is stored here, bound to one repository / Agent Session / Session Run /
 // platform (implementation/design.md §9, mcp-contract.md §5). The MCP server
-// (a later work package) reads and verifies it; this package exposes the write
-// and read-back surface WP-06 needs.
+// reads and verifies it; this package exposes the write and read-back surface.
 
 export type SessionTokenPlatform = "claude_code" | "codex";
 

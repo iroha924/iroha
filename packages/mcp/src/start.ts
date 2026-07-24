@@ -9,8 +9,8 @@ const SHUTDOWN_GRACE_MS = 500;
  * Build the iroha MCP server, connect it over stdio, and install SIGINT/SIGTERM
  * handlers that close it within the grace window. Resolves once the transport is
  * connected; the process then stays alive serving the agent host. Reused by both
- * the standalone `main.ts` entrypoint and the `iroha __mcp` binary dispatch
- * (WP-11), so the stdio wiring exists in exactly one place.
+ * the standalone `main.ts` entrypoint and the `iroha __mcp` binary dispatch, so
+ * the stdio wiring exists in exactly one place.
  */
 export async function startStdioServer(): Promise<void> {
   const server = buildServer({

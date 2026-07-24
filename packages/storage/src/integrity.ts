@@ -28,9 +28,9 @@ export interface IntegrityReport {
 }
 
 /**
- * `PRAGMA integrity_check` returns exactly one row containing the text
- * "ok" when the database is sound; otherwise one row per problem found
- * (confirmed by reproduction: single column named after the pragma).
+ * `PRAGMA integrity_check` returns exactly one row containing the text "ok"
+ * when the database is sound; otherwise one row per problem found, in a single
+ * column named after the pragma.
  */
 async function runSqliteIntegrityCheck(
   db: Database,
@@ -82,10 +82,9 @@ async function runApplicationChecks(
     // Checks for the actual `canonical_documents` row (joined by entity id,
     // the real relationship — `canonical_documents` has no foreign key on
     // `knowledge_items.canonical_path`, which is a free-text column), not
-    // merely whether `canonical_path` is populated: a knowledge item can
-    // have a non-null `canonical_path` while its `canonical_documents` row
-    // is missing entirely, which the earlier `canonical_path IS NULL`
-    // check did not catch.
+    // merely whether `canonical_path` is populated: a knowledge item can have
+    // a non-null `canonical_path` while its `canonical_documents` row is
+    // missing entirely.
     const missingCanonical = await db.execute(
       `SELECT k.id AS id FROM knowledge_items k
        WHERE k.approved_at IS NOT NULL
@@ -98,14 +97,13 @@ async function runApplicationChecks(
       });
     }
 
-    // Confirmed by reproduction: `count(*)`/an unfiltered `SELECT` against an
-    // external-content FTS5 table (`content = 'search_documents'`) always
-    // mirrors the content table's row range regardless of whether the sync
-    // trigger ever ran — it does not consult the inverted index at all
-    // without a `MATCH` constraint. The `<table>_docsize` shadow table FTS5
-    // maintains internally has exactly one row per document actually
-    // indexed, so it — not the virtual table itself — is what reflects real
-    // drift between `search_documents` and its FTS indexes.
+    // `count(*)`/an unfiltered `SELECT` against an external-content FTS5 table
+    // (`content = 'search_documents'`) always mirrors the content table's row
+    // range regardless of whether the sync trigger ran — without a `MATCH`
+    // constraint it never consults the inverted index. The `<table>_docsize`
+    // shadow table has exactly one row per document actually indexed, so it —
+    // not the virtual table — reflects real drift between `search_documents`
+    // and its FTS indexes.
     const [docsCount, unicodeCount, trigramCount] = await Promise.all([
       db.execute("SELECT count(*) AS c FROM search_documents"),
       db.execute("SELECT count(*) AS c FROM search_fts_unicode_docsize"),

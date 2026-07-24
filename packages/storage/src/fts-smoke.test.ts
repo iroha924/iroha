@@ -6,17 +6,13 @@ import { upsertSearchDocument } from "./repositories/index.js";
 import { openMigratedTestDb, removeTempDir } from "./test-helpers/tmp-db.js";
 
 /**
- * implementation-plan.md WP-03 acceptance: "FTS Unicode/trigram smoke
- * search". `capability.ts`'s probe only confirms the tokenizers exist
- * (disposable scratch tables), and `integrity.ts`'s docsize check only
- * confirms row counts stay in sync — neither runs an actual `MATCH` query
- * against real content through the real `search_fts_unicode`/
- * `search_fts_trigram` tables from migrations/001_initial.sql. This file
- * does that directly against the schema, since no repository function for
- * hybrid/FTS querying exists yet in this package (that's WP-08's job; this
- * only proves the indexes themselves work).
+ * Runs an actual `MATCH` query against real content through the real
+ * `search_fts_unicode`/`search_fts_trigram` tables from
+ * migrations/001_initial.sql — `capability.ts`'s probe only confirms the
+ * tokenizers exist and `integrity.ts`'s docsize check only confirms row counts
+ * stay in sync, so neither proves the indexes actually match.
  *
- * Query shape confirmed by reproduction: an *aliased* FTS5 table
+ * Query-shape gotcha: an *aliased* FTS5 table
  * (`FROM search_fts_unicode f ... WHERE f MATCH ?`) fails with
  * "no such column: f" — the unaliased table name must be used directly in
  * both the FROM/JOIN and the MATCH clause.

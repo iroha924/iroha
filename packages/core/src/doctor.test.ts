@@ -39,7 +39,6 @@ describe("runDoctor", () => {
     expect(byName.get("node")?.status).toBe("ok");
     expect(byName.get("git")?.status).toBe("ok");
     expect(byName.get("git-repository")?.status).toBe("ok");
-    // #69: no longer a hardcoded stale warning — ok in a dev/terminal run.
     expect(byName.get("mcp-server")?.status).toBe("ok");
     expect(byName.get("iroha-init")?.status).toBe("warning");
     expect(byName.has("storage-capabilities")).toBe(false);

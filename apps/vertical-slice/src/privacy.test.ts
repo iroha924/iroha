@@ -20,7 +20,7 @@ const RAW_PROMPT_MARKER = "RAW-PROMPT-PRIVACY-MARKER-abc123";
 const RAW_PATCH_MARKER = "RAW-PATCH-PRIVACY-MARKER-def456";
 const SESSION_TOKEN_RE = /ist_[A-Za-z0-9_-]{43}/;
 // A detectable secret seeded into a checkpoint free-text field: create_checkpoint
-// must redact it (WP-07) so it never reaches storage or an MCP response.
+// must redact it so it never reaches storage or an MCP response.
 const SECRET_MARKER = [
   "-----BEGIN RSA PRIVATE KEY-----",
   "MIIEowIBAAKCAQEA1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyz+/==",

@@ -64,10 +64,10 @@ describe("withTransaction", () => {
     tempDir = dir;
     dbs.push(db);
 
-    // Confirmed by reproduction: a second `rollback()` on an
-    // already-closed transaction throws `TRANSACTION_CLOSED`. `fn` rolling
-    // back before returning its error simulates that condition for
-    // withTransaction's own subsequent rollback call.
+    // A second `rollback()` on an already-closed transaction throws
+    // `TRANSACTION_CLOSED`. `fn` rolling back before returning its error
+    // simulates that condition for withTransaction's own subsequent rollback
+    // call.
     const result = await withTransaction(db, "write", async (tx) => {
       await tx.execute({ sql: "INSERT INTO t (id, label) VALUES (?, ?)", args: [1, "a"] });
       await tx.rollback();
@@ -99,20 +99,16 @@ describe("withTransaction", () => {
     expect(rows.rows.length).toBe(0);
   });
 
-  // Both tests below lower the *second* connection's `busy_timeout` well
-  // below the production default (2500ms, set by `openDatabase`). Confirmed
-  // by reproduction: this driver's local blocking call holds the whole
-  // event loop for the full `busy_timeout` duration regardless of when the
-  // lock is actually released (a competing writer's own release literally
-  // cannot run until the blocking call returns control to JS) — so total
-  // wall-clock time scales directly with `busy_timeout`, not just with
-  // `withTransaction`'s own 2-second retry budget. At the production
-  // default this pushed the "gives up" case close to (and, on a slower CI
-  // runner, past) vitest's default 10s test timeout — a real CI failure,
-  // not a hypothetical one. Lowering only this *test's* connection-level
-  // config (not `withTransaction`'s own retry-budget constant, which stays
-  // exactly as production uses it) keeps the same code path under test
-  // while giving CI far more margin.
+  // Both tests below lower the *second* connection's `busy_timeout` well below
+  // the production default (2500ms, set by `openDatabase`). This driver's local
+  // blocking call holds the whole event loop for the full `busy_timeout`
+  // duration regardless of when the lock is released, so total wall-clock time
+  // scales with `busy_timeout`, not just with `withTransaction`'s own 2-second
+  // retry budget. At the production default the "gives up" case ran close to
+  // (and, on a slower CI runner, past) vitest's default 10s test timeout.
+  // Lowering only this *test's* connection-level config — not
+  // `withTransaction`'s retry-budget constant, which stays as production uses
+  // it — keeps the same code path under test while giving CI far more margin.
   const TEST_BUSY_TIMEOUT_MS = 200;
 
   it("waits out a concurrent writer and succeeds once the lock is released", async () => {

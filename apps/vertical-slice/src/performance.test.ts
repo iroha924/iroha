@@ -26,7 +26,7 @@ let repo: SliceRepo;
  * `search_documents` row it seeds:
  * - a `canonical_documents` row — so `rankCandidates`' facet load
  *   (`getCanonicalDocumentsByEntityIds`) reads a real frontmatter/body instead
- *   of short-circuiting on a missing doc (the #24 gate gap);
+ *   of short-circuiting on a missing doc;
  * - a `relations` edge to the previous entity — so `buildRelations` returns
  *   neighbours and its (batched) title lookups run, and graph traversal has a
  *   real graph to walk;

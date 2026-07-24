@@ -30,10 +30,9 @@ describe("openDatabase", () => {
   });
 
   it("opens a database whose path contains a URL metacharacter (#)", async () => {
-    // Confirmed by reproduction: a raw `file:${path}` string throws
-    // `URL_INVALID: URL fragments are not supported` when `path` contains
-    // `#` — legal in a POSIX (and Windows) directory name, but meaningful
-    // to a URL parser.
+    // A raw `file:${path}` string throws `URL_INVALID: URL fragments are not
+    // supported` when `path` contains `#` — legal in a POSIX (and Windows)
+    // directory name, but meaningful to a URL parser.
     const { dir } = await createTempDbPath();
     tempDir = dir;
     const weirdDir = join(dir, "repo#with-hash");

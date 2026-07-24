@@ -23,7 +23,7 @@ export const PLUGIN_DESCRIPTION = "Local-first Engineering Memory Graph for Clau
 /** Publisher (product invariant). */
 export const PLUGIN_AUTHOR = { name: "iroha labs" } as const;
 
-/** SPDX license id (decision-log ID-019, chosen before first release). */
+/** SPDX license id (decision-log ID-019). */
 export const PLUGIN_LICENSE = "Apache-2.0";
 
 /** Canonical source repository (also the homepage in the absence of a docs site). */

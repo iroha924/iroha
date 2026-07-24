@@ -3,9 +3,9 @@ import { LibsqlError } from "@libsql/client";
 
 /**
  * Matches implementation/database-schema.md §3: `PRAGMA busy_timeout = 2500`
- * already makes the driver wait up to 2.5s before this surfaces (confirmed
- * by reproduction), but a writer that loses the race after that wait still
- * needs to map to `DB_BUSY` so callers (transaction.ts) can retry.
+ * already makes the driver wait up to 2.5s before this surfaces, but a writer
+ * that loses the race after that wait still maps to `DB_BUSY` so callers
+ * (transaction.ts) can retry.
  */
 const BUSY_CODES = new Set(["SQLITE_BUSY", "SQLITE_BUSY_SNAPSHOT", "SQLITE_BUSY_TIMEOUT"]);
 

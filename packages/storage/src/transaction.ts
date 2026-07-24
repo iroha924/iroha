@@ -4,16 +4,14 @@ import type { Database } from "./connection.js";
 import { mapLibsqlError } from "./errors.js";
 
 /**
- * implementation/database-schema.md §3: "retry SQLITE_BUSY with bounded
- * jitter for at most 2 seconds". `PRAGMA busy_timeout = 2500` (connection.ts)
- * already makes a *single* driver call wait up to ~2.5s before raising
- * SQLITE_BUSY — and, confirmed by reproduction, that wait is a blocking
- * native call that starves this process's event loop for its whole
- * duration (a competing writer's own release can only run once the call
- * returns, never during it). This 2-second budget therefore starts only
- * once that first attempt has already failed, bounding how much *additional*
- * app-level retrying happens on top of the PRAGMA's own wait, rather than
- * being consumed by (and colliding with) the first attempt's duration.
+ * implementation/database-schema.md §3: "retry SQLITE_BUSY with bounded jitter
+ * for at most 2 seconds". `PRAGMA busy_timeout = 2500` (connection.ts) already
+ * makes a *single* driver call wait up to ~2.5s before raising SQLITE_BUSY, and
+ * that wait is a blocking native call that starves the event loop for its whole
+ * duration (a competing writer's release can only run once the call returns).
+ * This 2-second budget therefore starts only once that first attempt has
+ * failed, bounding the *additional* app-level retrying on top of the PRAGMA's
+ * own wait rather than being consumed by the first attempt's duration.
  */
 const BUSY_RETRY_BUDGET_MS = 2000;
 const BUSY_RETRY_BASE_DELAY_MS = 20;

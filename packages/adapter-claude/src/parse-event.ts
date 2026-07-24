@@ -21,7 +21,7 @@ const rawCommon = z.object({
   session_id: z.string().min(1),
   cwd: z.string().min(1),
   // Claude sends `model` only on SessionStart; `permission_mode` on a subset of
-  // events; `prompt_id` from v2.1.196+ and only once user input exists. `.nullish()`
+  // events; `prompt_id` only once user input exists. `.nullish()`
   // (nullable + optional) so an explicit JSON `null` does not reject the whole
   // event — it is normalized to "absent" in `baseEvent`.
   model: z.string().nullish(),

@@ -60,8 +60,8 @@ export interface WriteCanonicalDocumentResult {
  * 1/2/8/9/10 (write lock, candidate reload/concurrency check, DB commit,
  * audit record, unlock) need `@iroha/storage`/`@iroha/git`, which this
  * package cannot depend on (compatibility.md §4 restricts `@iroha/canonical`
- * to `domain`/`config`) — see decision-log.md for this layering split. The
- * caller (CLI/dashboard-api) composes this function with those.
+ * to `domain`/`config`). The caller (CLI/dashboard-api) composes this function
+ * with those.
  */
 export async function writeCanonicalDocument(
   candidate: unknown,

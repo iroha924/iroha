@@ -322,8 +322,8 @@ export async function getPath(
     }
     const incident = groupIncidentRelations(frontierIds, levelResult.value);
     const nextFrontier: Array<{ entityId: string; path: RelationRow[] }> = [];
-    // Identical traversal to the pre-batch per-node version: frontier nodes in
-    // order, each node's incident relations in `id` order (via `incident`).
+    // Deterministic traversal: frontier nodes in order, each node's incident
+    // relations in `id` order (via `incident`).
     for (const node of frontier) {
       for (const relation of incident.get(node.entityId) ?? []) {
         const neighborId =
@@ -397,9 +397,9 @@ export async function getSubgraph(
     }
     const incident = groupIncidentRelations(frontier, levelResult.value);
     const nextFrontier: string[] = [];
-    // Identical traversal to the pre-batch per-node version: frontier nodes in
-    // order, each node's incident relations in `id` order, the same `maxEdges`
-    // break/continue, DUPLICATES-cycle carve-out, and visited bookkeeping.
+    // Deterministic traversal: frontier nodes in order, each node's incident
+    // relations in `id` order, with the `maxEdges` break/continue,
+    // DUPLICATES-cycle carve-out, and visited bookkeeping.
     for (const entityId of frontier) {
       if (collectedRelations.size >= maxEdges) {
         break;

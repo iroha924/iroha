@@ -19,10 +19,8 @@ const baseProposal: KnowledgeProposal = {
   sources: [{ type: "commit", ref: "abc1234" }],
 };
 
-// These fields were previously passed through verbatim by redactProposal /
-// redactReference (docstring claimed relative paths "cannot carry a
-// credential"). Each test is red on the pre-fix code: the field reaches the
-// output unredacted, so the `[redacted` assertion fails.
+// Relative-path / free-text fields can still carry a credential, so
+// redactProposal / redactReference must scan them too.
 describe("redactProposal — previously-unscanned free-text fields", () => {
   it("redacts a secret in scope.paths", async () => {
     const result = await redactProposal(
@@ -65,7 +63,7 @@ describe("redactProposal — previously-unscanned free-text fields", () => {
 
   it("gives distinct placeholders to two secret-bearing relation edges", async () => {
     // Two edges whose type carries a secret must not collapse to identical
-    // `{type, target}` objects. Red on the pre-fix constant placeholder.
+    // `{type, target}` objects.
     const result = await redactProposal(
       {
         ...baseProposal,
@@ -89,7 +87,7 @@ describe("redactProposal — previously-unscanned free-text fields", () => {
     // Two DISTINCT paths, each carrying a secret, must not collapse to one
     // placeholder: canonical `scope.paths` is `unique()`, so identical
     // placeholders would make the approved document fail validation and leave
-    // the candidate un-approvable. Red on the pre-fix constant placeholder.
+    // the candidate un-approvable.
     const result = await redactProposal(
       { ...baseProposal, scope: { paths: [`a/${SECRET}`, `b/${SECRET}`], symbols: [] } },
       "p",

@@ -393,7 +393,7 @@ async function handlePromptSubmitted(
     promptDigest: event.payload.promptDigest,
     startedAt: ctx.clock.now().toISOString(),
   });
-  // No context injected here in v0.1: retrieval is WP-08's search layer.
+  // No context injected here: retrieval is the search layer.
   return noOutput;
 }
 

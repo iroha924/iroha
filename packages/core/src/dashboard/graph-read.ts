@@ -56,10 +56,8 @@ async function resolveNodes(
     ids.add(edge.from);
     ids.add(edge.to);
   }
-  // Fetch every referenced entity in one batched query (was one getEntityById
-  // per id — up to MAX_NODES round-trips). The loop below is otherwise
-  // identical: same insertion order, same MAX_NODES cap on resolved nodes, same
-  // skip of ids with no entity row, same `truncated` semantics.
+  // One batched fetch; the loop preserves id insertion order, caps at MAX_NODES
+  // resolved nodes, and skips ids with no entity row.
   const idList = [...ids];
   const entitiesResult = await getEntitiesByIds(db, idList);
   if (!entitiesResult.ok) {
