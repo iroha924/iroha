@@ -252,6 +252,9 @@ importers:
       lucide-react:
         specifier: 'catalog:'
         version: 1.25.0(react@19.2.7)
+      mdast-util-from-markdown:
+        specifier: 'catalog:'
+        version: 2.0.3
       react:
         specifier: 'catalog:'
         version: 19.2.7
