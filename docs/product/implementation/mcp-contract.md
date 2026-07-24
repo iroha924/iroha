@@ -314,6 +314,13 @@ interface CreateCheckpointData {
 }
 ```
 
+Step 6 is resolve-only: a `references[]` entry whose `ref` names an existing
+entity becomes a `checkpoint RELATED_TO entity` edge (`source_kind = inferred`);
+a `ref` that resolves to no known entity is recorded on the checkpoint but not
+linked. The tool never invents placeholder entities (§6.8). A proposal's
+`relations[]` are not edges here — they materialize as canonical relations when
+the candidate is approved.
+
 ### 6.7 `propose_knowledge`
 
 Purpose: create or update one pending candidate outside a Checkpoint.

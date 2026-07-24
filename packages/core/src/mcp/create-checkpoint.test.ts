@@ -1,9 +1,11 @@
 import type { CheckpointInput } from "@iroha/domain";
-import { CryptoRandomSource, FixedClock } from "@iroha/domain";
+import { CryptoRandomSource, FixedClock, makeTypedId } from "@iroha/domain";
 import {
   closeDatabase,
   getCheckpointById,
+  getRelationByTuple,
   getTurnById,
+  insertEntity,
   listCandidatesByStatus,
   openDatabase,
 } from "@iroha/storage";
@@ -128,6 +130,87 @@ describe("mcpCreateCheckpoint", () => {
     if (!db.ok) return;
     const candidates = await listCandidatesByStatus(db.value, repo.repositoryId, "pending");
     expect(candidates.ok && candidates.value.length).toBe(1);
+    await closeDatabase(db.value);
+  }, 15000);
+
+  it("materializes a reference that resolves to an entity as a RELATED_TO edge", async () => {
+    repo = await setupMcpRepo(random);
+    const seedDb = await openDatabase(repo.dbPath);
+    if (!seedDb.ok) return;
+    const seeded = await seedSessionWithToken(seedDb.value, repo, clock, random);
+    // Seed a real entity for the reference to resolve to.
+    const issueId = makeTypedId("iss", clock, random);
+    const iso = clock.now().toISOString();
+    const issue = await insertEntity(seedDb.value, {
+      id: issueId,
+      repositoryId: repo.repositoryId,
+      entityType: "issue",
+      title: "Referenced issue",
+      status: "active",
+      authority: 80,
+      sourceKind: "github",
+      createdAt: iso,
+      updatedAt: iso,
+    });
+    expect(issue.ok).toBe(true);
+    await closeDatabase(seedDb.value);
+
+    const result = await mcpCreateCheckpoint({
+      cwd: repo.repoDir,
+      clock,
+      random,
+      input: baseInput(seeded.token, "idem-key-000000000010", {
+        references: [{ type: "issue", ref: issueId }],
+      }),
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const db = await openDatabase(repo.dbPath);
+    if (!db.ok) return;
+    const edge = await getRelationByTuple(
+      db.value,
+      result.value.checkpointId,
+      "RELATED_TO",
+      issueId,
+      "inferred",
+    );
+    await closeDatabase(db.value);
+    expect(edge.ok && edge.value !== null).toBe(true);
+  }, 15000);
+
+  it("records an unresolved reference without an edge and without failing", async () => {
+    repo = await setupMcpRepo(random);
+    const seedDb = await openDatabase(repo.dbPath);
+    if (!seedDb.ok) return;
+    const seeded = await seedSessionWithToken(seedDb.value, repo, clock, random);
+    await closeDatabase(seedDb.value);
+
+    const missingRef = "iss_0000000000000000000000000A";
+    const result = await mcpCreateCheckpoint({
+      cwd: repo.repoDir,
+      clock,
+      random,
+      input: baseInput(seeded.token, "idem-key-000000000011", {
+        references: [{ type: "issue", ref: missingRef }],
+      }),
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const db = await openDatabase(repo.dbPath);
+    if (!db.ok) return;
+    // No edge was created, but the reference is still recorded on the checkpoint.
+    const edge = await getRelationByTuple(
+      db.value,
+      result.value.checkpointId,
+      "RELATED_TO",
+      missingRef,
+      "inferred",
+    );
+    expect(edge.ok && edge.value === null).toBe(true);
+    const checkpoint = await getCheckpointById(db.value, result.value.checkpointId);
+    expect(checkpoint.ok && checkpoint.value?.referencesJson.includes(missingRef)).toBe(true);
     await closeDatabase(db.value);
   }, 15000);
 
