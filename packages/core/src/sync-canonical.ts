@@ -146,6 +146,9 @@ export async function importCanonicalDocument(
       scopeJson: JSON.stringify(frontmatter.scope),
       approvedAt: frontmatter.approved_at,
       canonicalPath: path,
+      // Only a Rule carries the info/warning/error severity; every other type
+      // leaves the column NULL (audit issue #30).
+      ...(frontmatter.type === "rule" ? { severity: frontmatter.rule.severity } : {}),
     };
     const knowledgeInput: UpsertKnowledgeItemInput =
       frontmatter.type === "rule" &&

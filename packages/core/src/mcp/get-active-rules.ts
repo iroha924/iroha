@@ -13,6 +13,7 @@ export interface McpRuleScope {
 export interface McpActiveRule {
   id: string;
   enforcement: "advisory" | "guardrail";
+  severity: "info" | "warning" | "error" | null;
   scope: McpRuleScope;
   explanation: string;
 }
@@ -102,6 +103,7 @@ export async function mcpGetActiveRules(
         rules.push({
           id: row.id,
           enforcement: row.enforcement,
+          severity: row.severity,
           scope,
           explanation: row.summary ?? row.title,
         });

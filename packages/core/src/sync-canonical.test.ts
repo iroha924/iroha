@@ -250,6 +250,10 @@ describe("syncCanonicalToDatabase", () => {
     expect(rules.ok).toBe(true);
     if (rules.ok) {
       expect(rules.value.map((row) => row.id).sort()).toEqual([advisoryId, guardrailId].sort());
+      // #30: the Rule's frontmatter severity survives the projection.
+      const bySeverity = new Map(rules.value.map((row) => [row.id, row.severity]));
+      expect(bySeverity.get(advisoryId)).toBe("warning");
+      expect(bySeverity.get(guardrailId)).toBe("error");
     }
   });
 

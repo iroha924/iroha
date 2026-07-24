@@ -88,6 +88,7 @@ describe("knowledge repositories", () => {
     if (read.ok) {
       expect(read.value?.enforcement).toBe("advisory");
       expect(read.value?.guardSpecJson).toBeNull();
+      expect(read.value?.severity).toBeNull();
       expect(read.value?.canonicalPath).toBe(
         "knowledge/decisions/dec_0000000000000000000000020.md",
       );
@@ -119,6 +120,7 @@ describe("knowledge repositories", () => {
       scopeJson: "{}",
       enforcement: "guardrail",
       guardSpecJson: '{"tools":["Bash"],"paths":[]}',
+      severity: "error",
       approvedAt: NOW,
     });
     expect(inserted.ok).toBe(true);
@@ -128,6 +130,7 @@ describe("knowledge repositories", () => {
     if (read.ok) {
       expect(read.value?.enforcement).toBe("guardrail");
       expect(read.value?.guardSpecJson).toBe('{"tools":["Bash"],"paths":[]}');
+      expect(read.value?.severity).toBe("error");
     }
   });
 

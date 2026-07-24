@@ -53,7 +53,7 @@ describe("iroha sync applies pending migrations", () => {
     if (!opened.ok) throw new Error("db not opened");
     try {
       const userVersion = await opened.value.execute("PRAGMA user_version");
-      expect(userVersion.rows[0]?.user_version).toBe(3);
+      expect(userVersion.rows[0]?.user_version).toBe(4);
       const table = await opened.value.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'session_tokens'",
       );

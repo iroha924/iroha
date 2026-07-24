@@ -45,6 +45,7 @@ describe("mcpGetActiveRules", () => {
       body: "Validate every external boundary.",
       scopeJson: JSON.stringify({ paths: ["src/**"], symbols: [] }),
       enforcement: "advisory",
+      severity: "warning",
     });
     await closeDatabase(db.value);
 
@@ -53,6 +54,7 @@ describe("mcpGetActiveRules", () => {
     if (all.ok) {
       expect(all.value.rules.map((r) => r.id)).toContain(ruleId);
       expect(all.value.rules[0]?.enforcement).toBe("advisory");
+      expect(all.value.rules[0]?.severity).toBe("warning");
       expect(all.value.rules[0]?.explanation).toBe("Always validate at boundaries");
     }
 
