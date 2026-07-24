@@ -35,10 +35,10 @@ async function getEngine(): Promise<Awaited<ReturnType<typeof createEngine>>> {
   enginePromise ??= createEngine({
     formatter: "json",
     color: false,
-    // Never let a found secret's actual value reach a report, log, or
-    // error detail — confirmed by reproduction that this masks both the
-    // `message` and `data` fields in secretlint's own result (but *not*
-    // the unrelated `sourceContent` field, which this module never reads).
+    // Never let a found secret's actual value reach a report, log, or error
+    // detail: this masks both the `message` and `data` fields in secretlint's
+    // own result (but *not* the unrelated `sourceContent` field, which this
+    // module never reads).
     maskSecrets: true,
     configFileJSON: {
       rules: [
@@ -57,7 +57,7 @@ async function getEngine(): Promise<Awaited<ReturnType<typeof createEngine>>> {
         // (`ist_<43 base64url>`, checkpoint.ts `sessionTokenSchema`), which must
         // never reach a canonical file or a persisted checkpoint free-text
         // field. `maskSecrets` keeps the matched token out of the finding
-        // message (verified). See audit issue #43 / decision-log.
+        // message.
         {
           id: "@secretlint/secretlint-rule-pattern",
           options: {
@@ -96,7 +96,7 @@ async function getEngine(): Promise<Awaited<ReturnType<typeof createEngine>>> {
     // Let the next call retry: a rejected promise is still a truthy value,
     // so `??=` alone would otherwise pin this failure for the rest of the
     // process's life even after a transient condition (e.g. a filesystem
-    // hiccup resolving a rule package) clears — confirmed by review.
+    // hiccup resolving a rule package) clears.
     enginePromise = undefined;
     throw cause;
   }

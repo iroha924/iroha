@@ -48,20 +48,16 @@ describe("probeCapabilities", () => {
   });
 
   it("gives each call a distinct scratch-table suffix instead of a fixed name", async () => {
-    // Confirmed by reproduction: with a fixed (non-unique) scratch-table
-    // name, two overlapping `probeCapabilities` calls against the same DB
-    // file collide on `CREATE VIRTUAL TABLE ... already exists`, and the
-    // loser's unconditional `catch { return false }` misreports a
-    // fully-supported libSQL build as unsupported. This test doesn't
-    // attempt genuine cross-connection concurrency in-process — two
-    // connections issuing DDL at the same instant via `Promise.all` was
-    // found to crash this native binding outright (a separate, driver-level
-    // fragility outside this package's control) rather than raise a
-    // catchable error — so instead it proves the fix's actual mechanism:
-    // two calls with different `RandomSource` byte patterns never reuse the
-    // same table name, sequentially or not, and each still reports the real
-    // (supported) result rather than colliding with a leftover of the
-    // other.
+    // With a fixed (non-unique) scratch-table name, two overlapping
+    // `probeCapabilities` calls against the same DB file collide on
+    // `CREATE VIRTUAL TABLE ... already exists`, and the loser's
+    // `catch { return false }` misreports a supported libSQL build as
+    // unsupported. This test doesn't attempt genuine cross-connection
+    // concurrency: two connections issuing DDL at once via `Promise.all`
+    // crashes this native binding outright rather than raising a catchable
+    // error. Instead it proves the fix's mechanism — two calls with
+    // different `RandomSource` bytes never reuse the same table name, and
+    // each still reports the real result.
     const { dir, dbPath } = await createTempDbPath();
     tempDir = dir;
     const opened = await openDatabase(dbPath);

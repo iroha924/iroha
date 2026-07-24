@@ -7,12 +7,9 @@ import { mapLibsqlError } from "./errors.js";
 
 /**
  * implementation/database-schema.md §4 says migration files are named
- * `<four-digit>_<name>.sql`, but the only actual migration file,
- * `migrations/001_initial.sql`, uses a 3-digit prefix, and every other
- * cross-reference in the doc bundle (design.md, README.md, decision-log.md,
- * validation-report.md) also cites "001_initial.sql". Rather than picking a
- * side of that prose/filename disagreement, this accepts any digit-count
- * numeric prefix — see implementation/decision-log.md ID-024.
+ * `<four-digit>_<name>.sql`, but the actual `migrations/001_initial.sql` uses
+ * a 3-digit prefix. Rather than picking a side of that prose/filename
+ * disagreement, this accepts any digit-count numeric prefix.
  */
 const MIGRATION_FILENAME_PATTERN = /^(\d+)_(.+)\.sql$/;
 
@@ -125,16 +122,13 @@ async function copySidecarIfExists(
  * Flushes WAL content into the main database file (implementation/
  * database-schema.md §3 keeps journal_mode=WAL on), then copies it next to
  * itself with a timestamp suffix. A missing source file (a brand-new,
- * not-yet-migrated database) has nothing to preserve, so that is treated as
- * a no-op rather than an error.
+ * not-yet-migrated database) has nothing to preserve, so it is a no-op.
  *
  * `PRAGMA wal_checkpoint(TRUNCATE)` does not throw when it cannot fully
- * checkpoint — confirmed by reproduction that a concurrent reader blocking
- * the checkpoint makes it return a result row (`{busy: 1, log, checkpointed}`)
- * instead. Rather than inspecting that row to decide whether it's safe to
- * copy only the main file, this always also copies the `-wal`/`-shm`
- * sidecar files (when present) alongside the backup, so the backup is
- * self-consistent regardless of whether the checkpoint fully completed.
+ * checkpoint — a concurrent reader blocking it makes it return a result row
+ * instead. Rather than inspecting that row, this always also copies the
+ * `-wal`/`-shm` sidecar files (when present) alongside the backup, so the
+ * backup is self-consistent regardless of whether the checkpoint completed.
  */
 async function backupDatabaseFile(
   db: Database,
@@ -211,15 +205,12 @@ export async function runMigrations(
   const applied = appliedResult.value;
   const maxKnownVersion = files.length > 0 ? Math.max(...files.map((file) => file.version)) : 0;
 
-  // Confirmed by review: `maxKnownVersion` alone only reflects what this
-  // build's own migrations directory contains — it says nothing about
-  // whether `schema_migrations` already records a version this build has
-  // never heard of (e.g. a downgraded build with fewer migration files,
-  // opened against a database a newer build already migrated further,
-  // where `schema_migrations` already has the higher-version bookkeeping
-  // row regardless of what `PRAGMA user_version` currently reads). Reject
-  // that unconditionally, before the no-pending fast path below (which
-  // only compares against `maxKnownVersion`) could otherwise miss it.
+  // `maxKnownVersion` only reflects what this build's own migrations directory
+  // contains — it says nothing about whether `schema_migrations` already
+  // records a version this build has never heard of (e.g. a downgraded build
+  // with fewer migration files, opened against a database a newer build
+  // migrated further). Reject that unconditionally, before the no-pending fast
+  // path below (which only compares against `maxKnownVersion`) could miss it.
   const maxAppliedVersion = applied.size > 0 ? Math.max(...applied.keys()) : 0;
   if (maxAppliedVersion > maxKnownVersion) {
     return err(
@@ -233,13 +224,11 @@ export async function runMigrations(
 
   // Drift recovery: a migration file's own transaction (its DDL plus
   // `PRAGMA user_version`) can commit while the separate `schema_migrations`
-  // bookkeeping `INSERT` a few lines below never runs — a crash between the
-  // two leaves `PRAGMA user_version` ahead of what `applied` records. A
-  // naive retry would then treat that file as pending and re-execute its
-  // DDL, which fails ("table already exists") instead of recovering. Any
-  // file whose version is already reflected in `user_version` but missing
-  // from `applied` is backfilled here (using that file's own checksum, not
-  // re-run) rather than treated as pending.
+  // bookkeeping `INSERT` below never runs — a crash between the two leaves
+  // `user_version` ahead of what `applied` records. A naive retry would treat
+  // that file as pending and re-execute its DDL, which fails ("table already
+  // exists"). Any file whose version is reflected in `user_version` but missing
+  // from `applied` is backfilled here (using its own checksum, not re-run).
   const userVersionBeforeResult = await db.execute("PRAGMA user_version");
   const userVersionBefore = Number(userVersionBeforeResult.rows[0]?.user_version ?? 0);
   for (const file of files) {
@@ -276,13 +265,12 @@ export async function runMigrations(
 
   const pending = files.filter((file) => !applied.has(file.version));
   if (pending.length === 0) {
-    // Confirmed by review: every file this build knows about is already
-    // applied, but `PRAGMA user_version` can still be ahead of
-    // `maxKnownVersion` — e.g. a downgraded/older build (fewer migration
-    // files) opening a database a newer build already migrated further.
-    // Nothing here is "pending" from this build's point of view, but this
-    // build's own repository code was written against `maxKnownVersion`'s
-    // schema, not whatever schema `userVersionBefore` actually reflects.
+    // Every file this build knows about is already applied, but
+    // `PRAGMA user_version` can still be ahead of `maxKnownVersion` — e.g. a
+    // downgraded/older build (fewer migration files) opening a database a newer
+    // build migrated further. Nothing is "pending" here, but this build's
+    // repository code was written against `maxKnownVersion`'s schema, not
+    // whatever `userVersionBefore` reflects.
     if (userVersionBefore !== maxKnownVersion) {
       return err(
         new IrohaError(

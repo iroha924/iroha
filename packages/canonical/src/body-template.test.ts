@@ -97,13 +97,10 @@ describe("validateBodyTemplate", () => {
   });
 
   it("accepts a title/H1 match across Unicode normalization forms (NFC vs NFD)", () => {
-    // Regression test (confirmed by review): the same visible text typed
-    // as precomposed (NFC, common from most editors/APIs) vs. a base
-    // letter + combining accent (NFD) is byte-different but semantically
-    // identical, and must not be falsely rejected.
-    // Built from explicit code points, not a literal accented character in
-    // source, since an editor could silently normalize a typed character
-    // to one form or the other.
+    // The NFC and NFD forms of the same title are byte-different but
+    // semantically equal and must not be falsely rejected. Built from explicit
+    // code points since an editor could silently normalize a typed accented
+    // character to one form or the other.
     const titleNfc = `Caf${String.fromCharCode(0x00e9)} configuration`; // precomposed "\u00e9" (U+00E9)
     const titleNfd = `Cafe${String.fromCharCode(0x0301)} configuration`; // "e" + combining acute accent (U+0301)
     expect(titleNfc).not.toBe(titleNfd);

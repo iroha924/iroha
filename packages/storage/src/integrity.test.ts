@@ -155,12 +155,11 @@ describe("checkIntegrity", () => {
       "file",
     );
 
-    // Confirmed by reproduction: an FTS5 external-content table's own row
-    // set (what `count(*)` reads) is populated only by the AFTER INSERT
-    // trigger, not automatically kept in sync with `search_documents` — a
-    // row inserted while that trigger is absent (e.g. a bulk import that
-    // disabled it) leaves the index behind without ever raising an error,
-    // which is exactly the drift this check exists to catch.
+    // An FTS5 external-content table's own row set (what `count(*)` reads) is
+    // populated only by the AFTER INSERT trigger, not kept in sync with
+    // `search_documents` automatically — a row inserted while that trigger is
+    // absent (e.g. a bulk import that disabled it) leaves the index behind
+    // without raising an error, exactly the drift this check catches.
     await db.execute("DROP TRIGGER search_documents_ai");
     await db.execute({
       sql: `INSERT INTO search_documents

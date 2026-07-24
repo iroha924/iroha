@@ -70,7 +70,7 @@ async function readStdinBounded(max: number): Promise<string> {
  * Process-side hook runner: read stdin, run the hook for the given platform
  * (`claude`/`codex`), write at most one JSON object to stdout, and return so the
  * process can exit 0. The `iroha` binary reaches this through `iroha __hook
- * <platform>` (WP-11): the plugin archive ships no standalone `hook.mjs`, so the
+ * <platform>`: the plugin archive ships no standalone `hook.mjs`, so the
  * hook shares the npm-installed binary and its resolved native dependencies.
  */
 export async function runHookMain(platform: string | undefined): Promise<void> {

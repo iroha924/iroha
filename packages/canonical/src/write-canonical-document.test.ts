@@ -187,12 +187,11 @@ describe("writeCanonicalDocument", () => {
   });
 
   it("rejects a write whose target directory escapes the repository root via a symlink", async () => {
-    // Regression test (confirmed by review): `.iroha/` is git-tracked and
-    // shared, so a merged commit could replace a type subdirectory with a
-    // symlink pointing outside the repository. mkdir/open/rename all
-    // follow symlinks for intermediate path components by default, so
-    // without an explicit boundary check this would silently write
-    // outside `repositoryRoot`.
+    // `.iroha/` is git-tracked and shared, so a merged commit could replace a
+    // type subdirectory with a symlink pointing outside the repository.
+    // mkdir/open/rename all follow symlinks for intermediate path components
+    // by default, so without an explicit boundary check this would silently
+    // write outside `repositoryRoot`.
     tempDir = await mkdtemp(join(tmpdir(), "iroha-canonical-write-"));
     const outsideDir = await mkdtemp(join(tmpdir(), "iroha-canonical-outside-"));
     await symlink(outsideDir, join(tempDir, "decisions"));

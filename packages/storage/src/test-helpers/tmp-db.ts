@@ -16,23 +16,18 @@ export async function createTempDbPath(prefix = "iroha-storage-test-"): Promise<
 }
 
 /**
- * Confirmed by CI reproduction (windows-2025): `db.close()` returns
- * synchronously, but the native libsql binding's own file-handle teardown
- * can still be in flight, so an immediately-following `rm()` sees `EBUSY`
- * ("resource busy or locked") on Windows even though POSIX allows deleting
+ * On Windows `db.close()` returns synchronously, but the native libsql
+ * binding's file-handle teardown can still be in flight, so an
+ * immediately-following `rm()` sees `EBUSY` even though POSIX allows deleting
  * an open file.
  *
- * `fs.rm`'s own `maxRetries`/`retryDelay` option exists for exactly this
- * error class, but confirmed by CI reproduction that it does not bound the
- * wait the way its docs describe here (every affected hook ran to exactly
- * vitest's 10000ms hook timeout instead of failing or succeeding within the
- * configured retry budget) — so this rolls its own short, explicitly bounded
- * retry instead of trusting that option. Each unique `mkdtemp` directory is
- * never reused by another test, and nothing in this suite reads it back
- * after cleanup, so giving up quietly once the budget is spent is safe: it
- * leaves an orphaned directory in the CI runner's temp folder (which the
- * runner discards at job end) rather than failing the test over cleanup
- * hygiene.
+ * `fs.rm`'s own `maxRetries`/`retryDelay` option exists for this error class
+ * but does not bound the wait as its docs describe (every affected hook ran to
+ * exactly vitest's 10000ms hook timeout), so this rolls its own short bounded
+ * retry instead. Each `mkdtemp` directory is unique and never read back after
+ * cleanup, so giving up quietly once the budget is spent is safe — it leaves an
+ * orphaned directory the CI runner discards at job end rather than failing the
+ * test over cleanup hygiene.
  */
 export async function removeTempDir(dir: string): Promise<void> {
   const maxAttempts = 5;

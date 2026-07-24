@@ -61,19 +61,16 @@ async function probeVector(db: Database, uniqueId: string): Promise<boolean> {
 }
 
 /**
- * Directly exercises each capability compatibility/implementation-plan.md
- * §9 requires `iroha doctor` to report (FTS5 `unicode61`, FTS5 `trigram`,
+ * Directly exercises each capability compatibility/implementation-plan.md §9
+ * requires `iroha doctor` to report (FTS5 `unicode61`, FTS5 `trigram`,
  * `F32_BLOB(1024)` + `libsql_vector_idx` + `vector_top_k`), using disposable
- * scratch tables rather than assuming the real schema is already migrated —
- * this lets `doctor` distinguish "libSQL build lacks the feature" from
- * "database not yet migrated".
+ * scratch tables so `doctor` can distinguish "libSQL build lacks the feature"
+ * from "database not yet migrated".
  *
- * `random` gives each call's scratch tables a unique name suffix (same
- * pattern as `rebuild.ts`'s `createSiblingDatabasePath`) — confirmed by
- * reproduction that two overlapping `probeCapabilities` calls against the
- * same DB file with a fixed table name collide (`CREATE VIRTUAL TABLE ...
- * already exists`), and the losing call's unconditional `catch { return
- * false }` then misreports a fully-supported libSQL build as unsupported.
+ * `random` gives each call's scratch tables a unique name suffix: two
+ * overlapping calls with a fixed table name collide on `CREATE VIRTUAL TABLE
+ * ... already exists`, and the loser's `catch { return false }` then
+ * misreports a supported libSQL build as unsupported.
  */
 export async function probeCapabilities(
   db: Database,

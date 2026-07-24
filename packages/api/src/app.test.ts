@@ -470,7 +470,7 @@ describe("dashboard API", () => {
     const ruleJson = (await asRule.json()) as { data: { results: unknown[] } };
     expect(ruleJson.data.results.length).toBe(0);
 
-    // The tightened schema rejects an unknown filter key (was a loose record before).
+    // The tightened schema rejects an unknown filter key.
     const bogus = await post(app, "/api/v1/search", cookie, {
       query: "libSQL",
       filters: { bogus: true },
@@ -485,7 +485,6 @@ describe("dashboard API", () => {
     });
     expect(badDate.status).toBe(400);
 
-    // The unused `search/suggestions` stub has been removed.
     const suggestions = await get(app, "/api/v1/search/suggestions", cookie);
     expect(suggestions.status).toBe(404);
   });

@@ -179,10 +179,8 @@ export function pathMatches(scopePath: string, requested: string): boolean {
 /**
  * Derives an entity's facets from its (already-fetched) canonical document.
  * Pure — no DB read — so `rankCandidates` can prefetch every candidate's
- * document in ONE batched query and map over the results, instead of the
- * previous per-candidate `getCanonicalDocumentByEntityId` round-trip. Behaviour
- * is identical to the old `loadFacets`: `null` doc → `EMPTY_FACETS`; a
- * frontmatter parse failure → empty facets but keep the body.
+ * document in ONE batched query and map over the results. `null` doc →
+ * `EMPTY_FACETS`; a frontmatter parse failure → empty facets but keep the body.
  */
 function facetsFromDoc(doc: CanonicalDocumentRow | null): EntityFacets {
   if (doc === null) {
@@ -343,12 +341,11 @@ interface Survivor {
 
 /**
  * Builds the bounded relation previews for every top result at once. Each
- * entity's neighbours are still read per entity (preserving the exact
- * `MAX_RELATION_PREVIEWS` limit and `ORDER BY id` per entity), but the
- * neighbour-title lookups — the previous per-neighbour `getEntityById` N+1
- * (up to `limit` × `MAX_RELATION_PREVIEWS` round-trips) — are collapsed into a
- * single `getEntitiesByIds` over every neighbour id across all top results. A
- * missing neighbour entity falls back to its id as the title, exactly as before.
+ * entity's neighbours are read per entity (preserving the exact
+ * `MAX_RELATION_PREVIEWS` limit and `ORDER BY id` per entity); the
+ * neighbour-title lookups are collapsed into a single `getEntitiesByIds` over
+ * every neighbour id across all top results. A missing neighbour entity falls
+ * back to its id as the title.
  */
 async function buildRelationsForEntities(
   db: Executor,
@@ -412,9 +409,7 @@ export async function rankCandidates(
   }
 
   // Prefetch every candidate's entity row and canonical document in two batched
-  // queries (was one `getEntityById` + one `getCanonicalDocumentByEntityId` per
-  // candidate — an N+1 over up to ~90 fused candidates). The filter loop below
-  // reads from these Maps and is otherwise byte-for-byte the same as before.
+  // queries. The filter loop below reads from these Maps.
   const candidateIds = candidates.map((candidate) => candidate.entityId);
   const entitiesResult = await getEntitiesByIds(db, candidateIds);
   if (!entitiesResult.ok) {

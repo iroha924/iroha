@@ -450,8 +450,8 @@ describe("Steps B–F: the approved-knowledge loop (Claude)", () => {
     // FTS-only Japanese query returns the approved Decision by its entity id.
     // The Latin term is whitespace-delimited: FTS tokenizes on whitespace, so a
     // script-glued form ("…repository…") cannot match English content via the
-    // lexical arm (decision-log ID-032 — cross-lingual recall is a vector-arm
-    // concern, out of scope for FTS-only).
+    // lexical arm (cross-lingual recall is a vector-arm concern, out of scope
+    // for FTS-only).
     const jpQuery = "なぜ repository pattern を使うのか";
     const cliHits = await runSearch(cloneDir, jpQuery, { mode: "lexical", limit: 10 });
     expect(cliHits.ok).toBe(true);

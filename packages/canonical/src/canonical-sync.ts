@@ -12,11 +12,9 @@ export interface CanonicalSyncDiff {
 /**
  * Classifies each currently-scanned canonical file against a caller-
  * supplied baseline (e.g. `canonical_documents.content_hash`/`.path` from
- * `@iroha/storage`, which this package cannot depend on — see
- * decision-log.md ID-025). This is the "changed-file sync" half of WP-04's
- * deliverable; the caller decides what to do with each bucket (queue
- * import for `added`, re-index for `changed`, ignore `unchanged`, raise a
- * tombstone for `deletedPaths`).
+ * `@iroha/storage`, which this package cannot depend on). The caller decides
+ * what to do with each bucket (queue import for `added`, re-index for
+ * `changed`, ignore `unchanged`, raise a tombstone for `deletedPaths`).
  */
 export function diffCanonicalFiles(
   scan: CanonicalDirectoryScan,

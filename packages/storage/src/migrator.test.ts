@@ -202,8 +202,8 @@ describe("runMigrations", () => {
     // Simulate a process that committed migration 001's own transaction
     // (its DDL + `PRAGMA user_version = 1`) but crashed before the separate
     // `schema_migrations` bookkeeping INSERT that `runMigrations` normally
-    // issues right after — confirmed by code review that a naive retry
-    // would otherwise re-run this SQL and fail with "table already exists".
+    // issues right after — a naive retry would re-run this SQL and fail with
+    // "table already exists".
     const migrationsLoaded = await loadMigrations(migrationsDir);
     if (!migrationsLoaded.ok) throw new Error("failed to load migrations");
     const initial = migrationsLoaded.value.find((f) => f.version === 1);
@@ -262,10 +262,9 @@ describe("runMigrations", () => {
   });
 
   it("fails with SCHEMA_MISMATCH when schema_migrations records a version this build's files do not include, even if PRAGMA user_version has not caught up", async () => {
-    // Regression test: confirmed by review that comparing only
-    // `PRAGMA user_version` against `maxKnownVersion` misses this case —
-    // `schema_migrations` already has an "orphaned" bookkeeping row for a
-    // version this (downgraded) build's migrations directory does not
+    // Comparing only `PRAGMA user_version` against `maxKnownVersion` misses
+    // this case — `schema_migrations` already has an "orphaned" bookkeeping
+    // row for a version this (downgraded) build's migrations directory does not
     // include at all, while `PRAGMA user_version` itself is still behind.
     const migrationsDir = await copyMigrationsDir();
     tempDirs.push(migrationsDir);

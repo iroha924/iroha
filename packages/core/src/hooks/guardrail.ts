@@ -15,9 +15,8 @@ const GUARD_MATCH_OPTIONS = { dot: true, windows: false } as const;
  *
  * A guard path protects the path itself AND its whole subtree, so a
  * bare-directory or single-star entry still protects the files under it — the
- * safe, least-surprising semantics for a protect-from-writes matcher, and it
- * preserves the pre-picomatch behavior (a bare `src/generated` guard covered
- * `src/generated/client.ts`). That is the `glob` OR `glob/**` test below.
+ * safe, least-surprising semantics for a protect-from-writes matcher. That is
+ * the `glob` OR `glob/**` test below.
  *
  * Options: `dot: true` is mandatory for a security matcher — without it a
  * globstar would skip dotfiles (a root `.env`, anything under `.github` or
@@ -25,7 +24,7 @@ const GUARD_MATCH_OPTIONS = { dot: true, windows: false } as const;
  * host OS, since targets and guard paths are always repo-relative POSIX strings.
  * Unlike the simplified prefix matcher in `ranking.ts` (search scope only), this
  * correctly handles a leading globstar, a mid-path globstar, and an extension
- * glob — the shapes whose silent no-op was the enforcement bypass this fixes.
+ * glob.
  */
 function guardPathMatches(glob: string, target: string): boolean {
   const subtree = `${glob.replace(/\/+$/, "")}/**`;

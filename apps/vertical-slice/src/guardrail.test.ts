@@ -58,7 +58,7 @@ describe("Guardrail flow (vertical-slice.md §4)", () => {
     expect(output.hookSpecificOutput.permissionDecision).toBe("deny");
     expect(output.hookSpecificOutput.permissionDecisionReason).toContain(guardRule.id);
 
-    // Tool-agnostic (ID-036): a MultiEdit — a write tool the guard's `tools`
+    // Tool-agnostic: a MultiEdit — a write tool the guard's `tools`
     // (["Edit","Write"]) does not name — is denied just the same.
     const deniedMulti = await runHook(
       raw(claudePreTool(repo.repoDir, SESSION, "MultiEdit", { file_path: GENERATED_FILE }, "t2")),

@@ -215,7 +215,7 @@ export interface RunSearchOptions {
 
 /**
  * `iroha search <query>`: the same hybrid retrieval as the MCP `search` tool and
- * the dashboard (mode/limit/filters), not the old FTS-only slice. Offline-safe —
+ * the dashboard (mode/limit/filters). Offline-safe —
  * the default `hybrid` mode degrades to lexical when embedding is unconfigured
  * (`mcpSearch`), and `--mode lexical` forces the FTS arm.
  */

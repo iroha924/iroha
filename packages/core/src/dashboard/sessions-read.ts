@@ -247,8 +247,8 @@ export async function getRunDetail(
       if (!turnsResult.ok) {
         return turnsResult;
       }
-      // One batched query for every turn's tool events (was one per turn),
-      // grouped by turn_id; each turn keeps its ORDER BY occurred_at.
+      // One batched query for every turn's tool events, grouped by turn_id;
+      // each turn keeps its ORDER BY occurred_at.
       const eventsByTurn = await listToolEventsByTurns(
         ctx.db,
         turnsResult.value.map((turn) => turn.id),

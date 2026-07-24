@@ -8,11 +8,10 @@ import { computeCanonicalPath } from "./write-canonical-document.js";
 
 // `{7,}` (not `{7}`): Git increases conflict-marker length beyond 7
 // characters for nested/recursive conflicts (`merge.conflictMarkerSize`),
-// so a fixed-length match would miss those — confirmed by review. Requiring
-// *both* an opening and a closing marker (checked separately below, not
-// folded into one alternation) avoids misdiagnosing a document whose body
-// legitimately contains a single `=======`-style divider line as an
-// unresolved conflict.
+// so a fixed-length match would miss those. Requiring *both* an opening and
+// a closing marker (checked separately below, not folded into one
+// alternation) avoids misdiagnosing a document whose body legitimately
+// contains a single `=======`-style divider line as an unresolved conflict.
 const CONFLICT_START_PATTERN = /^<{7,}(?:\s|$)/m;
 const CONFLICT_END_PATTERN = /^>{7,}(?:\s|$)/m;
 
@@ -44,10 +43,7 @@ function toPosixPath(path: string): string {
  * `computeCanonicalPath(document)` (§4: "The file basename must equal
  * `<id>.md`"; WP-04 acceptance criteria: "filename/ID/path validation") —
  * is collected in `errors` rather than aborting the whole scan, so one
- * malformed document does not hide problems (or successes) in every other
- * one — matching WP-04's "malformed canonical file fails rebuild safely"
- * acceptance criterion at the directory-scan granularity, not just the
- * single-file one.
+ * malformed document does not hide problems (or successes) in every other one.
  */
 export async function scanCanonicalDirectory(
   repositoryRoot: string,
@@ -85,9 +81,8 @@ export async function scanCanonicalDirectory(
     }
     // Hash the raw bytes, not the UTF-8-decoded string: decoding lossily
     // replaces invalid byte sequences with U+FFFD, which would make two
-    // files with genuinely different bytes hash identically — confirmed by
-    // review. `diffCanonicalFiles` depends on this hash to detect real
-    // on-disk changes.
+    // files with genuinely different bytes hash identically.
+    // `diffCanonicalFiles` depends on this hash to detect real on-disk changes.
     const hash = `sha256:${createHash("sha256").update(raw).digest("hex")}`;
     const content = raw.toString("utf8");
 

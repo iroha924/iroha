@@ -120,7 +120,7 @@ export function buildCodexHooks(): { description: string; hooks: HookEventMap } 
     }
     // Matcher omitted so the handler fires on every occurrence of the event; the
     // hook discriminates internally. (Codex matcher-optionality is not stated in
-    // the docs — recorded as an assumption in decision-log ID-038.)
+    // the docs.)
     events[event] = [{ hooks: [codexHookHandler(timeoutSeconds)] }];
   }
   return { description: "iroha lifecycle hooks", hooks: events };
