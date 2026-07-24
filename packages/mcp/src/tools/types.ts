@@ -21,8 +21,12 @@ export interface AnyMcpTool {
   annotations: ToolAnnotations;
   inputSchema: z.ZodType;
   handler: (input: unknown, ctx: McpToolContext) => Promise<Result<unknown, IrohaError>>;
-  /** Optional per-request advisories (e.g. a filter that is not applied yet). */
-  warnings?: (input: unknown) => McpWarning[];
+  /**
+   * Optional per-request advisories (e.g. a filter that is not applied yet, or a
+   * result-dependent hint like likely-duplicate detection). Called only on a
+   * successful handler result, with both the validated input and that result.
+   */
+  warnings?: (input: unknown, data: unknown) => McpWarning[];
 }
 
 /** Binds a typed input schema to a typed handler, then erases to `AnyMcpTool`. */
@@ -32,7 +36,7 @@ export function defineTool<S extends z.ZodType, Data>(tool: {
   annotations: ToolAnnotations;
   inputSchema: S;
   handler: (input: z.output<S>, ctx: McpToolContext) => Promise<Result<Data, IrohaError>>;
-  warnings?: (input: z.output<S>) => McpWarning[];
+  warnings?: (input: z.output<S>, data: Data) => McpWarning[];
 }): AnyMcpTool {
   return tool as unknown as AnyMcpTool;
 }

@@ -332,7 +332,25 @@ interface ProposeKnowledgeInput {
 }
 ```
 
-The operation never writes `.iroha/`. A likely duplicate returns a warning and related IDs; it does not silently merge.
+Output data:
+
+```ts
+interface ProposeKnowledgeData {
+  candidateId: string;
+  redactions: Array<{ field: string; reason: string }>;
+  deduplicated: boolean;              // true only on an idempotency-key retry
+  duplicateCandidateIds: string[];    // same-type candidates sharing this title
+}
+```
+
+The operation never writes `.iroha/`. When `supersedesCandidateId` is given, that
+candidate is transitioned `pending`/`approved` → `superseded` in the same write
+transaction as the new candidate insert (an illegal transition — e.g. a candidate
+already `rejected`/`superseded`, or one that does not exist — fails the whole
+operation). A likely duplicate (an existing same-type candidate whose title
+matches, normalized) returns a `likely_duplicate` warning and its IDs in
+`duplicateCandidateIds`; it does not silently merge — the new candidate is always
+created.
 
 ### 6.8 `link_entities`
 

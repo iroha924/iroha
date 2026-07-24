@@ -121,6 +121,162 @@ describe("mcpProposeKnowledge", () => {
     }
   }, 15000);
 
+  it("supersedes a prior candidate in the same transaction", async () => {
+    repo = await setupMcpRepo(random);
+    const seedDb = await openDatabase(repo.dbPath);
+    if (!seedDb.ok) return;
+    const seeded = await seedSessionWithToken(seedDb.value, repo, clock, random);
+    await closeDatabase(seedDb.value);
+
+    const prior = await mcpProposeKnowledge({
+      cwd: repo.repoDir,
+      clock,
+      random,
+      sessionToken: seeded.token,
+      idempotencyKey: "idem-propose-super-0001",
+      proposal: PROPOSAL,
+    });
+    expect(prior.ok).toBe(true);
+    if (!prior.ok) return;
+
+    const replacement = await mcpProposeKnowledge({
+      cwd: repo.repoDir,
+      clock,
+      random,
+      sessionToken: seeded.token,
+      idempotencyKey: "idem-propose-super-0002",
+      proposal: { ...PROPOSAL, title: "Validate every boundary, v2" },
+      supersedesCandidateId: prior.value.candidateId,
+    });
+    expect(replacement.ok).toBe(true);
+    if (!replacement.ok) return;
+
+    const db = await openDatabase(repo.dbPath);
+    if (!db.ok) return;
+    const pending = await listCandidatesByStatus(db.value, repo.repositoryId, "pending");
+    const superseded = await listCandidatesByStatus(db.value, repo.repositoryId, "superseded");
+    await closeDatabase(db.value);
+
+    expect(pending.ok && pending.value.map((c) => c.id)).toStrictEqual([
+      replacement.value.candidateId,
+    ]);
+    expect(superseded.ok && superseded.value.map((c) => c.id)).toStrictEqual([
+      prior.value.candidateId,
+    ]);
+  }, 15000);
+
+  it("rejects a non-existent supersedesCandidateId and rolls back the insert", async () => {
+    repo = await setupMcpRepo(random);
+    const seedDb = await openDatabase(repo.dbPath);
+    if (!seedDb.ok) return;
+    const seeded = await seedSessionWithToken(seedDb.value, repo, clock, random);
+    await closeDatabase(seedDb.value);
+
+    const result = await mcpProposeKnowledge({
+      cwd: repo.repoDir,
+      clock,
+      random,
+      sessionToken: seeded.token,
+      idempotencyKey: "idem-propose-super-0003",
+      proposal: PROPOSAL,
+      supersedesCandidateId: "cand_0000000000000000000000000A",
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("INVALID_INPUT");
+    }
+
+    const db = await openDatabase(repo.dbPath);
+    if (!db.ok) return;
+    // The whole transaction rolled back, so the new candidate was not inserted.
+    const pending = await listCandidatesByStatus(db.value, repo.repositoryId, "pending");
+    expect(pending.ok && pending.value.length).toBe(0);
+    await closeDatabase(db.value);
+  }, 15000);
+
+  it("fails an illegal supersession (target already superseded)", async () => {
+    repo = await setupMcpRepo(random);
+    const seedDb = await openDatabase(repo.dbPath);
+    if (!seedDb.ok) return;
+    const seeded = await seedSessionWithToken(seedDb.value, repo, clock, random);
+    await closeDatabase(seedDb.value);
+
+    const prior = await mcpProposeKnowledge({
+      cwd: repo.repoDir,
+      clock,
+      random,
+      sessionToken: seeded.token,
+      idempotencyKey: "idem-propose-super-0004",
+      proposal: PROPOSAL,
+    });
+    if (!prior.ok) return;
+    const first = await mcpProposeKnowledge({
+      cwd: repo.repoDir,
+      clock,
+      random,
+      sessionToken: seeded.token,
+      idempotencyKey: "idem-propose-super-0005",
+      proposal: { ...PROPOSAL, title: "Replacement one" },
+      supersedesCandidateId: prior.value.candidateId,
+    });
+    expect(first.ok).toBe(true);
+
+    // The prior candidate is now `superseded`; superseding it again is illegal.
+    const second = await mcpProposeKnowledge({
+      cwd: repo.repoDir,
+      clock,
+      random,
+      sessionToken: seeded.token,
+      idempotencyKey: "idem-propose-super-0006",
+      proposal: { ...PROPOSAL, title: "Replacement two" },
+      supersedesCandidateId: prior.value.candidateId,
+    });
+    expect(second.ok).toBe(false);
+    if (!second.ok) {
+      expect(second.error.code).toBe("INVALID_INPUT");
+    }
+  }, 15000);
+
+  it("reports a likely duplicate by title without merging", async () => {
+    repo = await setupMcpRepo(random);
+    const seedDb = await openDatabase(repo.dbPath);
+    if (!seedDb.ok) return;
+    const seeded = await seedSessionWithToken(seedDb.value, repo, clock, random);
+    await closeDatabase(seedDb.value);
+
+    const first = await mcpProposeKnowledge({
+      cwd: repo.repoDir,
+      clock,
+      random,
+      sessionToken: seeded.token,
+      idempotencyKey: "idem-propose-dup-00001",
+      proposal: PROPOSAL,
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.value.duplicateCandidateIds).toStrictEqual([]);
+
+    // Same title, different case/spacing — normalized match.
+    const second = await mcpProposeKnowledge({
+      cwd: repo.repoDir,
+      clock,
+      random,
+      sessionToken: seeded.token,
+      idempotencyKey: "idem-propose-dup-00002",
+      proposal: { ...PROPOSAL, title: "  VALIDATE   every external boundary " },
+    });
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(second.value.duplicateCandidateIds).toStrictEqual([first.value.candidateId]);
+
+    // Not merged: both candidates exist.
+    const db = await openDatabase(repo.dbPath);
+    if (!db.ok) return;
+    const pending = await listCandidatesByStatus(db.value, repo.repositoryId, "pending");
+    expect(pending.ok && pending.value.length).toBe(2);
+    await closeDatabase(db.value);
+  }, 15000);
+
   it("redacts a secret embedded in a guard denyCommand", async () => {
     repo = await setupMcpRepo(random);
     const seedDb = await openDatabase(repo.dbPath);

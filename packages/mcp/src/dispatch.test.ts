@@ -137,6 +137,18 @@ describe("tool registry", () => {
       expect(names.some((name) => name.includes(forbidden))).toBe(false);
     }
   });
+
+  it("surfaces a likely_duplicate warning only when propose_knowledge finds duplicates", () => {
+    const tool = TOOLS.find((entry) => entry.name === "propose_knowledge");
+    expect(tool?.warnings).toBeDefined();
+    const base = { candidateId: "cand_x", redactions: [], deduplicated: false };
+
+    const none = tool?.warnings?.({}, { ...base, duplicateCandidateIds: [] });
+    expect(none).toStrictEqual([]);
+
+    const some = tool?.warnings?.({}, { ...base, duplicateCandidateIds: ["cand_a", "cand_b"] });
+    expect(some?.map((warning) => warning.code)).toStrictEqual(["likely_duplicate"]);
+  });
 });
 
 describe("server", () => {
