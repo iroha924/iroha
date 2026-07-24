@@ -46,6 +46,17 @@ describe("parseClaudeEvent — session lifecycle", () => {
     expect(digested).toContain("/repo");
   });
 
+  it("maps a fork SessionStart to SESSION_STARTED (v2.1.214 source)", () => {
+    const { ctx } = makeFakeCtx();
+    const event = unwrap(
+      parseClaudeEvent({ ...common, hook_event_name: "SessionStart", source: "fork" }, ctx),
+    );
+    expect(event).toMatchObject({
+      kind: "SESSION_STARTED",
+      payload: { source: "fork" },
+    });
+  });
+
   it("maps SessionEnd to SESSION_ENDED with the reason", () => {
     const { ctx } = makeFakeCtx();
     const event = unwrap(

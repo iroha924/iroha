@@ -28,6 +28,7 @@ function base(overrides: Record<string, unknown>) {
 /** One valid event per `kind`, matching that kind's `allOf`-narrowed payload shape. */
 const positiveFixtures: Array<[string, unknown]> = [
   ["SESSION_STARTED", base({ kind: "SESSION_STARTED", payload: { source: "startup" } })],
+  ["SESSION_STARTED source fork", base({ kind: "SESSION_STARTED", payload: { source: "fork" } })],
   ["PROMPT_SUBMITTED", base({ kind: "PROMPT_SUBMITTED", payload: { promptDigest: DIGEST } })],
   [
     "TOOL_STARTED",

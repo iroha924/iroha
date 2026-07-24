@@ -50,7 +50,7 @@ async function sessionRuns(cwd: string): Promise<Record<string, unknown>[]> {
   if (!opened.ok) throw new Error("db not opened");
   try {
     const result = await opened.value.execute(
-      "SELECT git_branch, head_sha_start, head_sha_end, status FROM session_runs ORDER BY started_at",
+      "SELECT start_source, git_branch, head_sha_start, head_sha_end, status FROM session_runs ORDER BY started_at",
     );
     return result.rows.map((row) => ({ ...row }));
   } finally {
@@ -198,6 +198,25 @@ describe("runHook", () => {
     expect(runs[0]?.git_branch).toBe("main");
     expect(String(runs[0]?.head_sha_start)).toMatch(/^[0-9a-f]{40}$/);
     expect(runs[0]?.head_sha_end).toBe(null);
+  });
+
+  it("creates a Run for a fork SessionStart, recorded as startup", async () => {
+    repoDir = await initedRepo();
+    await commitFile(repoDir, "a.txt", "a");
+
+    const result = await hook(repoDir, "claude_code", {
+      session_id: "forked-1",
+      hook_event_name: "SessionStart",
+      source: "fork",
+    });
+    // Not rejected: the fork session gets its bounded context and a Run.
+    expect(parse(result.stdout).hookSpecificOutput).toBeDefined();
+
+    const runs = await sessionRuns(repoDir);
+    expect(runs).toHaveLength(1);
+    // A fork begins a new session, so its Run records as `startup` (the DB
+    // start_source CHECK allows only startup/resume/clear).
+    expect(runs[0]?.start_source).toBe("startup");
   });
 
   it("bounds a hostile branch name before it reaches the record", async () => {

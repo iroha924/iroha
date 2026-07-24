@@ -12,7 +12,7 @@ const targetSchema = z.strictObject({
 });
 
 const sessionStartedPayload = z.strictObject({
-  source: z.enum(["startup", "resume", "clear", "compact"]),
+  source: z.enum(["startup", "resume", "clear", "compact", "fork"]),
 });
 
 const promptSubmittedPayload = z.strictObject({
