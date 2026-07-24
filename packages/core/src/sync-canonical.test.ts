@@ -250,7 +250,50 @@ describe("syncCanonicalToDatabase", () => {
     expect(rules.ok).toBe(true);
     if (rules.ok) {
       expect(rules.value.map((row) => row.id).sort()).toEqual([advisoryId, guardrailId].sort());
+      // #30: the Rule's frontmatter severity survives the projection.
+      const bySeverity = new Map(rules.value.map((row) => [row.id, row.severity]));
+      expect(bySeverity.get(advisoryId)).toBe("warning");
+      expect(bySeverity.get(guardrailId)).toBe("error");
     }
+  });
+
+  it("reprojectAll re-imports an unchanged rule so a newly migrated column is backfilled", async () => {
+    await setup();
+    if (!db || !canonicalDir) return;
+    const ruleId = makeTypedId("rul", CLOCK, new CryptoRandomSource());
+    await writeCanonicalDocument(
+      ruleCandidate(ruleId, "Prefer the repository pattern", {
+        enforcement: "advisory",
+        severity: "warning",
+      }),
+      canonicalDir,
+      new CryptoRandomSource(),
+    );
+    await syncCanonicalToDatabase(db, repositoryId, canonicalDir, CLOCK, new CryptoRandomSource());
+
+    // Simulate the post-migration state: the column exists but the unchanged
+    // rule's value was never backfilled by an incremental sync.
+    await db.execute("UPDATE knowledge_items SET severity = NULL");
+    const beforeReproject = await listApprovedRulesForRepository(db, repositoryId);
+    expect(beforeReproject.ok && beforeReproject.value[0]?.severity).toBe(null);
+
+    // A plain incremental sync leaves the NULL (the file hash is unchanged)...
+    await syncCanonicalToDatabase(db, repositoryId, canonicalDir, CLOCK, new CryptoRandomSource());
+    const stillNull = await listApprovedRulesForRepository(db, repositoryId);
+    expect(stillNull.ok && stillNull.value[0]?.severity).toBe(null);
+
+    // ...but a reproject run re-imports it and restores the severity.
+    const reprojected = await syncCanonicalToDatabase(
+      db,
+      repositoryId,
+      canonicalDir,
+      CLOCK,
+      new CryptoRandomSource(),
+      true,
+    );
+    expect(reprojected.ok).toBe(true);
+    const after = await listApprovedRulesForRepository(db, repositoryId);
+    expect(after.ok && after.value[0]?.severity).toBe("warning");
   });
 
   it("is a no-op on a second sync with no on-disk changes", async () => {

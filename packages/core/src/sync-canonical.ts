@@ -146,6 +146,9 @@ export async function importCanonicalDocument(
       scopeJson: JSON.stringify(frontmatter.scope),
       approvedAt: frontmatter.approved_at,
       canonicalPath: path,
+      // Only a Rule carries the info/warning/error severity; every other type
+      // leaves the column NULL (audit issue #30).
+      ...(frontmatter.type === "rule" ? { severity: frontmatter.rule.severity } : {}),
     };
     const knowledgeInput: UpsertKnowledgeItemInput =
       frontmatter.type === "rule" &&
@@ -291,6 +294,15 @@ export async function insertCanonicalDocumentRelations(
  * validate (so one malformed document does not abort the whole sync).
  * Idempotent: re-running with no on-disk changes touches nothing (every
  * write here is an upsert or an `ON CONFLICT DO NOTHING`).
+ *
+ * `reprojectAll` re-imports every canonical document, not just the ones whose
+ * file hash changed. A schema migration can add a projected column
+ * (`migrations/004_knowledge_items_severity.sql`), which the incremental
+ * hash-diff cannot backfill for an *unchanged* file — its hash still matches, so
+ * it never re-imports and the new column stays NULL. `runSync` sets this on the
+ * run where a migration was applied, so the projection is reconciled with the
+ * new schema without a full `sync --rebuild`. Re-importing an unchanged document
+ * is idempotent (every write is an upsert).
  */
 export async function syncCanonicalToDatabase(
   db: Database,
@@ -298,6 +310,7 @@ export async function syncCanonicalToDatabase(
   irohaCanonicalDir: string,
   clock: Clock,
   random: RandomSource,
+  reprojectAll = false,
 ): Promise<Result<SyncCanonicalResult, IrohaError>> {
   const now = clock.now().toISOString();
 
@@ -327,8 +340,13 @@ export async function syncCanonicalToDatabase(
   const baseline = new Map(baselineResult.value.map((doc) => [doc.canonicalPath, doc.fileHash]));
 
   const diff = diffCanonicalFiles(scan, baseline);
+  // On a reproject run, an unchanged document is re-imported too so a newly
+  // migrated projected column is backfilled from canonical (see the docstring).
+  const toImport = reprojectAll
+    ? [...diff.added, ...diff.changed, ...diff.unchanged]
+    : [...diff.added, ...diff.changed];
 
-  for (const entry of [...diff.added, ...diff.changed]) {
+  for (const entry of toImport) {
     const upserted = await importCanonicalDocument(
       db,
       repositoryId,
@@ -344,7 +362,7 @@ export async function syncCanonicalToDatabase(
   }
 
   let unresolvedRelations = 0;
-  for (const entry of [...diff.added, ...diff.changed]) {
+  for (const entry of toImport) {
     // One transaction per document so the delete-then-insert reconcile in
     // `insertCanonicalDocumentRelations` is atomic (the approve path wraps its
     // own call the same way). `db` here is always a `Database`, never a nested

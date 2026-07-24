@@ -9,6 +9,7 @@ function guardrailRule(id: string, guard: { tools: string[]; paths: string[] }):
     title: "Do not edit generated files",
     summary: null,
     enforcement: "guardrail",
+    severity: "error",
     scopeJson: JSON.stringify({ paths: guard.paths, symbols: [] }),
     guardSpecJson: JSON.stringify(guard),
     canonicalPath: `rules/${id}.md`,

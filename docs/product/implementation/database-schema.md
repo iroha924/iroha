@@ -99,7 +99,7 @@ Rules:
 
 ### Knowledge and approval
 
-- `knowledge_items`: normalized candidate/approved knowledge.
+- `knowledge_items`: normalized candidate/approved knowledge. A Rule's `severity` (`info`/`warning`/`error`) is projected here from canonical frontmatter (`migrations/004_knowledge_items_severity.sql`); it is `NULL` for every non-rule type.
 - `candidates`: mutable review queue item.
 - `approvals`: append-only review audit.
 

@@ -31,12 +31,7 @@ export const getActiveRulesTool = defineTool({
       includeGuardrails: input.includeGuardrails,
     }),
   warnings: (input) => {
-    const warnings: McpWarning[] = [
-      // mcp-contract.md §6.3 lists `severity`, but the `knowledge_items` table
-      // has no severity column yet (it exists only on the canonical Rule), so it
-      // cannot be returned until an upstream schema/migration adds it.
-      { code: "unsupported_field", message: "rule severity is not yet modeled and is omitted" },
-    ];
+    const warnings: McpWarning[] = [];
     if ((input.paths?.length ?? 0) > 0 || (input.symbols?.length ?? 0) > 0) {
       warnings.push({
         code: "partial_scope_match",

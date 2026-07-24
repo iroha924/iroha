@@ -24,6 +24,9 @@ export const KNOWLEDGE_TYPES = [
 ] as const;
 export type KnowledgeType = (typeof KNOWLEDGE_TYPES)[number];
 
+/** Rule severity (`info`/`warning`/`error`); `null` for every non-rule knowledge type. */
+export type RuleSeverity = "info" | "warning" | "error";
+
 export interface KnowledgeItemRow {
   id: string;
   knowledgeType: KnowledgeType;
@@ -31,6 +34,7 @@ export interface KnowledgeItemRow {
   scopeJson: string;
   enforcement: "advisory" | "guardrail";
   guardSpecJson: string | null;
+  severity: RuleSeverity | null;
   confidence: number | null;
   approvedByActorId: TypedId<"act"> | null;
   approvedAt: string | null;
@@ -42,6 +46,7 @@ interface UpsertKnowledgeItemCommon {
   knowledgeType: KnowledgeType;
   body: string;
   scopeJson: string;
+  severity?: RuleSeverity;
   confidence?: number;
   approvedByActorId?: TypedId<"act">;
   approvedAt?: string;
@@ -65,6 +70,7 @@ function rowToKnowledgeItem(row: Record<string, unknown>): KnowledgeItemRow {
     scopeJson: String(row.scope_json),
     enforcement: row.enforcement as "advisory" | "guardrail",
     guardSpecJson: nullableString(row.guard_spec_json),
+    severity: nullableString(row.severity) as RuleSeverity | null,
     confidence: nullableNumber(row.confidence),
     approvedByActorId:
       row.approved_by_actor_id === null ? null : (row.approved_by_actor_id as TypedId<"act">),
@@ -82,14 +88,15 @@ export async function upsertKnowledgeItem(
   try {
     await db.execute({
       sql: `INSERT INTO knowledge_items
-        (id, knowledge_type, body, scope_json, enforcement, guard_spec_json, confidence, approved_by_actor_id, approved_at, canonical_path)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, knowledge_type, body, scope_json, enforcement, guard_spec_json, severity, confidence, approved_by_actor_id, approved_at, canonical_path)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (id) DO UPDATE SET
           knowledge_type = excluded.knowledge_type,
           body = excluded.body,
           scope_json = excluded.scope_json,
           enforcement = excluded.enforcement,
           guard_spec_json = excluded.guard_spec_json,
+          severity = excluded.severity,
           confidence = excluded.confidence,
           approved_by_actor_id = excluded.approved_by_actor_id,
           approved_at = excluded.approved_at,
@@ -101,6 +108,7 @@ export async function upsertKnowledgeItem(
         input.scopeJson,
         input.enforcement,
         guardSpecJson,
+        input.severity ?? null,
         input.confidence ?? null,
         input.approvedByActorId ?? null,
         input.approvedAt ?? null,
@@ -135,9 +143,32 @@ export interface ActiveRuleRow {
   title: string;
   summary: string | null;
   enforcement: "advisory" | "guardrail";
+  severity: RuleSeverity | null;
   scopeJson: string;
   guardSpecJson: string | null;
   canonicalPath: string | null;
+}
+
+/**
+ * `k.severity` was added by migration 004; a `SELECT` naming it errors on a DB
+ * still at an older schema. This builds the query with severity as either the
+ * real column or a `NULL` literal so the same reader works before and after the
+ * migration (see `listApprovedRulesForRepository`).
+ */
+function approvedRulesSql(severityExpr: string): string {
+  return `SELECT e.id AS id, e.title AS title, e.summary AS summary,
+      k.enforcement AS enforcement, ${severityExpr} AS severity, k.scope_json AS scope_json,
+      k.guard_spec_json AS guard_spec_json, k.canonical_path AS canonical_path
+    FROM knowledge_items k
+    JOIN entities e ON e.id = k.id
+    WHERE e.repository_id = ? AND k.knowledge_type = 'rule' AND e.status = 'approved'
+    ORDER BY e.authority DESC, e.id DESC`;
+}
+
+/** SQLite/libSQL's "no such column" error text is its own (not gettext-localized), so match on it. */
+function isMissingSeverityColumn(cause: unknown): boolean {
+  const message = cause instanceof Error ? cause.message : String(cause);
+  return /no such column/i.test(message) && /severity/i.test(message);
 }
 
 /**
@@ -145,34 +176,40 @@ export interface ActiveRuleRow {
  * guardrail enforcement) with their entity title/summary, for the MCP
  * `get_active_rules` tool (mcp-contract.md §6.3). Only `status = 'approved'`
  * entities are returned — pending candidates are never included.
+ *
+ * Tolerates a DB from before migration 004 (the hook guardrail path and the MCP
+ * server open the DB without migrating — only init/sync/doctor migrate,
+ * database-schema.md §3): if `severity` does not exist yet, it degrades to a
+ * `NULL`-severity read rather than erroring, so guardrail evaluation keeps
+ * working in the window between a package upgrade and the next sync/init.
  */
 export async function listApprovedRulesForRepository(
   db: Executor,
   repositoryId: TypedId<"repo">,
 ): Promise<Result<ActiveRuleRow[], IrohaError>> {
+  const toRows = (rows: Record<string, unknown>[]): ActiveRuleRow[] =>
+    rows.map((row) => ({
+      id: String(row.id),
+      title: String(row.title),
+      summary: nullableString(row.summary),
+      enforcement: row.enforcement as "advisory" | "guardrail",
+      severity: nullableString(row.severity) as RuleSeverity | null,
+      scopeJson: String(row.scope_json),
+      guardSpecJson: nullableString(row.guard_spec_json),
+      canonicalPath: nullableString(row.canonical_path),
+    }));
   try {
-    const result = await db.execute({
-      sql: `SELECT e.id AS id, e.title AS title, e.summary AS summary,
-          k.enforcement AS enforcement, k.scope_json AS scope_json,
-          k.guard_spec_json AS guard_spec_json, k.canonical_path AS canonical_path
-        FROM knowledge_items k
-        JOIN entities e ON e.id = k.id
-        WHERE e.repository_id = ? AND k.knowledge_type = 'rule' AND e.status = 'approved'
-        ORDER BY e.authority DESC, e.id DESC`,
-      args: [repositoryId],
-    });
-    return ok(
-      result.rows.map((row) => ({
-        id: String(row.id),
-        title: String(row.title),
-        summary: nullableString(row.summary),
-        enforcement: row.enforcement as "advisory" | "guardrail",
-        scopeJson: String(row.scope_json),
-        guardSpecJson: nullableString(row.guard_spec_json),
-        canonicalPath: nullableString(row.canonical_path),
-      })),
-    );
+    const result = await db.execute({ sql: approvedRulesSql("k.severity"), args: [repositoryId] });
+    return ok(toRows(result.rows));
   } catch (cause) {
+    if (isMissingSeverityColumn(cause)) {
+      try {
+        const fallback = await db.execute({ sql: approvedRulesSql("NULL"), args: [repositoryId] });
+        return ok(toRows(fallback.rows));
+      } catch (fallbackCause) {
+        return err(mapLibsqlError(fallbackCause, "Failed to list approved rules"));
+      }
+    }
     return err(mapLibsqlError(cause, "Failed to list approved rules"));
   }
 }

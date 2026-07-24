@@ -127,12 +127,17 @@ export async function runSync(
     if (!migrated.ok) {
       return migrated;
     }
+    // A migration can add a projected column that the incremental hash-diff
+    // cannot backfill for unchanged files; when one was applied, re-project
+    // every canonical document so the DB matches the new schema.
+    const reprojectAll = migrated.value.length > 0;
     const syncResult = await syncCanonicalToDatabase(
       opened.value,
       resolvedResult.value.repositoryId,
       resolvedResult.value.irohaCanonicalDir,
       clock,
       new CryptoRandomSource(),
+      reprojectAll,
     );
     if (!syncResult.ok) {
       return syncResult;
