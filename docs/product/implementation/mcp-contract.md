@@ -344,13 +344,15 @@ interface ProposeKnowledgeData {
 ```
 
 The operation never writes `.iroha/`. When `supersedesCandidateId` is given, that
-candidate is transitioned `pending`/`approved` → `superseded` in the same write
-transaction as the new candidate insert (an illegal transition — e.g. a candidate
-already `rejected`/`superseded`, or one that does not exist — fails the whole
-operation). A likely duplicate (an existing same-type candidate whose title
-matches, normalized) returns a `likely_duplicate` warning and its IDs in
-`duplicateCandidateIds`; it does not silently merge — the new candidate is always
-created.
+candidate is transitioned `pending` → `superseded` in the same write transaction
+as the new candidate insert. The target **must be `pending`**: superseding an
+`approved` candidate is a human-review action (dashboard/CLI, with an approval
+audit row and the canonical supersession edit), not one an agent may take through
+this token-only boundary (design.md §9) — an `approved`, `rejected`, `superseded`,
+or non-existent target fails the whole operation (`INVALID_INPUT`). A likely
+duplicate (an existing same-type candidate whose title matches, normalized)
+returns a `likely_duplicate` warning and its IDs in `duplicateCandidateIds`; it
+does not silently merge — the new candidate is always created.
 
 ### 6.8 `link_entities`
 

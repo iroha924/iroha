@@ -26,10 +26,10 @@ export interface McpProposeKnowledgeData {
   redactions: FieldRedaction[];
   deduplicated: boolean;
   /**
-   * Existing pending/approved candidates of the same type whose title matches
-   * this proposal's (mcp-contract.md §6.7: "a likely duplicate returns a warning
-   * and related IDs; it does not silently merge"). Advisory only — the new
-   * candidate is always created regardless.
+   * Existing candidates of the same type (any status) whose title matches this
+   * proposal's (mcp-contract.md §6.7: "a likely duplicate returns a warning and
+   * related IDs; it does not silently merge"). Advisory only — the new candidate
+   * is always created regardless.
    */
   duplicateCandidateIds: TypedId<"cand">[];
 }
@@ -49,7 +49,14 @@ const OPERATION = "propose_knowledge";
 
 function storedToData(responseJson: string): McpProposeKnowledgeData {
   const parsed = JSON.parse(responseJson) as McpProposeKnowledgeData;
-  return { ...parsed, deduplicated: true };
+  // A stored row written before `duplicateCandidateIds` existed (an idempotency
+  // retry across an upgrade) lacks the field; default it so the warning hook,
+  // which reads `.length` even on a deduped result, never throws.
+  return {
+    ...parsed,
+    duplicateCandidateIds: parsed.duplicateCandidateIds ?? [],
+    deduplicated: true,
+  };
 }
 
 /**
@@ -95,11 +102,18 @@ function findDuplicateCandidateIds(
 }
 
 /**
- * Resolves the candidate that this proposal supersedes and transitions it to
- * `superseded` (state machine: `pending`/`approved` → `superseded`). Runs inside
- * the write transaction so the supersession and the new candidate insert commit
- * atomically. The revision token is read here (not before the transaction) to
- * avoid a TOCTOU against a concurrent reviewer.
+ * Resolves the candidate that this proposal supersedes and transitions it
+ * `pending → superseded`. Runs inside the write transaction so the supersession
+ * and the new candidate insert commit atomically. The revision token is read
+ * here (not before the transaction) to avoid a TOCTOU against a concurrent
+ * reviewer.
+ *
+ * An **approved** target is rejected: `propose_knowledge` carries only an agent
+ * session token, and superseding human-reviewed knowledge is a human action
+ * (dashboard/CLI — with an approval audit row and the canonical supersession
+ * edit), not one an agent may take through the MCP boundary (design.md §9). The
+ * `approved → superseded` transition stays legal in the state machine for that
+ * human-facing path; only this agent-facing path restricts it.
  */
 async function supersedePriorCandidate(
   tx: Executor,
@@ -113,6 +127,14 @@ async function supersedePriorCandidate(
   }
   if (prior.value === null) {
     return err(new IrohaErrorClass("INVALID_INPUT", "supersedesCandidateId does not exist"));
+  }
+  if (prior.value.status !== "pending") {
+    return err(
+      new IrohaErrorClass(
+        "INVALID_INPUT",
+        "supersedesCandidateId must reference a pending candidate",
+      ),
+    );
   }
   const newRevisionToken = Buffer.from(random.bytes(16)).toString("base64url");
   return updateCandidateStatus(tx, prior.value.id, {

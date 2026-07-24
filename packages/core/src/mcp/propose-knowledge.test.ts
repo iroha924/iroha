@@ -1,6 +1,13 @@
 import type { KnowledgeProposal } from "@iroha/domain";
-import { CryptoRandomSource, FixedClock } from "@iroha/domain";
-import { closeDatabase, listCandidatesByStatus, openDatabase } from "@iroha/storage";
+import { CryptoRandomSource, FixedClock, makeTypedId } from "@iroha/domain";
+import {
+  closeDatabase,
+  getCandidateById,
+  insertIdempotencyRecord,
+  listCandidatesByStatus,
+  openDatabase,
+  updateCandidateStatus,
+} from "@iroha/storage";
 import { afterEach, describe, expect, it } from "vitest";
 import { type McpTestRepo, seedSessionWithToken, setupMcpRepo } from "../test-helpers/mcp-repo.js";
 import { removeTempDir } from "../test-helpers/tmp-repo.js";
@@ -235,6 +242,101 @@ describe("mcpProposeKnowledge", () => {
     if (!second.ok) {
       expect(second.error.code).toBe("INVALID_INPUT");
     }
+  }, 15000);
+
+  it("rejects superseding an approved candidate (human-review boundary)", async () => {
+    repo = await setupMcpRepo(random);
+    const seedDb = await openDatabase(repo.dbPath);
+    if (!seedDb.ok) return;
+    const seeded = await seedSessionWithToken(seedDb.value, repo, clock, random);
+    await closeDatabase(seedDb.value);
+
+    const prior = await mcpProposeKnowledge({
+      cwd: repo.repoDir,
+      clock,
+      random,
+      sessionToken: seeded.token,
+      idempotencyKey: "idem-propose-super-0007",
+      proposal: PROPOSAL,
+    });
+    if (!prior.ok) return;
+
+    // Promote the prior candidate to `approved` (normally a human-review action).
+    const db = await openDatabase(repo.dbPath);
+    if (!db.ok) return;
+    const priorRow = await getCandidateById(db.value, prior.value.candidateId);
+    if (priorRow.ok && priorRow.value) {
+      const approve = await updateCandidateStatus(db.value, prior.value.candidateId, {
+        from: "pending",
+        to: "approved",
+        expectedRevisionToken: priorRow.value.revisionToken,
+        newRevisionToken: "rev-approved-0001",
+        reviewedAt: clock.now().toISOString(),
+      });
+      expect(approve.ok).toBe(true);
+    }
+    await closeDatabase(db.value);
+
+    // An agent session token must not supersede human-reviewed knowledge.
+    const result = await mcpProposeKnowledge({
+      cwd: repo.repoDir,
+      clock,
+      random,
+      sessionToken: seeded.token,
+      idempotencyKey: "idem-propose-super-0008",
+      proposal: { ...PROPOSAL, title: "Replacement of the approved rule" },
+      supersedesCandidateId: prior.value.candidateId,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("INVALID_INPUT");
+    }
+
+    const db2 = await openDatabase(repo.dbPath);
+    if (!db2.ok) return;
+    // The approved candidate is untouched, and the new candidate rolled back.
+    const stillApproved = await getCandidateById(db2.value, prior.value.candidateId);
+    expect(stillApproved.ok && stillApproved.value?.status).toBe("approved");
+    const pending = await listCandidatesByStatus(db2.value, repo.repositoryId, "pending");
+    expect(pending.ok && pending.value.length).toBe(0);
+    await closeDatabase(db2.value);
+  }, 15000);
+
+  it("normalizes a legacy idempotency row missing duplicateCandidateIds on retry", async () => {
+    repo = await setupMcpRepo(random);
+    const seedDb = await openDatabase(repo.dbPath);
+    if (!seedDb.ok) return;
+    const seeded = await seedSessionWithToken(seedDb.value, repo, clock, random);
+
+    // A stored response written before `duplicateCandidateIds` existed.
+    const key = "idem-propose-00000010";
+    const legacyId = makeTypedId("cand", clock, random);
+    const stored = await insertIdempotencyRecord(seedDb.value, {
+      repositoryId: repo.repositoryId,
+      operation: "propose_knowledge",
+      idempotencyKey: key,
+      responseJson: JSON.stringify({ candidateId: legacyId, redactions: [], deduplicated: false }),
+      createdAt: clock.now().toISOString(),
+      expiresAt: new Date(clock.now().getTime() + 86_400_000).toISOString(),
+    });
+    expect(stored.ok).toBe(true);
+    await closeDatabase(seedDb.value);
+
+    const result = await mcpProposeKnowledge({
+      cwd: repo.repoDir,
+      clock,
+      random,
+      sessionToken: seeded.token,
+      idempotencyKey: key,
+      proposal: PROPOSAL,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.deduplicated).toBe(true);
+    expect(result.value.candidateId).toBe(legacyId);
+    // Normalized to [] rather than left undefined, so the MCP warning hook's
+    // `.length` access never throws on a legacy retry.
+    expect(result.value.duplicateCandidateIds).toStrictEqual([]);
   }, 15000);
 
   it("reports a likely duplicate by title without merging", async () => {
