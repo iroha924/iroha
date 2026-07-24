@@ -1,3 +1,6 @@
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CryptoRandomSource, FixedClock } from "@iroha/domain";
 import { runGit } from "@iroha/git";
@@ -71,6 +74,15 @@ async function turnStatuses(cwd: string): Promise<string[]> {
   }
 }
 
+/** A temp dir holding an executable `git` that hangs, to exercise the resolution timeout. */
+async function makeHangingGitBin(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), "iroha-hanggit-"));
+  const bin = join(dir, "git");
+  await writeFile(bin, "#!/bin/sh\nexec sleep 30\n");
+  await chmod(bin, 0o755);
+  return dir;
+}
+
 describe("runHook", () => {
   let repoDir: string | undefined;
 
@@ -90,6 +102,49 @@ describe("runHook", () => {
     });
     expect(result.stdout).toBeUndefined();
   });
+
+  it("fails open (does not throw) on a prototype-key hook_event_name", async () => {
+    repoDir = await initedRepo();
+    // A budget lookup that resolved a prototype key to an inherited non-number
+    // would pass an invalid timeout to `git`, throwing out of runHook's fail-open.
+    const result = await hook(repoDir, "claude_code", {
+      session_id: "s1",
+      hook_event_name: "__proto__",
+    });
+    expect(result.stdout).toBeUndefined();
+  });
+
+  // Windows is out of CI (compatibility.md §6) and the hanging-git stub is a POSIX shell script.
+  it.skipIf(process.platform === "win32")(
+    "fails open within the event budget when git hangs during repository resolution",
+    async () => {
+      repoDir = await initedRepo(); // resolves with the real git
+      const hangingGitDir = await makeHangingGitBin();
+      const originalPath = process.env.PATH;
+      process.env.PATH = `${hangingGitDir}${delimiter}${originalPath ?? ""}`;
+      try {
+        const start = performance.now();
+        const result = await hook(repoDir, "claude_code", {
+          session_id: "s1",
+          hook_event_name: "PreToolUse",
+          tool_name: "Edit",
+          tool_input: { file_path: "a.ts", old_string: "a", new_string: "b" },
+          tool_use_id: "t1",
+        });
+        const elapsedMs = performance.now() - start;
+        // Fail-open: a resolution that times out yields no output.
+        expect(result.stdout).toBeUndefined();
+        // Bounded to ~the PreToolUse budget, not runGit's 10s default. Without
+        // the threaded timeout the first hung `git rev-parse` waits 10s and this
+        // assertion goes red.
+        expect(elapsedMs).toBeLessThan(3000);
+      } finally {
+        process.env.PATH = originalPath;
+        await rm(hangingGitDir, { recursive: true, force: true });
+      }
+    },
+    15000,
+  );
 
   it("SessionStart returns a bounded context with a token, and persists the token", async () => {
     repoDir = await initedRepo();

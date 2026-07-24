@@ -31,6 +31,33 @@ const ADAPTERS: Record<HookPlatform, HookAdapter> = {
   codex: codexHookAdapter,
 };
 
+// Half the §7 (hooks-contract.md) hook-timeout budget per event. Repository
+// resolution runs up to five `git rev-parse` calls; capping each at half the
+// budget bounds a hung `git` (stale mount, wedged fsmonitor) to well under the
+// platform's hook kill deadline — resolution short-circuits on the first
+// failure — instead of `runGit`'s 10s default, which is 20x the tightest budget.
+const RESOLUTION_GIT_TIMEOUT_MS: Record<string, number> = {
+  SessionStart: 1500,
+  UserPromptSubmit: 750,
+  PreToolUse: 250,
+  PostToolUse: 375,
+  PreCompact: 500,
+  PostCompact: 500,
+  Stop: 1000,
+  SessionEnd: 750,
+};
+const DEFAULT_RESOLUTION_GIT_TIMEOUT_MS = 250;
+
+function resolutionGitTimeoutMs(raw: unknown): number {
+  const name = (raw as { hook_event_name?: unknown } | null)?.hook_event_name;
+  // `Object.hasOwn` so a prototype-key name ("__proto__", "toString", ...) reads
+  // the default, not an inherited non-number that would reach `runGit`'s timeout.
+  if (typeof name !== "string" || !Object.hasOwn(RESOLUTION_GIT_TIMEOUT_MS, name)) {
+    return DEFAULT_RESOLUTION_GIT_TIMEOUT_MS;
+  }
+  return RESOLUTION_GIT_TIMEOUT_MS[name] ?? DEFAULT_RESOLUTION_GIT_TIMEOUT_MS;
+}
+
 /**
  * Execute one hook invocation end to end: resolve the repository from `cwd`,
  * normalize the raw input, run the event use case, and return the platform
@@ -39,7 +66,10 @@ const ADAPTERS: Record<HookPlatform, HookAdapter> = {
  * on an iroha error — it returns no output and lets the agent proceed.
  */
 export async function runHook(invocation: HookInvocation, deps: HookDeps): Promise<HookResult> {
-  const repo = await resolveInitializedRepository(invocation.cwd);
+  const repo = await resolveInitializedRepository(
+    invocation.cwd,
+    resolutionGitTimeoutMs(invocation.raw),
+  );
   if (!repo.ok) {
     // NOT_INITIALIZED and any other resolution failure are both fail-open:
     // a hook outside an initialized iroha repository is a silent no-op.

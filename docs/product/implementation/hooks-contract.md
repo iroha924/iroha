@@ -261,6 +261,8 @@ Codex has no `SessionEnd`. Abrupt exit and user interruption are recovered at th
 
 On timeout or DB busy, preserve agent progress and record diagnostics when possible. A Guardrail whose evaluation times out does not deny; CI is required for hard enforcement.
 
+Repository resolution runs `git` under a per-event cap (half the hook timeout above), not the shared 10s default, so a hung `git` fails open within budget instead of being killed by the platform. The CLI, `iroha doctor`, and the dashboard keep the 10s default (a slow mount there should wait, not fail).
+
 ## 8. Tool target extraction
 
 Adapters pass raw input to a platform-specific extractor that returns only:
