@@ -77,7 +77,7 @@ export async function dispatchTool(
     if (!result.ok) {
       return toToolResult(failureEnvelope(result.error, traceId));
     }
-    const warnings = tool.warnings ? tool.warnings(parsed.data) : [];
+    const warnings = tool.warnings ? tool.warnings(parsed.data, result.value) : [];
     return toToolResult(successEnvelope(result.value, traceId, warnings));
   } catch (cause) {
     // Transport boundary: a use-case that throws instead of returning `err`

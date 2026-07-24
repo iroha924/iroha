@@ -1,4 +1,4 @@
-import { mcpProposeKnowledge, proposalSchema } from "@iroha/core";
+import { type McpProposeKnowledgeData, mcpProposeKnowledge, proposalSchema } from "@iroha/core";
 import { z } from "zod";
 import type { McpWarning } from "../envelope.js";
 import { defineTool } from "./types.js";
@@ -32,13 +32,14 @@ export const proposeKnowledgeTool = defineTool({
       idempotencyKey: input.idempotencyKey,
       proposal: input.proposal,
       sourceCheckpointId: input.sourceCheckpointId,
+      supersedesCandidateId: input.supersedesCandidateId,
     }),
-  warnings: (input) => {
+  warnings: (_input, data: McpProposeKnowledgeData) => {
     const warnings: McpWarning[] = [];
-    if (input.supersedesCandidateId !== undefined) {
+    if (data.duplicateCandidateIds.length > 0) {
       warnings.push({
-        code: "unsupported_option",
-        message: "supersedesCandidateId is recorded but does not yet supersede the prior candidate",
+        code: "likely_duplicate",
+        message: `${data.duplicateCandidateIds.length} existing candidate(s) of this type share this title; not merged (see data.duplicateCandidateIds)`,
       });
     }
     return warnings;

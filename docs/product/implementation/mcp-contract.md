@@ -332,7 +332,27 @@ interface ProposeKnowledgeInput {
 }
 ```
 
-The operation never writes `.iroha/`. A likely duplicate returns a warning and related IDs; it does not silently merge.
+Output data:
+
+```ts
+interface ProposeKnowledgeData {
+  candidateId: string;
+  redactions: Array<{ field: string; reason: string }>;
+  deduplicated: boolean;              // true only on an idempotency-key retry
+  duplicateCandidateIds: string[];    // same-type candidates sharing this title
+}
+```
+
+The operation never writes `.iroha/`. When `supersedesCandidateId` is given, that
+candidate is transitioned `pending` → `superseded` in the same write transaction
+as the new candidate insert. The target **must be `pending`**: superseding an
+`approved` candidate is a human-review action (dashboard/CLI, with an approval
+audit row and the canonical supersession edit), not one an agent may take through
+this token-only boundary (design.md §9) — an `approved`, `rejected`, `superseded`,
+or non-existent target fails the whole operation (`INVALID_INPUT`). A likely
+duplicate (an existing same-type candidate whose title matches, normalized)
+returns a `likely_duplicate` warning and its IDs in `duplicateCandidateIds`; it
+does not silently merge — the new candidate is always created.
 
 ### 6.8 `link_entities`
 
