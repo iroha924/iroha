@@ -19,11 +19,28 @@ type Nodes = Root | RootContent;
  */
 export function Markdown({ source }: { source: string }) {
   const tree = fromMarkdown(source);
+  // `mdast-util-from-markdown` keeps reference-style links (`[x][id]`) and their
+  // `[id]: url` definitions as separate nodes; resolve them here so a reference
+  // link renders with its href rather than degrading to plain text.
+  const defs = collectDefinitions(tree.children, new Map());
   return (
     <div className="space-y-3 text-[15px] leading-relaxed text-ink">
-      {renderNodes(tree.children)}
+      {renderNodes(tree.children, defs)}
     </div>
   );
+}
+
+type Definitions = Map<string, string>;
+
+function collectDefinitions(nodes: readonly RootContent[], into: Definitions): Definitions {
+  for (const node of nodes) {
+    if (node.type === "definition") {
+      into.set(node.identifier, node.url);
+    } else if ("children" in node) {
+      collectDefinitions(node.children as readonly RootContent[], into);
+    }
+  }
+  return into;
 }
 
 const SAFE_URL = /^(?:https?:|mailto:|\/|#|[^:]*$)/i;
@@ -33,8 +50,27 @@ function safeHref(url: string): string | undefined {
   return SAFE_URL.test(url) ? url : undefined;
 }
 
-function renderNodes(nodes: readonly RootContent[] | undefined): ReactNode {
-  return (nodes ?? []).map((node, index) => <Node key={index} node={node} />);
+function renderNodes(nodes: readonly RootContent[] | undefined, defs: Definitions): ReactNode {
+  return (nodes ?? []).map((node, index) => <Node key={index} node={node} defs={defs} />);
+}
+
+function Anchor({
+  url,
+  defs,
+  nodes,
+}: {
+  url: string | undefined;
+  defs: Definitions;
+  nodes: readonly RootContent[] | undefined;
+}): ReactNode {
+  const href = url === undefined ? undefined : safeHref(url);
+  return href === undefined ? (
+    <span>{renderNodes(nodes, defs)}</span>
+  ) : (
+    <a href={href} className="text-matcha hover:underline" rel="noreferrer noopener">
+      {renderNodes(nodes, defs)}
+    </a>
+  );
 }
 
 const HEADING_CLASS: Record<number, string> = {
@@ -46,22 +82,29 @@ const HEADING_CLASS: Record<number, string> = {
   6: "mt-4 text-sm font-semibold text-ink-faint",
 };
 
-function Node({ node }: { node: Nodes }): ReactNode {
+/** Inert alt text for an image; a remote URL is never fetched (`img-src 'self' data:`, no tracking beacon). */
+function altText(alt: string | null | undefined): ReactNode {
+  return alt ? <span className="text-ink-faint">{alt}</span> : null;
+}
+
+function Node({ node, defs }: { node: Nodes; defs: Definitions }): ReactNode {
   switch (node.type) {
     case "heading": {
       const Tag = `h${Math.min(node.depth, 6)}` as "h1";
       return (
-        <Tag className={HEADING_CLASS[Math.min(node.depth, 6)]}>{renderNodes(node.children)}</Tag>
+        <Tag className={HEADING_CLASS[Math.min(node.depth, 6)]}>
+          {renderNodes(node.children, defs)}
+        </Tag>
       );
     }
     case "paragraph":
-      return <p>{renderNodes(node.children)}</p>;
+      return <p>{renderNodes(node.children, defs)}</p>;
     case "text":
       return node.value;
     case "strong":
-      return <strong className="font-semibold">{renderNodes(node.children)}</strong>;
+      return <strong className="font-semibold">{renderNodes(node.children, defs)}</strong>;
     case "emphasis":
-      return <em className="italic">{renderNodes(node.children)}</em>;
+      return <em className="italic">{renderNodes(node.children, defs)}</em>;
     case "inlineCode":
       return (
         <code className="rounded bg-paper-inset px-1.5 py-0.5 font-mono text-[13px] text-ink">
@@ -75,41 +118,47 @@ function Node({ node }: { node: Nodes }): ReactNode {
         </pre>
       );
     case "list":
+      // Preserve an ordered list's `start` so numbered steps that begin at N≠1
+      // render with the right numbers.
       return node.ordered ? (
-        <ol className="list-decimal space-y-1 pl-5">{renderNodes(node.children)}</ol>
+        <ol
+          className="list-decimal space-y-1 pl-5"
+          {...(node.start != null && node.start !== 1 ? { start: node.start } : {})}
+        >
+          {renderNodes(node.children, defs)}
+        </ol>
       ) : (
-        <ul className="list-disc space-y-1 pl-5">{renderNodes(node.children)}</ul>
+        <ul className="list-disc space-y-1 pl-5">{renderNodes(node.children, defs)}</ul>
       );
     case "listItem":
-      return <li>{renderNodes(node.children)}</li>;
-    case "link": {
-      const href = safeHref(node.url);
-      return href === undefined ? (
-        <span>{renderNodes(node.children)}</span>
-      ) : (
-        <a href={href} className="text-matcha hover:underline" rel="noreferrer noopener">
-          {renderNodes(node.children)}
-        </a>
-      );
-    }
+      return <li>{renderNodes(node.children, defs)}</li>;
+    case "link":
+      return <Anchor url={node.url} defs={defs} nodes={node.children} />;
+    // A reference-style link (`[x][id]`) resolves its href from the collected
+    // `[id]: url` definitions; an unresolved one renders its text with no href.
+    case "linkReference":
+      return <Anchor url={defs.get(node.identifier)} defs={defs} nodes={node.children} />;
     case "blockquote":
       return (
         <blockquote className="border-l-2 border-hairline-strong pl-4 text-ink-muted">
-          {renderNodes(node.children)}
+          {renderNodes(node.children, defs)}
         </blockquote>
       );
     case "thematicBreak":
       return <hr className="border-hairline" />;
     case "break":
       return <br />;
-    // An image is shown as inert alt text, never fetched (a remote URL is blocked
-    // by `img-src 'self' data:` anyway, and this avoids a tracking beacon).
     case "image":
-      return node.alt ? <span className="text-ink-faint">{node.alt}</span> : null;
+      return altText(node.alt);
+    case "imageReference":
+      return altText(node.alt);
     // A raw HTML node is rendered as its literal text, never as markup.
     case "html":
       return <span className="font-mono text-[13px] text-ink-faint">{node.value}</span>;
+    // A `definition` node carries no visible content (its url is resolved above).
+    case "definition":
+      return null;
     default:
-      return "children" in node ? renderNodes(node.children) : null;
+      return "children" in node ? renderNodes(node.children, defs) : null;
   }
 }

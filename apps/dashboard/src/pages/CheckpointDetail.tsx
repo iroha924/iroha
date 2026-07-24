@@ -204,8 +204,8 @@ export function CheckpointDetail() {
 
         {labels.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
-            {labels.map((label) => (
-              <Badge key={label} variant="neutral">
+            {labels.map((label, i) => (
+              <Badge key={`${label}-${i}`} variant="neutral">
                 {label}
               </Badge>
             ))}

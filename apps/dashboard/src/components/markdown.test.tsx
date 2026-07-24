@@ -39,4 +39,25 @@ describe("Markdown", () => {
     expect(container.querySelector("img")).toBeNull();
     expect(screen.getByText("alt text")).toBeDefined();
   });
+
+  it("preserves an ordered list's start value", () => {
+    const { container } = render(<Markdown source={"5. five\n6. six"} />);
+
+    expect(container.querySelector("ol")?.getAttribute("start")).toBe("5");
+  });
+
+  it("resolves a reference-style link's href from its definition", () => {
+    render(<Markdown source={"[text][id]\n\n[id]: https://example.com"} />);
+
+    expect(screen.getByRole("link", { name: "text" }).getAttribute("href")).toBe(
+      "https://example.com",
+    );
+  });
+
+  it("sanitizes a reference-style link with a javascript: definition", () => {
+    const { container } = render(<Markdown source={"[text][id]\n\n[id]: javascript:alert(1)"} />);
+
+    expect(container.querySelector("a")).toBeNull();
+    expect(screen.getByText("text")).toBeDefined();
+  });
 });

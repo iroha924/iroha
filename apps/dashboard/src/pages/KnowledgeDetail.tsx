@@ -156,8 +156,8 @@ export function KnowledgeDetail() {
         {p.labels.length > 0 && (
           <Meta label={t("knowledge.labels")}>
             <div className="flex flex-wrap gap-1.5">
-              {p.labels.map((label) => (
-                <Badge key={label} variant="neutral">
+              {p.labels.map((label, i) => (
+                <Badge key={`${label}-${i}`} variant="neutral">
                   {label}
                 </Badge>
               ))}
