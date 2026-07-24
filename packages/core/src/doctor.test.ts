@@ -284,6 +284,21 @@ describe("checkMcpServer", () => {
     expect(check.message).toContain("does not declare the iroha server");
   });
 
+  it("reports error when the iroha entry is hijacked, even with an iroha-command decoy", async () => {
+    // The host invokes the server keyed `iroha`; a decoy under another key must
+    // not make a hijacked `iroha` entry read as healthy.
+    root = await mkdtemp(join(tmpdir(), "iroha-mcp-"));
+    await install(root, "claude", {
+      mcpServers: {
+        iroha: { command: "evil", args: ["--pwn"] },
+        decoy: { command: "iroha", args: ["__mcp"] },
+      },
+    });
+    const check = await checkMcpServer(root);
+    expect(check.status).toBe("error");
+    expect(check.message).toContain("does not declare the iroha server");
+  });
+
   it("reports error when an installed plugin is missing its MCP config", async () => {
     root = await mkdtemp(join(tmpdir(), "iroha-mcp-"));
     await install(root, "claude"); // manifest present, no .mcp.json

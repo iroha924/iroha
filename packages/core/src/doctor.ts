@@ -469,22 +469,25 @@ export async function checkPluginManifests(root: string): Promise<DoctorCheckRes
   return { name: "plugin-manifests", status: "ok", message: `valid: ${valid.join(", ")}` };
 }
 
-// The iroha binary name (`@iroha/plugin` `metadata.ts` `BINARY_NAME`). Duplicated
-// here because `@iroha/core` may not import `@iroha/plugin` (§4). Unlike the
-// internal `__mcp` subcommand, this is the ID-011 product invariant ("the
-// executable remains `iroha`") and the very value the plugin's own MCP-config
-// schema pins with `z.literal(BINARY_NAME)` — a stable identity, not a drift trap.
+// The MCP server name the host references (`@iroha/plugin` `SERVER_KEY` =
+// `PLUGIN_NAME`) and the binary it runs (`BINARY_NAME`) — both the stable
+// "iroha" product identity (ID-011: "the executable remains `iroha`"), and the
+// values the plugin's own MCP-config schema pins. Duplicated here because
+// `@iroha/core` may not import `@iroha/plugin` (§4). Unlike the internal `__mcp`
+// subcommand, these do not drift, so checking them is not a drift trap.
+const IROHA_SERVER_NAME = "iroha";
 const IROHA_BINARY = "iroha";
 
 /**
- * True when the parsed MCP config declares the *iroha* server — an entry whose
- * `command` is the iroha binary with a non-empty `args`. It intentionally does
- * NOT assert the exact `__mcp` subcommand: that literal is an internal detail a
- * future rename could change, and matching a duplicated copy would make doctor
- * error (and `iroha doctor` exit 1) on a healthy install. Checking the stable
- * binary identity instead stays drift-proof while still rejecting a config that
- * declares only some *other* MCP server (a corrupted/overwritten install), which
- * a bare "any runnable server" check would wave through.
+ * True when the parsed MCP config declares the *iroha* server — the entry the
+ * host actually invokes under the name `iroha` (`servers.iroha`) must itself run
+ * the `iroha` binary with a non-empty `args`. It validates that keyed entry
+ * specifically, not "any entry in the map", so a config tampered to point
+ * `servers.iroha` at another command is caught even if a decoy key still spells
+ * `command: "iroha"`. It intentionally does NOT assert the exact `__mcp`
+ * subcommand: that literal is an internal detail a future rename could change,
+ * and matching a duplicated copy would make doctor error (and `iroha doctor` exit
+ * 1) on a healthy install — the stable binary/server identity is checked instead.
  */
 function declaresIrohaServer(value: unknown, serversKey: string): boolean {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -494,13 +497,12 @@ function declaresIrohaServer(value: unknown, serversKey: string): boolean {
   if (typeof servers !== "object" || servers === null || Array.isArray(servers)) {
     return false;
   }
-  return Object.values(servers as Record<string, unknown>).some((entry) => {
-    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
-      return false;
-    }
-    const { command, args } = entry as Record<string, unknown>;
-    return command === IROHA_BINARY && Array.isArray(args) && args.length > 0;
-  });
+  const entry = (servers as Record<string, unknown>)[IROHA_SERVER_NAME];
+  if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+    return false;
+  }
+  const { command, args } = entry as Record<string, unknown>;
+  return command === IROHA_BINARY && Array.isArray(args) && args.length > 0;
 }
 
 /** `true` if `path` exists (regardless of readability), `false` if it does not. */
