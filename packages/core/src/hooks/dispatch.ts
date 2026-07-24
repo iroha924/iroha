@@ -259,7 +259,8 @@ async function handleSessionStart(
     const run = await insertSessionRun(ctx.db, {
       id: runId,
       sessionId,
-      startSource: source === "compact" ? "startup" : source,
+      // start_source only allows startup/resume/clear (migration 001 CHECK).
+      startSource: source === "compact" || source === "fork" ? "startup" : source,
       cwdFingerprint: event.cwdFingerprint,
       ...(head?.branch ? { gitBranch: head.branch } : {}),
       ...(head === null ? {} : { headShaStart: head.sha }),

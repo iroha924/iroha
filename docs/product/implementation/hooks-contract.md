@@ -128,7 +128,7 @@ Prompt and tool digests use repository-keyed HMAC-SHA-256, not a plain hash. Thi
 1. validate input and resolve repository;
 2. detect/repair stale active Runs as `interrupted`;
 3. map platform session to Agent Session;
-4. create a Run for `startup`, `resume`, or `clear`, recording the branch and HEAD sha it starts on;
+4. create a Run for `startup`, `resume`, `clear`, or `fork`, recording the branch and HEAD sha it starts on (a Claude `fork` begins a new session, so it creates a Run; its DB `start_source` is recorded as `startup`);
 5. keep the current Run for `compact`;
 6. compare canonical Git tree fingerprint and perform changed-file-only sync within budget;
 7. issue/refresh the local session token;

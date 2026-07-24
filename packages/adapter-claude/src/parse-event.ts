@@ -32,7 +32,7 @@ const rawCommon = z.object({
 const rawToolInput = z.record(z.string(), z.unknown());
 
 const rawSessionStart = rawCommon.extend({
-  source: z.enum(["startup", "resume", "clear", "compact"]),
+  source: z.enum(["startup", "resume", "clear", "compact", "fork"]),
 });
 const rawUserPromptSubmit = rawCommon.extend({ prompt: z.string() });
 const rawPreToolUse = rawCommon.extend({

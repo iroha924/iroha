@@ -254,7 +254,7 @@
         {
           "type": "object",
           "required": ["source"],
-          "properties": { "source": { "enum": ["startup", "resume", "clear", "compact"] } },
+          "properties": { "source": { "enum": ["startup", "resume", "clear", "compact", "fork"] } },
           "additionalProperties": false
         },
         {
