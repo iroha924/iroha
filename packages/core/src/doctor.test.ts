@@ -225,18 +225,31 @@ describe("checkMcpServer", () => {
     }
   });
 
-  it("reports ok listing the platforms whose config declares a runnable server", async () => {
+  /** Simulates an installed platform: its plugin manifest, plus an optional MCP config body. */
+  async function install(
+    dir: string,
+    platform: "claude" | "codex",
+    config?: unknown,
+  ): Promise<void> {
+    await mkdir(join(dir, `.${platform}-plugin`), { recursive: true });
+    await writeFile(
+      join(dir, `.${platform}-plugin`, "plugin.json"),
+      JSON.stringify({ name: "iroha", version: "0.1.0" }),
+      "utf8",
+    );
+    if (config !== undefined) {
+      const name = platform === "claude" ? ".mcp.json" : "mcp.codex.json";
+      const body = typeof config === "string" ? config : JSON.stringify(config);
+      await writeFile(join(dir, name), body, "utf8");
+    }
+  }
+
+  it("reports ok listing the platforms whose config declares the iroha server", async () => {
     root = await mkdtemp(join(tmpdir(), "iroha-mcp-"));
-    await writeFile(
-      join(root, ".mcp.json"),
-      JSON.stringify({ mcpServers: { iroha: { command: "iroha", args: ["__mcp"] } } }),
-      "utf8",
-    );
-    await writeFile(
-      join(root, "mcp.codex.json"),
-      JSON.stringify({ mcp_servers: { iroha: { command: "iroha", args: ["__mcp"] } } }),
-      "utf8",
-    );
+    await install(root, "claude", { mcpServers: { iroha: { command: "iroha", args: ["__mcp"] } } });
+    await install(root, "codex", {
+      mcp_servers: { iroha: { command: "iroha", args: ["__mcp"] } },
+    });
     const check = await checkMcpServer(root);
     expect(check.status).toBe("ok");
     expect(check.message).toContain("Claude");
@@ -245,13 +258,11 @@ describe("checkMcpServer", () => {
 
   it("stays ok regardless of the exact subcommand (drift-proof)", async () => {
     // A future rename of the `__mcp` subcommand must not make doctor error on a
-    // healthy install — the check asserts a server is declared, not its args.
+    // healthy install — the check asserts the iroha server is declared, not its args.
     root = await mkdtemp(join(tmpdir(), "iroha-mcp-"));
-    await writeFile(
-      join(root, ".mcp.json"),
-      JSON.stringify({ mcpServers: { iroha: { command: "iroha", args: ["__renamed"] } } }),
-      "utf8",
-    );
+    await install(root, "claude", {
+      mcpServers: { iroha: { command: "iroha", args: ["__renamed"] } },
+    });
     const check = await checkMcpServer(root);
     expect(check.status).toBe("ok");
   });
@@ -263,29 +274,35 @@ describe("checkMcpServer", () => {
     expect(check.message).toContain("ships in the iroha binary");
   });
 
-  it("reports error when a present config declares no runnable server", async () => {
+  it("reports error when the config declares only some other MCP server", async () => {
     root = await mkdtemp(join(tmpdir(), "iroha-mcp-"));
-    await writeFile(join(root, ".mcp.json"), JSON.stringify({ mcpServers: {} }), "utf8");
+    await install(root, "claude", {
+      mcpServers: { other: { command: "node", args: ["server.js"] } },
+    });
     const check = await checkMcpServer(root);
     expect(check.status).toBe("error");
-    expect(check.message).toContain("no runnable server");
+    expect(check.message).toContain("does not declare the iroha server");
+  });
+
+  it("reports error when an installed plugin is missing its MCP config", async () => {
+    root = await mkdtemp(join(tmpdir(), "iroha-mcp-"));
+    await install(root, "claude"); // manifest present, no .mcp.json
+    const check = await checkMcpServer(root);
+    expect(check.status).toBe("error");
+    expect(check.message).toContain("missing");
   });
 
   it("reports error when the server map is the wrong shape (an array)", async () => {
     root = await mkdtemp(join(tmpdir(), "iroha-mcp-"));
-    await writeFile(
-      join(root, ".mcp.json"),
-      JSON.stringify({ mcpServers: [{ command: "iroha", args: ["__mcp"] }] }),
-      "utf8",
-    );
+    await install(root, "claude", { mcpServers: [{ command: "iroha", args: ["__mcp"] }] });
     const check = await checkMcpServer(root);
     expect(check.status).toBe("error");
-    expect(check.message).toContain("no runnable server");
+    expect(check.message).toContain("does not declare the iroha server");
   });
 
   it("reports error when a present config is not valid JSON", async () => {
     root = await mkdtemp(join(tmpdir(), "iroha-mcp-"));
-    await writeFile(join(root, "mcp.codex.json"), "{ not json", "utf8");
+    await install(root, "codex", "{ not json");
     const check = await checkMcpServer(root);
     expect(check.status).toBe("error");
     expect(check.message).toContain("not valid JSON");
@@ -295,6 +312,7 @@ describe("checkMcpServer", () => {
     // A config that is a directory, not a file, throws EISDIR — a non-ENOENT
     // read error must surface, not be swallowed as "absent".
     root = await mkdtemp(join(tmpdir(), "iroha-mcp-"));
+    await install(root, "claude");
     await mkdir(join(root, ".mcp.json"), { recursive: true });
     const check = await checkMcpServer(root);
     expect(check.status).toBe("error");
