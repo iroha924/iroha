@@ -25,3 +25,18 @@ export function knowledgeStatusTone(status: string): StatusTone {
   if (status === "archived") return "reject";
   return "neutral";
 }
+
+/** Checkpoint outcome → tone. */
+export function checkpointOutcomeTone(outcome: string): StatusTone {
+  if (outcome === "completed") return "approve";
+  if (outcome === "blocked") return "reject";
+  if (outcome === "partial") return "pending";
+  return "neutral";
+}
+
+/** Checkpoint validation result → tone. */
+export function validationResultTone(result: string): StatusTone {
+  if (result === "passed") return "approve";
+  if (result === "failed") return "reject";
+  return "neutral";
+}

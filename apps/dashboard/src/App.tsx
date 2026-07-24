@@ -6,6 +6,7 @@ import { Mark } from "@/components/brand.js";
 import { Card, CardContent } from "@/components/ui/card.js";
 import { type Locale, useI18n } from "@/i18n/index.js";
 import { cn } from "@/lib/utils";
+import { CheckpointDetail } from "@/pages/CheckpointDetail.js";
 import { Doctor } from "@/pages/Doctor.js";
 import { Graph } from "@/pages/Graph.js";
 import { KnowledgeDetail } from "@/pages/KnowledgeDetail.js";
@@ -129,6 +130,7 @@ export function App() {
           <Route path="/sessions" element={<Sessions />} />
           <Route path="/sessions/:id" element={<SessionDetail />} />
           <Route path="/sessions/:id/runs/:runId" element={<RunDetail />} />
+          <Route path="/sessions/:id/checkpoints/:checkpointId" element={<CheckpointDetail />} />
           <Route path="/review" element={<ReviewQueue />} />
           <Route path="/review/:id" element={<ReviewDetail />} />
           <Route path="/knowledge" element={<KnowledgeList />} />

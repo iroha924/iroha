@@ -5,7 +5,7 @@ import { BackLink, ErrorState, Loading } from "@/components/brand.js";
 import { Badge } from "@/components/ui/badge.js";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.js";
 import { useI18n } from "@/i18n/index.js";
-import { runStatusTone } from "@/lib/status.js";
+import { checkpointOutcomeTone, runStatusTone } from "@/lib/status.js";
 
 /** Session detail: Runs and Checkpoints (dashboard-api.md §6); never raw conversation. */
 export function SessionDetail() {
@@ -67,8 +67,13 @@ export function SessionDetail() {
                     key={cp.id}
                     className="flex items-center gap-3 py-2.5 text-sm first:pt-0 last:pb-0"
                   >
-                    <Badge variant="neutral">{cp.outcome}</Badge>
-                    <span className="flex-1 text-ink">{cp.objective}</span>
+                    <Badge variant={checkpointOutcomeTone(cp.outcome)}>{cp.outcome}</Badge>
+                    <Link
+                      to={`/sessions/${d.id}/checkpoints/${cp.id}`}
+                      className="flex-1 text-ink transition-colors hover:text-matcha"
+                    >
+                      {cp.objective}
+                    </Link>
                     <span className="text-xs tabular-nums text-ink-faint">
                       {cp.createdAt.slice(0, 10)}
                     </span>
