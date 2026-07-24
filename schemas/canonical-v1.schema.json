@@ -345,6 +345,7 @@
                   "uniqueItems": true
                 },
                 "deny_commands": {
+                  "$comment": "snake_case by design: this canonical schema is the YAML frontmatter contract and is snake_case throughout. The checkpoint (MCP wire JSON) schema spells the same field `denyCommands`, camelCase throughout. Each follows its format's convention; reconciling to one casing would inject the only foreign-cased key into one schema (audit issue #44, decision-log ID-057).",
                   "type": "array",
                   "items": { "type": "string", "maxLength": 500 },
                   "uniqueItems": true

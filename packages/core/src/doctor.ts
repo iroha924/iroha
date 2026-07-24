@@ -469,14 +469,91 @@ export async function checkPluginManifests(root: string): Promise<DoctorCheckRes
   return { name: "plugin-manifests", status: "ok", message: `valid: ${valid.join(", ")}` };
 }
 
+// Mirrors `@iroha/plugin`'s `metadata.ts` `MCP_SUBCOMMAND`. `@iroha/core` may not
+// depend on `@iroha/plugin` (compatibility.md §4), so the constant is duplicated
+// here rather than imported.
+const MCP_SUBCOMMAND = "__mcp";
+
+/** True when the parsed MCP config declares a server whose args invoke `iroha __mcp`. */
+function declaresMcpServer(value: unknown, serversKey: string): boolean {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const servers = (value as Record<string, unknown>)[serversKey];
+  if (typeof servers !== "object" || servers === null) {
+    return false;
+  }
+  return Object.values(servers as Record<string, unknown>).some((entry) => {
+    if (typeof entry !== "object" || entry === null) {
+      return false;
+    }
+    const args = (entry as Record<string, unknown>).args;
+    return Array.isArray(args) && args.includes(MCP_SUBCOMMAND);
+  });
+}
+
+/**
+ * mcp-contract.md / compatibility.md §9: confirm the MCP server is wired into the
+ * installed plugin. `@iroha/core` may not depend on `@iroha/mcp` (§4), so this
+ * validates the *declaration* — the `iroha __mcp` entry in the installed
+ * `.mcp.json`/`mcp.codex.json` — rather than spawning the server; the server
+ * itself is bundled into the shipped `iroha` binary and its tool registry is
+ * covered by `@iroha/plugin`'s package smoke test. Reports `ok` when not running
+ * from an installed plugin (a dev/terminal run, where the server is in-process
+ * source), matching `checkPluginManifests`; `error` only when a present config
+ * omits or malforms the `iroha __mcp` entry.
+ */
+export async function checkMcpServer(root: string): Promise<DoctorCheckResult> {
+  const configs = [
+    { platform: "Claude", path: join(root, ".mcp.json"), serversKey: "mcpServers" },
+    { platform: "Codex", path: join(root, "mcp.codex.json"), serversKey: "mcp_servers" },
+  ];
+  const valid: string[] = [];
+  for (const { platform, path, serversKey } of configs) {
+    let raw: string;
+    try {
+      raw = await readFile(path, "utf8");
+    } catch {
+      continue; // not present here — not running from an installed plugin
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return {
+        name: "mcp-server",
+        status: "error",
+        message: `${platform} MCP config is not valid JSON`,
+      };
+    }
+    if (!declaresMcpServer(parsed, serversKey)) {
+      return {
+        name: "mcp-server",
+        status: "error",
+        message: `${platform} MCP config does not declare the iroha ${MCP_SUBCOMMAND} server`,
+      };
+    }
+    valid.push(platform);
+  }
+  if (valid.length === 0) {
+    return {
+      name: "mcp-server",
+      status: "ok",
+      message: "the MCP server ships in the iroha binary (not running from an installed plugin)",
+    };
+  }
+  return {
+    name: "mcp-server",
+    status: "ok",
+    message: `iroha ${MCP_SUBCOMMAND} declared: ${valid.join(", ")}`,
+  };
+}
+
 /**
  * `iroha doctor` (implementation-plan.md WP-05, compatibility.md §9).
  * Every check degrades to a report entry rather than aborting — a doctor
  * command that itself crashes on a missing optional tool defeats its own
- * purpose. Checks for a capability this build does not yet exercise (the MCP
- * `initialize` handshake — WP-07's server exists but doctor does not spawn it)
- * report `warning`, not `error`: the capability is not yet part of doctor, not
- * something the environment is missing.
+ * purpose.
  */
 export async function runDoctor(cwd: string): Promise<Result<DoctorReport, IrohaError>> {
   const random = new CryptoRandomSource();
@@ -487,12 +564,9 @@ export async function runDoctor(cwd: string): Promise<Result<DoctorReport, Iroha
   checks.push(await checkOptionalAgentCli("claude"));
   checks.push(await checkOptionalAgentCli("codex"));
 
-  checks.push({
-    name: "mcp-server",
-    status: "warning",
-    message: "not yet implemented in this build (WP-07)",
-  });
-  checks.push(await checkPluginManifests(resolvePluginRoot()));
+  const pluginRoot = resolvePluginRoot();
+  checks.push(await checkMcpServer(pluginRoot));
+  checks.push(await checkPluginManifests(pluginRoot));
 
   const { check: gitCheck, irohaCanonicalDir, irohaStateDir } = await checkGitRepository(cwd);
   checks.push(gitCheck);

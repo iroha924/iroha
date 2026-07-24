@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { CryptoRandomSource, FixedClock } from "@iroha/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parse, stringify } from "yaml";
-import { checkPluginManifests, runDoctor } from "./doctor.js";
+import { checkMcpServer, checkPluginManifests, runDoctor } from "./doctor.js";
 import { initRepository } from "./init-repository.js";
 import { createTempGitRepo, removeTempDir } from "./test-helpers/tmp-repo.js";
 
@@ -39,6 +39,8 @@ describe("runDoctor", () => {
     expect(byName.get("node")?.status).toBe("ok");
     expect(byName.get("git")?.status).toBe("ok");
     expect(byName.get("git-repository")?.status).toBe("ok");
+    // #69: no longer a hardcoded stale warning — ok in a dev/terminal run.
+    expect(byName.get("mcp-server")?.status).toBe("ok");
     expect(byName.get("iroha-init")?.status).toBe("warning");
     expect(byName.has("storage-capabilities")).toBe(false);
   });
@@ -210,5 +212,61 @@ describe("checkPluginManifests", () => {
     const check = await checkPluginManifests(root);
     expect(check.status).toBe("error");
     expect(check.message).toContain("missing a name");
+  });
+});
+
+describe("checkMcpServer", () => {
+  let root: string | undefined;
+
+  afterEach(async () => {
+    if (root) {
+      await rm(root, { recursive: true, force: true });
+      root = undefined;
+    }
+  });
+
+  it("reports ok listing the platforms whose config declares iroha __mcp", async () => {
+    root = await mkdtemp(join(tmpdir(), "iroha-mcp-"));
+    await writeFile(
+      join(root, ".mcp.json"),
+      JSON.stringify({ mcpServers: { iroha: { command: "iroha", args: ["__mcp"] } } }),
+      "utf8",
+    );
+    await writeFile(
+      join(root, "mcp.codex.json"),
+      JSON.stringify({ mcp_servers: { iroha: { command: "iroha", args: ["__mcp"] } } }),
+      "utf8",
+    );
+    const check = await checkMcpServer(root);
+    expect(check.status).toBe("ok");
+    expect(check.message).toContain("Claude");
+    expect(check.message).toContain("Codex");
+  });
+
+  it("reports ok (not a warning) when not running from an installed plugin", async () => {
+    root = await mkdtemp(join(tmpdir(), "iroha-mcp-"));
+    const check = await checkMcpServer(root);
+    expect(check.status).toBe("ok");
+    expect(check.message).toContain("ships in the iroha binary");
+  });
+
+  it("reports error when a present config does not declare the __mcp server", async () => {
+    root = await mkdtemp(join(tmpdir(), "iroha-mcp-"));
+    await writeFile(
+      join(root, ".mcp.json"),
+      JSON.stringify({ mcpServers: { iroha: { command: "iroha", args: ["serve"] } } }),
+      "utf8",
+    );
+    const check = await checkMcpServer(root);
+    expect(check.status).toBe("error");
+    expect(check.message).toContain("does not declare");
+  });
+
+  it("reports error when a present config is not valid JSON", async () => {
+    root = await mkdtemp(join(tmpdir(), "iroha-mcp-"));
+    await writeFile(join(root, "mcp.codex.json"), "{ not json", "utf8");
+    const check = await checkMcpServer(root);
+    expect(check.status).toBe("error");
+    expect(check.message).toContain("not valid JSON");
   });
 });
