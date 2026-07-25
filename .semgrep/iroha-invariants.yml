@@ -1,0 +1,47 @@
+# Custom Semgrep rules that encode iroha's OWN invariants — the ones the generic
+# scanners (CodeQL/Trivy) cannot know because they are project conventions, not
+# universal vulnerabilities. Each rule maps to a documented rule and is a hard
+# gate (severity ERROR); the codebase currently has zero matches, so these only
+# prevent regressions. Run: `pnpm semgrep` (or `semgrep --config .semgrep/ --error .`).
+rules:
+  - id: zod-use-safeparse
+    languages: [typescript]
+    severity: ERROR
+    message: >-
+      Use .safeParse() at a boundary, never .parse(): .parse() throws, and this
+      repo forbids exceptions crossing a package boundary (return a Result).
+      See .claude/rules/typescript-conventions.md ("Zod 4").
+    patterns:
+      - pattern: $S.parse(...)
+      - metavariable-regex:
+          metavariable: $S
+          regex: ^.*[Ss]chema$
+    paths:
+      exclude:
+        - "*.test.ts"
+        - "*.test.tsx"
+
+  - id: subprocess-env-no-spread
+    languages: [typescript]
+    severity: ERROR
+    message: >-
+      Do not spread {...process.env} into a subprocess environment. Copy only the
+      variables you need out of an empty environment (an allowlist) — a denylist
+      cannot remove a variable you do not know about.
+      See .claude/rules/secure-subprocess-and-credentials.md.
+    pattern: "{..., ...process.env, ...}"
+    paths:
+      exclude:
+        - "*.test.ts"
+        - "*.test.tsx"
+
+  - id: no-dynamic-eval
+    languages: [typescript]
+    severity: ERROR
+    message: >-
+      Do not use eval() — no dynamic code execution (OWASP; security.md).
+    pattern: eval(...)
+    paths:
+      exclude:
+        - "*.test.ts"
+        - "*.test.tsx"

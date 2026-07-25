@@ -18,6 +18,8 @@ knip = "knip"
 # `publint` (package linter) and `attw` (@arethetypeswrong/cli) are tool names.
 publint = "publint"
 attw = "attw"
+# `semgrep` is the static-analysis tool.
+semgrep = "semgrep"
 # Deliberate test-fixture strings, not prose typos:
 missng = "missng"   # a fixed-width "missing" marker inside a synthetic entity id
 tbe = "tbe"         # a turn-id seed in a storage repository test
