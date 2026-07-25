@@ -10,8 +10,8 @@ allowed-tools: Bash(pnpm *) Bash(node -p *) Bash(npm view *) Bash(curl *) Read G
 iroha publishes to npm as **`@irohalabs/iroha`**. Publishing is **human-gated**: the
 `release.yml` workflow is `workflow_dispatch`-only and defaults to a dry run, and it
 authenticates with **OIDC trusted publishing** — there is no `NPM_TOKEN` and there must
-never be one (decision-log; `~/.claude/rules/ai-agent-security.md`). This skill does the
-local preparation and verification; the actual publish is a human dispatching the workflow.
+never be one (decision-log ID-071, which supersedes ID-040's token auth). This skill does
+the local preparation and verification; the actual publish is a human dispatching the workflow.
 
 ## Preconditions
 
@@ -21,11 +21,13 @@ local preparation and verification; the actual publish is a human dispatching th
 
 ## 1. Bump the version
 
-Update **both**, to the same semver value (a unit test — `manifests.test.ts` — asserts
-they are equal, so a mismatch fails CI):
+Update **all four** to the same semver value — `manifests.test.ts` asserts they match, so
+a missed one fails CI:
 
 - `PLUGIN_VERSION` in `packages/plugin/src/metadata.ts`
 - `version` in `packages/plugin/package.json`
+- `CLI_VERSION` in `packages/cli/src/index.ts` (the `iroha --version` string)
+- `SERVER_VERSION` in `packages/mcp/src/server.ts` (the MCP handshake version)
 
 Commit as its own PR (`chore(release): vX.Y.Z`), let CI go green, and merge.
 

@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { claudeHookAdapter } from "@iroha/adapter-claude";
 import { codexHookAdapter } from "@iroha/adapter-codex";
+import { CLI_VERSION } from "@iroha/cli";
+import { SERVER_VERSION } from "@iroha/mcp";
 import { describe, expect, it } from "vitest";
 import {
   buildClaudeHooks,
@@ -136,5 +138,14 @@ describe("version consistency", () => {
     expect(PLUGIN_VERSION).toBe(pkg.version);
     expect(buildClaudeManifest()).toMatchObject({ version: pkg.version });
     expect(buildCodexManifest()).toMatchObject({ version: pkg.version });
+  });
+
+  // The CLI's `--version` and the MCP handshake report their own constants; a
+  // release must bump them with PLUGIN_VERSION or the published binary lies
+  // about its version. They live in separate packages (@iroha/cli / @iroha/mcp
+  // can't import plugin metadata), so enforce the match here.
+  it("keeps CLI_VERSION and SERVER_VERSION in lockstep with PLUGIN_VERSION", () => {
+    expect(CLI_VERSION).toBe(PLUGIN_VERSION);
+    expect(SERVER_VERSION).toBe(PLUGIN_VERSION);
   });
 });

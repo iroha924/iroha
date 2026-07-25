@@ -90,10 +90,11 @@ jobs:
             packages/plugin/release/sbom.cyclonedx.json
 
       - name: Ensure npm supports trusted publishing
-        # OIDC trusted publishing needs npm >= 11.5.1; Node 24's bundled npm can
-        # be older, so upgrade before publishing.
+        # OIDC trusted publishing needs npm >= 11.5.1, and Node 24's bundled npm
+        # can be older. Pinned (not @latest) so the publish path — which never
+        # runs in CI — can't silently pick up an untested npm; bump deliberately.
         if: ${{ inputs.publish }}
-        run: npm install -g npm@latest
+        run: npm install -g npm@11.5.1
 
       - name: Publish to npm
         if: ${{ inputs.publish }}

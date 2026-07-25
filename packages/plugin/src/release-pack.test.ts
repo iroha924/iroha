@@ -181,7 +181,7 @@ describe("the published binary runs from an installed layout", () => {
       };
       const manifests = report.doctor.checks.find((c) => c.name === "plugin-manifests");
       expect(manifests?.status).toBe("ok");
-      expect(manifests?.message).toContain("iroha@0.1.0");
+      expect(manifests?.message).toContain(`iroha@${PLUGIN_VERSION}`);
     } finally {
       await rm(link, { force: true }); // unlink the symlink only, never its target
       await rm(stage, { recursive: true, force: true });
