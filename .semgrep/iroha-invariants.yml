@@ -33,6 +33,7 @@ rules:
     paths:
       exclude:
         - "*.test.ts"
+        - "*.test.tsx"
 
   - id: no-dynamic-eval
     languages: [typescript]
@@ -43,3 +44,4 @@ rules:
     paths:
       exclude:
         - "*.test.ts"
+        - "*.test.tsx"
