@@ -45,6 +45,7 @@ catalog:
   "@types/react-dom": 19.2.3
   "@vitejs/plugin-react": 6.0.3
   "@xyflow/react": 12.11.2
+  czg: 1.13.1
   graphql: 16.14.2
   gunshi: 0.37.1
   hono: 4.12.30
@@ -58,7 +59,9 @@ catalog:
   react-dom: 19.2.7
   react-router-dom: 7.18.1
   secretlint: 13.0.2
+  sherif: 1.13.0
   tailwindcss: 4.3.3
+  taze: 19.16.0
   tsdown: 0.22.9
   typescript: 7.0.2
   unist-util-visit: 5.1.0

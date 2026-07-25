@@ -11,6 +11,8 @@ ist = "ist"
 mis = "mis"
 # "unparseable" is an accepted variant spelling (alongside "unparsable").
 unparseable = "unparseable"
+# `sherif` is the monorepo package.json linter (not the word "sheriff").
+sherif = "sherif"
 # Deliberate test-fixture strings, not prose typos:
 missng = "missng"   # a fixed-width "missing" marker inside a synthetic entity id
 tbe = "tbe"         # a turn-id seed in a storage repository test
