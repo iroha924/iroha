@@ -20,8 +20,8 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@iroha/domain": "workspace:*",
     "@iroha/config": "workspace:*",
+    "@iroha/domain": "workspace:*",
     "@libsql/client": "catalog:"
   },
   "devDependencies": {

@@ -1,0 +1,5 @@
+# Pins the local toolchain so `mise install` reproduces CI's runtime.
+# Mirrors `engines.node` in package.json (>=24 <25); pnpm stays managed by
+# corepack via the `packageManager` field, so it is intentionally not pinned here.
+[tools]
+node = "24"
