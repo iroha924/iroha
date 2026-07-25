@@ -1,0 +1,17 @@
+# typos (crate-ci/typos) configuration.
+# Rule reference: https://github.com/crate-ci/typos
+#
+# Allowlist of tokens that look like typos but are intentional: iroha's token
+# prefixes, hyphenated compounds, accepted spelling variants, and deliberate
+# test-fixture identifiers. Map each word to itself to accept it as correct.
+[default.extend-words]
+# `ist_…` is iroha's launch/session token prefix (pervasive in tests/fixtures).
+ist = "ist"
+# `mis-parsing`, `mis-window(ing)` — a hyphen split leaves a bare "mis".
+mis = "mis"
+# "unparseable" is an accepted variant spelling (alongside "unparsable").
+unparseable = "unparseable"
+# Deliberate test-fixture strings, not prose typos:
+missng = "missng"   # a fixed-width "missing" marker inside a synthetic entity id
+tbe = "tbe"         # a turn-id seed in a storage repository test
+caf = "caf"         # "Café" assembled via String.fromCharCode in an NFC/NFD test

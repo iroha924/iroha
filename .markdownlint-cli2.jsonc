@@ -1,0 +1,32 @@
+// markdownlint-cli2 config. Rule reference:
+// https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
+{
+  "config": {
+    "default": true,
+    // Long lines in prose, tables, and URLs are intentional across the docs.
+    "MD013": false,
+    // The README opens with a centered <p>/<img> header and a badge row.
+    "MD033": false,
+    // A file need not start with an H1 (the README starts with the logo HTML).
+    "MD041": false,
+    // The same heading text may recur under different parents.
+    "MD024": { "siblings_only": true },
+    // Ordered lists are written 1. 2. 3., not 1. 1. 1.
+    "MD029": { "style": "ordered" },
+    // Tables use compact `|---|` separators with padded content rows throughout;
+    // enforcing one pipe-padding style would churn every table for no gain.
+    "MD060": false
+  },
+  "globs": ["**/*.md"],
+  "ignores": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/build/**",
+    ".iroha/**",
+    // docs/product/ is the large, maintainer-facing internal spec bundle; the
+    // user-facing docs/install.md (linked from the README) is still linted.
+    "docs/product/**",
+    "packages/*/release/**",
+    "**/CHANGELOG.md"
+  ]
+}

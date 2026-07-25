@@ -56,6 +56,7 @@ Violating an invariant right after writing it is the most basic and most easily 
 When you replace an OS-native function such as `fs.realpath` with hand-written logic (or partially bypass it), explicitly enumerate the behaviors that native function may have handled implicitly, and decide for each one whether you "preserved it" or "intentionally left it out of scope".
 
 Starting point for the checklist (details in `.claude/rules/path-and-symlink-safety.md`):
+
 - Case handling (Windows does not distinguish the case of environment variable names or paths)
 - Short-name / alias forms (Windows 8.3 form)
 - Locale-dependent output (messages translated by gettext, etc.)
@@ -68,6 +69,7 @@ For behaviors you cannot reproduce in your local environment (Windows short name
 When you find an issue where sensitive information leaks into an error/log, **first consider "can you stop including the value itself?"**. Redaction by regex is inherently a denylist (detecting known bad patterns) and has the structural limitation of being "trivially bypassable", as the [OWASP Input Validation Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Input_Validation_Cheat_Sheet.html) explicitly states. Details in `.claude/rules/secure-subprocess-and-credentials.md`.
 
 Order of judgment:
+
 1. Is that value (the raw argument value, the absolute form of a path, etc.) really needed in the error? → if not, **do not include it**
 2. If it must be included (essential for debugging), adopt a redaction strategy that detects and removes known shapes
 3. If you adopt a redaction strategy, be aware that it does not in principle close the leak channel, and state its limitations explicitly in a comment

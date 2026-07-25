@@ -88,6 +88,7 @@ Agent(finding-validator, prompt: "<one finding: file, line, failure scenario>")
 ```
 
 `finding-validator`'s verdict:
+
 - `valid` → include in `ReportFindings` with `verdict: CONFIRMED`
 - `invalid` → drop it (leave a one-line reason under "excluded findings" in the final report — to prevent recurrence of a cyclic false positive)
 - `unsure` → include with `verdict: PLAUSIBLE`, and state explicitly that it "could not be verified"
@@ -127,7 +128,7 @@ Invocation: "self-review this", "/iroha-review", "review the changes on this bra
 
 Skeleton of a typical output:
 
-```
+```text
 Scope: committed changes since the merge-base with main (2 uncommitted changes: asked whether to include → chose not to)
 diff: 8 files changed, +640/-12
 

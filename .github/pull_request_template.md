@@ -14,7 +14,7 @@ CLAUDE.md: record any skipped verification with the command and the reason. Wher
 include a reproduction test that is red before the fix.
 -->
 
-```
+```text
 $ pnpm lint && pnpm typecheck && pnpm test && pnpm build
 (paste results)
 ```
