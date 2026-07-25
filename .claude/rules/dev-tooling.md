@@ -25,6 +25,9 @@ the **trigger** (when to run it).
   `packageManager` field, so there is a single source of truth for the pnpm version.
 - **Trigger:** run `mise install` after cloning (or when the pin changes). If you don't use mise, the
   `engines.node` range in `package.json` still documents the same requirement.
+- **First use / after edits:** mise refuses an untrusted config (`Config files … are not trusted` /
+  `error parsing config file`) as a security measure. Run `mise trust` once in the repo to allow it;
+  it re-prompts whenever `mise.toml` changes. This is expected, not a config error.
 
 ## Commit messages — czg
 
@@ -75,6 +78,21 @@ the **trigger** (when to run it).
 - **Trigger:** use it for an ad-hoc look at what is upgradable locally. Routine, PR-based updates are
   Renovate's job (see [[ci-review-bots]]) — taze is the manual, interactive counterpart, not a
   replacement for the bot.
+
+## Published-package validation — publint + attw
+
+- **What:** `pnpm check:package` builds the release bundle (`packages/plugin/release/`, the exact
+  artifact `release.yml` publishes as `@irohalabs/iroha`) and lints it with **publint** (packaging
+  correctness: `exports`/`files`/`bin`, ESM/CJS conditions) and **attw** (`@arethetypeswrong/cli` —
+  whether a consumer can resolve the package's types). `pnpm check:package:validate` runs just the two
+  linters against an already-built release — used by `release.yml`, which has already assembled it.
+- **Trigger:** run it when you change packaging — `packages/plugin/build-release.ts`, the plugin's
+  `package.json`, `exports`, `files`, or `bin`. It also runs on every PR (CI `package-check` job) and
+  before every publish (a `release.yml` step).
+- **attw reports "This package does not contain types" and that is expected:** the published package
+  is a **CLI** (`bin: { iroha }`), not an importable library — `build-release.ts` strips the workspace
+  `exports`/types (decision-log ID-038). attw exits 0 on this, so it does not fail the gate; do not add
+  library types just to satisfy it.
 
 ## Related
 

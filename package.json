@@ -19,6 +19,8 @@
     "test:integration": "turbo run test:integration",
     "test:e2e": "turbo run test:e2e",
     "test:package": "turbo run test:package",
+    "check:package": "pnpm build && pnpm --filter @iroha/plugin build:release && pnpm run check:package:validate",
+    "check:package:validate": "publint packages/plugin/release && attw --pack packages/plugin/release",
     "format": "biome format --write .",
     "changeset": "changeset",
     "cz": "czg",
@@ -29,6 +31,7 @@
     "link:global": "pnpm build && cd packages/plugin && pnpm link --global"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "catalog:",
     "@biomejs/biome": "catalog:",
     "@changesets/cli": "catalog:",
     "@commitlint/cli": "catalog:",
@@ -37,6 +40,7 @@
     "knip": "catalog:",
     "lefthook": "catalog:",
     "markdownlint-cli2": "catalog:",
+    "publint": "catalog:",
     "sherif": "catalog:",
     "taze": "catalog:",
     "turbo": "2.10.5"

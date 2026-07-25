@@ -48,6 +48,12 @@ jobs:
       - name: Assemble the publishable package
         run: pnpm --filter @iroha/plugin build:release
 
+      - name: Validate the publishable package
+        # publint (packaging correctness) + attw (type resolution) on the
+        # assembled release, before it is packed and published. Same check as
+        # CI's package-check job, minus the rebuild (release is already built).
+        run: pnpm run check:package:validate
+
       - name: Verify version consistency
         env:
           VERSION: ${{ inputs.version }}
