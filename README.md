@@ -20,8 +20,8 @@ Every approved item keeps its provenance: the session, pull request, commit, or 
 
 - **Your agents stop forgetting.** Decisions and conventions captured in one session are available — with sources — in the next, across Claude Code *and* Codex.
 - **A human is always in the loop.** Agents propose *candidate* knowledge; you approve what's worth keeping. Approved knowledge becomes canonical Markdown under `.iroha/`, committed to git and shared with your team.
-- **Local-first, private by default.** No cloud account, no telemetry, no data leaves your machine. Raw prompts and transcripts are never written to your knowledge base. The one optional network call is embeddings, which you enable with your own key.
-- **Search that works with zero config.** Full-text and graph search run out of the box (including Japanese and other CJK text). Add an embedding key for semantic search; without one, iroha degrades to lexical search rather than failing.
+- **Local-first, private by default.** No cloud account, no telemetry, no hosted backend. Raw prompts and transcripts are never written to your knowledge base. The only outbound calls are optional and opt-in: embedding generation (Voyage) and GitHub forge sync — each stays off until you enable it with your own key.
+- **Search that works with zero config.** Full-text and graph search run out of the box (including Japanese and other CJK text). Turn on semantic search in your config and add an embedding key; without them, iroha stays on lexical search rather than failing.
 
 iroha is **not** a surveillance or productivity-ranking tool, and it has no hosted backend. It is a memory graph you own.
 
@@ -95,7 +95,7 @@ A teammate who clones the repo runs `iroha init` then `iroha sync --rebuild` to 
 
 ## The approval dashboard
 
-`iroha dashboard` serves a local, single-origin app from one loopback port and hands your browser a one-time launch token. It is where you review candidate knowledge, see each item's provenance and relationships, and approve or reject it. Approval is a human action — it lives only in the dashboard and the CLI, never in an agent's reach. The dashboard binds to loopback only; nothing is exposed off your machine.
+`iroha dashboard` serves a local, single-origin app from one loopback port and hands your browser a one-time launch token. It is where you review candidate knowledge, see each item's provenance and relationships, and approve or reject it. The dashboard is the only place approval happens — it is a human action, never in an agent's reach. It binds to loopback only; nothing is exposed off your machine.
 
 ## Configuration
 
@@ -103,14 +103,15 @@ A teammate who clones the repo runs `iroha init` then `iroha sync --rebuild` to 
 
 | Environment variable | Purpose | Required | Without it |
 |---|---|---|---|
-| `VOYAGE_API_KEY` | Semantic (vector) search embeddings via Voyage | No | Search degrades to full-text + graph only |
+| `VOYAGE_API_KEY` | Semantic (vector) search embeddings via Voyage | No | Search stays full-text + graph only |
 | `GITHUB_TOKEN` | GitHub forge sync (pull requests, reviews) | No | Forge sync is simply off |
+
+Both features are also **off by default in `config.yaml`** — the key is only half of it. Set `search.embedding.enabled: true` (plus `VOYAGE_API_KEY`) for semantic search, and `forge.enabled: true` (plus `GITHUB_TOKEN`) for GitHub sync.
 
 Key `config.yaml` settings:
 
 - `default_language` — `en` (default) or `ja`; the dashboard's startup locale.
 - `canonical.require_human_approval` — keep `true` so nothing becomes authoritative without review.
-- `privacy.*` — whether prompt/transcript content may ever reach canonical files (off by default).
 
 ## How it works
 
@@ -118,11 +119,11 @@ Key `config.yaml` settings:
 2. **Knowledge is captured during work,** through a Turn/Checkpoint lifecycle rather than a single session-end summary (Codex has no session-end hook).
 3. **Candidates carry provenance.** Each proposed decision, rule, or insight links back to its source and to related items.
 4. **A human approves.** Approved knowledge is written to canonical Markdown under `.iroha/` and committed — the team-shared source of truth.
-5. **A local libSQL index makes it searchable** (lexical always; semantic when a key is set). The index is disposable and rebuildable from `.iroha/` at any time — it is never the sole source of approved knowledge.
+5. **A local libSQL index makes it searchable** (lexical always; semantic once you enable embeddings with a key). The index is disposable and rebuildable from `.iroha/` at any time — it is never the sole source of approved knowledge.
 
 ## FAQ
 
-**Does anything leave my machine?** No. iroha is local-first with no cloud account and no telemetry. The only optional outbound call is Voyage embeddings, which you turn on with your own `VOYAGE_API_KEY`.
+**Does anything leave my machine?** By default, no — iroha is local-first with no cloud account and no telemetry. Two features reach the network only when you opt into them with your own key: semantic-search embeddings (Voyage) and GitHub forge sync. Both are off until you enable them.
 
 **I don't have an embedding key.** Search still works. Full-text and graph search run with zero configuration, including Japanese and other CJK queries; semantic search is an opt-in enhancement.
 

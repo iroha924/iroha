@@ -41,7 +41,7 @@ To use `iroha` as a global command in another repository:
 
 ```bash
 pnpm setup        # once: puts pnpm's global bin dir on PATH, then reload your shell
-pnpm link:global  # link the @iroha/cli binary globally
+pnpm link:global  # link the iroha binary globally (from packages/plugin, the bin owner)
 ```
 
 Then, inside any Git repository:
