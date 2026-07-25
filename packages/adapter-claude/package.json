@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@iroha/platform": "workspace:*",
+    "ts-pattern": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

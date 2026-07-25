@@ -14,6 +14,7 @@ Implementation conventions specific to this repository. Not general TS practices
 - Exception: contract types derived via `z.infer<typeof xxxSchema>` (described below) stay as `type` (`interface` cannot directly express the result of a type operation). In this case `type` is not a rule violation but the only way to write it.
 - Use named exports only. Do not use default exports (`biome.json`'s `noDefaultExport` enforces this).
 - File names are kebab-case (`biome.json`'s `useFilenamingConvention` enforces this for `packages/*/src/**`. `apps/dashboard` is excluded because React components have a PascalCase convention).
+- When matching a **discriminated union** and every variant must be handled (a renderer, a dispatcher, a normalizer), prefer `ts-pattern`'s `match(x).with({ kind: … }, …).exhaustive()` over a bare `switch`: `.exhaustive()` turns "a new variant was added but not handled here" into a **compile error** instead of a silent `undefined` fall-through, and each `.with` narrows the value to that variant. Example: `renderClaudeOutput`/`renderCodexOutput` in `packages/adapter-*`. A `switch` with a genuine `default` (e.g. `contextEventName`, which maps only two kinds and ignores the rest) does not need this and stays a `switch`.
 
 ## Error handling
 
