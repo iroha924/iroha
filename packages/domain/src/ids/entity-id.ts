@@ -2,7 +2,7 @@ import { IrohaError } from "../errors/error-code.js";
 import { err, ok, type Result } from "../errors/result.js";
 import type { Clock } from "../ports/clock.js";
 import type { RandomSource } from "../ports/random.js";
-import { generateUlid, isValidUlid } from "./ulid.js";
+import { encodeUlidFromBytes, generateUlid, isValidUlid } from "./ulid.js";
 
 /**
  * Prefixes for objects that also appear in `schemas/canonical-v1.schema.json`'s
@@ -82,6 +82,18 @@ export function makeTypedId<P extends IdPrefix>(
   random: RandomSource,
 ): TypedId<P> {
   return `${prefix}_${generateUlid(clock, random)}` as TypedId<P>;
+}
+
+/**
+ * Like `makeTypedId` but deterministic: the id is derived from `seed` (a >=16-byte
+ * hash), so the same seed always yields the same id. Used where a retried write
+ * must reuse the same id rather than mint a fresh random one.
+ */
+export function makeDeterministicTypedId<P extends IdPrefix>(
+  prefix: P,
+  seed: Uint8Array,
+): TypedId<P> {
+  return `${prefix}_${encodeUlidFromBytes(seed)}` as TypedId<P>;
 }
 
 /** Accepts any prefix that can appear as a `schemas/canonical-v1.schema.json` `entityId`. */

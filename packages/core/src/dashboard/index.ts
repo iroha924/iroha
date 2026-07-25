@@ -20,4 +20,3 @@ export * from "./sessions-read.js";
 export * from "./settings.js";
 export * from "./sync.js";
 export * from "./with-repository.js";
-export * from "./write-mutex.js";

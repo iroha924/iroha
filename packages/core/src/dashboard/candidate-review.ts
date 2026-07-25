@@ -15,7 +15,7 @@ import {
   withTransaction,
 } from "@iroha/storage";
 import type { CandidateDraft } from "./build-canonical.js";
-import { withDashboardRepository } from "./with-repository.js";
+import { withDashboardWrite } from "./with-repository.js";
 
 function newRevisionToken(random: RandomSource): string {
   return Buffer.from(random.bytes(16)).toString("base64url");
@@ -50,7 +50,7 @@ export async function rejectCandidate(
   }
   const candidateId = parsedId.value;
 
-  return withDashboardRepository(
+  return withDashboardWrite(
     { cwd: input.cwd, clock: input.clock, random: input.random },
     async (ctx) => {
       const candidateResult = await getCandidateById(ctx.db, candidateId);
@@ -123,7 +123,7 @@ export async function supersedeCandidate(
   }
   const candidateId = parsedId.value;
 
-  return withDashboardRepository(
+  return withDashboardWrite(
     { cwd: input.cwd, clock: input.clock, random: input.random },
     async (ctx) => {
       const candidateResult = await getCandidateById(ctx.db, candidateId);
@@ -203,7 +203,7 @@ export async function editCandidate(
   }
   const candidateId = parsedId.value;
 
-  return withDashboardRepository(
+  return withDashboardWrite(
     { cwd: input.cwd, clock: input.clock, random: input.random },
     async (ctx) => {
       const candidateResult = await getCandidateById(ctx.db, candidateId);

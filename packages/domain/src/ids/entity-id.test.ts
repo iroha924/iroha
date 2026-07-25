@@ -7,6 +7,7 @@ import {
   isCanonicalEntityId,
   isTypedId,
   LOCAL_ID_PREFIXES,
+  makeDeterministicTypedId,
   makeTypedId,
   parseCanonicalEntityId,
   parseTypedId,
@@ -85,5 +86,21 @@ describe("canonical vs local prefixes", () => {
       const result = parseCanonicalEntityId(`${prefix}_${ULID_SUFFIX}`);
       expect(result.ok).toBe(false);
     }
+  });
+});
+
+describe("makeDeterministicTypedId", () => {
+  const seed = Uint8Array.from(Array.from({ length: 16 }, (_, i) => i + 1));
+
+  it("produces a valid prefixed id, deterministically", () => {
+    const first = makeDeterministicTypedId("dec", seed);
+    const second = makeDeterministicTypedId("dec", seed);
+    expect(first).toBe(second);
+    expect(isTypedId("dec", first)).toBe(true);
+  });
+
+  it("yields different ids for different seeds", () => {
+    const other = Uint8Array.from(Array.from({ length: 16 }, (_, i) => i + 2));
+    expect(makeDeterministicTypedId("dec", seed)).not.toBe(makeDeterministicTypedId("dec", other));
   });
 });

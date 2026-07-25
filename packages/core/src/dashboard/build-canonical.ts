@@ -1,13 +1,12 @@
+import { createHash } from "node:crypto";
 import type {
   CanonicalDocument,
-  Clock,
   IrohaError,
   KnowledgeProposal,
-  RandomSource,
   Result,
   TypedId,
 } from "@iroha/domain";
-import { err, IrohaError as IrohaErrorClass, makeTypedId, ok } from "@iroha/domain";
+import { err, IrohaError as IrohaErrorClass, makeDeterministicTypedId, ok } from "@iroha/domain";
 import type { CandidateType } from "@iroha/storage";
 
 /**
@@ -83,9 +82,8 @@ export interface BuildCanonicalInput {
   /** Parsed candidate `payload_json`. */
   draft: CandidateDraft;
   repositoryId: TypedId<"repo">;
-  /** Mints the new canonical entity id with the correct type prefix (`dec_`, `rul_`, ...). */
-  clock: Clock;
-  random: RandomSource;
+  /** Seeds the deterministic canonical entity id, so a retried approval reuses the same id/path. */
+  candidateId: string;
   createdBy: CanonicalActorRef;
   approvedBy: CanonicalActorRef;
   /** RFC 3339 UTC. `created_at` = when proposed; `updated_at`/`approved_at` = approval time. */
@@ -186,13 +184,17 @@ export function buildCanonicalDocumentFromCandidate(
   const { draft } = input;
   const cls = draft.classification ?? {};
   const body = draft.body;
+  // Deterministic id from the candidate: a retried approval after a crash between
+  // the file write and the DB commit reuses the same id/path and overwrites,
+  // rather than minting a fresh random id and duplicating the canonical file.
+  const idSeed = createHash("sha256").update(`iroha:canonical-id:${input.candidateId}`).digest();
 
   switch (input.candidateType) {
     case "decision":
       return ok({
         frontmatter: {
           ...common,
-          id: makeTypedId("dec", input.clock, input.random),
+          id: makeDeterministicTypedId("dec", idSeed),
           type: "decision",
           decision: { kind: cls.decisionKind ?? "implementation" },
         },
@@ -213,7 +215,7 @@ export function buildCanonicalDocumentFromCandidate(
       return ok({
         frontmatter: {
           ...common,
-          id: makeTypedId("rul", input.clock, input.random),
+          id: makeDeterministicTypedId("rul", idSeed),
           type: "rule",
           rule: {
             enforcement,
@@ -228,7 +230,7 @@ export function buildCanonicalDocumentFromCandidate(
       return ok({
         frontmatter: {
           ...common,
-          id: makeTypedId("con", input.clock, input.random),
+          id: makeDeterministicTypedId("con", idSeed),
           type: "concept",
           concept: { domain: cls.conceptDomain ?? "" },
         },
@@ -238,7 +240,7 @@ export function buildCanonicalDocumentFromCandidate(
       return ok({
         frontmatter: {
           ...common,
-          id: makeTypedId("ins", input.clock, input.random),
+          id: makeDeterministicTypedId("ins", idSeed),
           type: "insight",
           insight: { category: cls.insightCategory ?? "implementation" },
         },
@@ -248,7 +250,7 @@ export function buildCanonicalDocumentFromCandidate(
       return ok({
         frontmatter: {
           ...common,
-          id: makeTypedId("inc", input.clock, input.random),
+          id: makeDeterministicTypedId("inc", idSeed),
           type: "incident",
           incident: {
             severity: cls.incidentSeverity ?? "medium",
@@ -261,7 +263,7 @@ export function buildCanonicalDocumentFromCandidate(
       return ok({
         frontmatter: {
           ...common,
-          id: makeTypedId("pat", input.clock, input.random),
+          id: makeDeterministicTypedId("pat", idSeed),
           type: "pattern",
           pattern: { maturity: cls.patternMaturity ?? "emerging" },
         },
@@ -271,7 +273,7 @@ export function buildCanonicalDocumentFromCandidate(
       return ok({
         frontmatter: {
           ...common,
-          id: makeTypedId("rev", input.clock, input.random),
+          id: makeDeterministicTypedId("rev", idSeed),
           type: "review_learning",
           review_learning: { category: cls.reviewLearningCategory ?? "maintainability" },
         },

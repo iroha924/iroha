@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FixedClock } from "../ports/clock.js";
 import { FixedRandomSource } from "../ports/random.js";
-import { generateUlid, isValidUlid } from "./ulid.js";
+import { encodeUlidFromBytes, generateUlid, isValidUlid } from "./ulid.js";
 
 /**
  * Expected values below were computed independently in Python (big-integer
@@ -74,5 +74,37 @@ describe("isValidUlid", () => {
 
   it("rejects lowercase letters", () => {
     expect(isValidUlid("01j31j6y00zzzfvz7vzbwzhxzp")).toBe(false);
+  });
+});
+
+describe("encodeUlidFromBytes", () => {
+  it("encodes an all-zero 16-byte seed to an all-zero ULID", () => {
+    expect(encodeUlidFromBytes(new Uint8Array(16))).toBe("0000000000" + "0000000000000000");
+  });
+
+  it("uses the first 6 bytes as the timestamp and the next 10 as randomness", () => {
+    // timestamp bytes = ...1 (=> ms 1), randomness bytes = 0..9 — same components as
+    // the `generateUlid` "timestamp 1 with sequential randomness" cross-check above.
+    const seed = Uint8Array.from([0, 0, 0, 0, 0, 1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    const ulid = encodeUlidFromBytes(seed);
+    expect(ulid.slice(0, 10)).toBe("0000000001");
+    expect(isValidUlid(ulid)).toBe(true);
+  });
+
+  it("is deterministic and ignores bytes past the 16th", () => {
+    const a = Uint8Array.from([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 99]);
+    const b = Uint8Array.from([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 42]);
+    expect(encodeUlidFromBytes(a)).toBe(encodeUlidFromBytes(b));
+    expect(isValidUlid(encodeUlidFromBytes(a))).toBe(true);
+  });
+
+  it("yields different ULIDs for different seeds", () => {
+    const a = encodeUlidFromBytes(Uint8Array.from(Array.from({ length: 16 }, (_, i) => i)));
+    const b = encodeUlidFromBytes(Uint8Array.from(Array.from({ length: 16 }, (_, i) => i + 1)));
+    expect(a).not.toBe(b);
+  });
+
+  it("throws on a seed shorter than 16 bytes", () => {
+    expect(() => encodeUlidFromBytes(new Uint8Array(15))).toThrow(RangeError);
   });
 });
