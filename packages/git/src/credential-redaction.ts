@@ -55,7 +55,11 @@ const HARD_DELIMITER = /[\s'"<>()[\]{}]/;
 // candidates are resolved by whichever comes first: the next scheme start
 // that isn't itself inside the current candidate's userinfo (see the
 // `nextStart`-extension loop below), or a HARD_DELIMITER.
-const SCHEME_START = /[a-zA-Z][a-zA-Z0-9+.-]*:\/\//g;
+// The scheme body is bounded (`{0,63}`, not `*`) so the global scan stays
+// linear-time: a URI scheme is short (RFC 3986), and an unbounded `*` before
+// `://` lets a long run of scheme-class chars drive quadratic backtracking on
+// adversarial input (e.g. Git stderr echoing a caller-supplied argument).
+const SCHEME_START = /[a-zA-Z][a-zA-Z0-9+.-]{0,63}:\/\//g;
 
 // Matches only "scheme://[userinfo@]" — the same backtracking userinfo
 // logic as SCHEME_URL, but stops right after the userinfo instead of also

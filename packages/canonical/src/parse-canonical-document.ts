@@ -52,11 +52,17 @@ function splitFrontmatter(content: string): Result<{ yamlText: string; body: str
   // the body are stripped the same way (a well-formed body always starts
   // with `# <title>`, never a blank line), so this parser is the exact
   // inverse of what the serializer produces on both ends.
-  const body = lines
+  // `/^\n+/` is start-anchored so it stays linear as a regex; the trailing strip
+  // uses a linear scan, because an unbounded `\n+$` backtracks quadratically
+  // (CodeQL ReDoS) and a bounded `\n{1,N}$` would leave a residual on a
+  // pathological input.
+  const withoutLeadingBlanks = lines
     .slice(closingIndex + 1)
     .join("\n")
-    .replace(/^\n+/, "")
-    .replace(/\n+$/, "");
+    .replace(/^\n+/, "");
+  let bodyEnd = withoutLeadingBlanks.length;
+  while (bodyEnd > 0 && withoutLeadingBlanks[bodyEnd - 1] === "\n") bodyEnd--;
+  const body = withoutLeadingBlanks.slice(0, bodyEnd);
   return ok({ yamlText, body });
 }
 

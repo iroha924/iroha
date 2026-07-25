@@ -76,12 +76,21 @@ function stringField(input: Record<string, unknown>, key: string): string | unde
 // path (trailing whitespace/CR trimmed); the patch body is never read or stored
 // (§8). Matched against the untrimmed line so a `+`/`-`/space-prefixed body line
 // that merely *contains* header-shaped text is not mistaken for a real header.
-const APPLY_PATCH_HEADER = /^\*\*\* (Add|Update|Delete) File: (.+?)\s*$/;
+// Path captured with un-anchored greedy `.+` (no `$`) and `.trimEnd()`-ed by the
+// caller. The old `(.+?)\s*$` was the polynomial-backtracking shape CodeQL flags
+// (lazy `.` overlaps `\s*`). A `$` anchor cannot replace `\s*$` here: `.` never
+// matches `\r`, and `$` (no `m` flag) matches only absolute end of input, so
+// `(.+)$` would FAIL to match a CRLF header line (the `\r` that `split("\n")`
+// leaves) — dropping the file target and bypassing the Guardrail. Un-anchored
+// `.+` stops just before the `\r`; `.trimEnd()` removes any trailing spaces/tabs.
+// Linear: no trailing assertion to backtrack against.
+const APPLY_PATCH_HEADER = /^\*\*\* (Add|Update|Delete) File: (.+)/;
 // A `*** Move to: <dest>` line follows an `*** Update File:` header to rename the
 // file. The destination is a write the Guardrail must see — without it a move
 // INTO a protected path bypasses enforcement (Codex-only, since every Codex edit
-// is apply_patch). Same untrimmed-line / trailing-CR handling as the header.
-const APPLY_PATCH_MOVE = /^\*\*\* Move to: (.+?)\s*$/;
+// is apply_patch). Same un-anchored `.+` + caller `.trimEnd()` as the header, so
+// a CRLF `Move to:` line still matches (see the header's note on `$` vs `\r`).
+const APPLY_PATCH_MOVE = /^\*\*\* Move to: (.+)/;
 
 /**
  * Extract file targets from an apply_patch command by reading only its section
@@ -98,7 +107,7 @@ function extractApplyPatchTargets(command: string | undefined): ToolTarget[] {
     const header = APPLY_PATCH_HEADER.exec(line);
     if (header) {
       const operation = header[1] === "Delete" ? "delete" : "write";
-      targets.push({ kind: "file", value: header[2] as string, operation });
+      targets.push({ kind: "file", value: (header[2] as string).trimEnd(), operation });
       continue;
     }
     const move = APPLY_PATCH_MOVE.exec(line);
@@ -111,7 +120,7 @@ function extractApplyPatchTargets(command: string | undefined): ToolTarget[] {
       if (previous !== undefined && previous.kind === "file" && previous.operation === "write") {
         previous.operation = "delete";
       }
-      targets.push({ kind: "file", value: move[1] as string, operation: "write" });
+      targets.push({ kind: "file", value: (move[1] as string).trimEnd(), operation: "write" });
     }
   }
   return targets.length > 0

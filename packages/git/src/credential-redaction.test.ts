@@ -129,6 +129,20 @@ describe("redactUrlLikeCredentialsInText", () => {
     expect(redactUrlLikeCredentialsInText(text)).toBe("https://example.com/repo.git");
   });
 
+  it("stays linear-time on a long adversarial no-scheme run (ReDoS guard)", () => {
+    // The scheme body is bounded (`{0,63}`), so scanning a long run of
+    // scheme-class characters that never completes a `://` cannot backtrack
+    // quadratically. Before the bound this input took ~700ms at 40k characters
+    // and grew quadratically (so ~4.5s at 100k) — it must now finish well under
+    // the generous ceiling below. This is reachable: Git stderr can echo a
+    // caller-supplied argument verbatim.
+    const adversarial = "a".repeat(100_000);
+    const start = performance.now();
+    const out = redactUrlLikeCredentialsInText(adversarial);
+    expect(performance.now() - start).toBeLessThan(1000);
+    expect(out).toBe(adversarial); // no scheme present → returned unchanged
+  });
+
   it("redacts a credentialed URL whose password itself contains a comma", () => {
     // A comma/semicolon is a legal unencoded userinfo character (RFC 3986
     // sub-delims). Treating it as a hard text-delimiter (as an earlier

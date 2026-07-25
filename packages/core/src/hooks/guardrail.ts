@@ -27,7 +27,13 @@ const GUARD_MATCH_OPTIONS = { dot: true, windows: false } as const;
  * glob.
  */
 function guardPathMatches(glob: string, target: string): boolean {
-  const subtree = `${glob.replace(/\/+$/, "")}/**`;
+  // Strip trailing slashes with a linear scan, not a regex: an unbounded `/+$`
+  // backtracks quadratically on a long interior slash run (CodeQL ReDoS), and a
+  // bounded `/{1,N}$` would leave a residual `//` on a pathological input —
+  // weakening this security matcher (picomatch may then not match). A scan is exact.
+  let globEnd = glob.length;
+  while (globEnd > 0 && glob[globEnd - 1] === "/") globEnd--;
+  const subtree = `${glob.slice(0, globEnd)}/**`;
   return (
     picomatch.isMatch(target, glob, GUARD_MATCH_OPTIONS) ||
     picomatch.isMatch(target, subtree, GUARD_MATCH_OPTIONS)
