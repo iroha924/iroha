@@ -1,3 +1,5 @@
+import { stat } from "node:fs/promises";
+import { join } from "node:path";
 import { computeCanonicalPath, writeCanonicalDocument } from "@iroha/canonical";
 import type { Clock, IrohaError, RandomSource, Result, TypedId } from "@iroha/domain";
 import { err, IrohaError as IrohaErrorClass, makeTypedId, ok, parseTypedId } from "@iroha/domain";
@@ -20,6 +22,15 @@ import { withDashboardRepository } from "./with-repository.js";
 
 /** The AI agent that authored a candidate, recorded as `created_by` (NFR-006: AI-vs-human provenance). */
 const AGENT_ACTOR: CanonicalActorRef = { provider: "local", display_name: "iroha agent" };
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export interface ReviewActorInput {
   provider: "git" | "github" | "gitlab" | "local";
@@ -134,6 +145,26 @@ export async function approveCandidate(
         });
         if (!built.ok) {
           return built;
+        }
+
+        // Cross-process double-approval guard (ID-065's deterministic id makes two
+        // processes approving the same candidate target the same path; in-process
+        // locking does not serialize across processes — ID-022 lineage). If that
+        // file already exists and the candidate is no longer pending, another
+        // approval already committed it — abort instead of overwriting it. A
+        // same-process retry after a crash (candidate still pending) still overwrites
+        // its own file, which is the idempotent-retry behavior #42 wants.
+        const targetPath = join(ctx.repo.irohaCanonicalDir, computeCanonicalPath(built.value));
+        if (await pathExists(targetPath)) {
+          const recheck = await getCandidateById(ctx.db, candidateId);
+          if (recheck.ok && recheck.value !== null && recheck.value.status !== "pending") {
+            return err(
+              new IrohaErrorClass(
+                "CONFLICT",
+                "The candidate was already approved. Reload before approving.",
+              ),
+            );
+          }
         }
 
         const writeResult = await writeCanonicalDocument(

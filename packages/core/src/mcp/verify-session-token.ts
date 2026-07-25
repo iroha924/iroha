@@ -8,6 +8,7 @@ import {
   updateSessionTokenLastUsed,
 } from "@iroha/storage";
 import { hashSessionToken } from "../hooks/session-token.js";
+import { withRepositoryWriteLock } from "../write-mutex.js";
 
 const TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -70,11 +71,16 @@ export async function verifySessionToken(
     return err(new IrohaError("SESSION_EXPIRED", "Session run is no longer active"));
   }
 
-  const bumped = await updateSessionTokenLastUsed(
-    input.db,
-    tokenHmac,
-    now.toISOString(),
-    new Date(now.getTime() + TOKEN_TTL_MS).toISOString(),
+  // The idle-window bump is a write; run it under the repository write lock so
+  // it serializes with the tool's own write transaction (and other tools' token
+  // refreshes) instead of racing them on libSQL's native busy wait (write-mutex.ts).
+  const bumped = await withRepositoryWriteLock(input.repositoryId, () =>
+    updateSessionTokenLastUsed(
+      input.db,
+      tokenHmac,
+      now.toISOString(),
+      new Date(now.getTime() + TOKEN_TTL_MS).toISOString(),
+    ),
   );
   if (!bumped.ok) {
     return err(bumped.error);
