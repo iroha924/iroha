@@ -8,6 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/iroha924/iroha/actions/workflows/ci.yml"><img src="https://github.com/iroha924/iroha/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://www.npmjs.com/package/@irohalabs/iroha"><img src="https://img.shields.io/npm/v/@irohalabs/iroha?color=6E7B57&label=npm" alt="npm version"></a>
   <img src="https://img.shields.io/badge/node-%3E%3D24%20%3C25-6E7B57" alt="Node >=24 <25">
   <img src="https://img.shields.io/badge/license-Apache--2.0-6F675A" alt="License Apache-2.0">
 </p>
