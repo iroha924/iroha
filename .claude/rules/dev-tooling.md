@@ -41,6 +41,33 @@ the **trigger** (when to run it).
 - **Trigger:** run it after you add, remove, or reorder any dependency in any `package.json`. It is
   fast enough (~ms) to run before every push that touches a manifest.
 
+## Dead code and unused dependencies — knip
+
+- **What:** `pnpm knip` finds unused files, unused (dev)dependencies, and unused exports/types across
+  the whole workspace. Its config is `knip.json`.
+- **Trigger:** run it after removing a feature or a caller, or when auditing what can be trimmed. It is
+  a review-time check (listed in the `iroha-review`/`self-review` skills), **not** a hard CI gate — a
+  knip false-positive on a legitimate new dependency should not block an unrelated PR.
+- **The config models these project-specific false positives.** knip cannot see them statically, so
+  they are configured, not real dead code — do **not** "fix" a config entry by deleting the code:
+  - `apps/dashboard/src/components/ui/**` is marked `entry`: it is the vendored shadcn design system
+    ([[dashboard-shadcn-and-csp]]); a primitive not yet composed is kept on purpose, and `shadcn add`
+    re-adds it anyway. Marking it `entry` (not `ignore`) also keeps its transitive deps (e.g. `cmdk`)
+    and its own exports from being flagged.
+  - `tests/fixtures/**` is ignored: fixtures are read from disk at test time, never imported.
+  - `packages/canonical` ignores the three secretlint rule packages — `secret-scan.ts` resolves them
+    at runtime by string id (`createEngine({ rules: [{ id: "@secretlint/..." }] })`), so no static
+    import exists ([[secure-subprocess-and-credentials]]).
+  - `packages/plugin` ignores its runtime deps: those are the concrete deps of the **published** npm
+    package (decision-log ID-038); the workspace source reaches them through the bundled
+    `@iroha/cli`/`@iroha/mcp`, not direct imports.
+  - `packages/forge-github` ignores the graphql-codegen deps: `codegen.ts` references them by plugin
+    name (string) at codegen time, not by import.
+  - `apps/e2e` ignores `@iroha/cli`/`@iroha/dashboard`: e2e spawns the built binary/dashboard as
+    subprocesses — the deps only guarantee they build first.
+- When knip flags a genuinely unused export that is still used **within its own file**, remove the
+  `export` keyword (make it file-local) rather than deleting the symbol.
+
 ## Dependency upgrades — taze
 
 - **What:** `pnpm deps:check` runs `taze -r` (recursive, catalog-aware) and *reports* available

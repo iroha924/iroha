@@ -30,11 +30,11 @@ import {
 } from "./metadata.js";
 
 /** Relative archive paths the manifests point at (all start with `./`). */
-export const SKILLS_DIR = "./skills/";
-export const CLAUDE_HOOKS_PATH = "./hooks/claude.json";
-export const CODEX_HOOKS_PATH = "./hooks/codex.json";
-export const CLAUDE_MCP_PATH = "./.mcp.json";
-export const CODEX_MCP_PATH = "./mcp.codex.json";
+const SKILLS_DIR = "./skills/";
+const CLAUDE_HOOKS_PATH = "./hooks/claude.json";
+const CODEX_HOOKS_PATH = "./hooks/codex.json";
+const CLAUDE_MCP_PATH = "./.mcp.json";
+const CODEX_MCP_PATH = "./mcp.codex.json";
 
 const SERVER_KEY = PLUGIN_NAME;
 

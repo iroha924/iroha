@@ -13,7 +13,7 @@ import type { RelationType } from "@iroha/storage";
  * constraint in the schema.
  */
 
-export type FixtureDocType =
+type FixtureDocType =
   | "decision"
   | "rule"
   | "concept"

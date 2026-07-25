@@ -3,7 +3,7 @@ name: iroha-review
 description: |
   iroha-specific whole-project self-review. Targets committed changes (default: everything since the merge-base with main), reviewing them through a multi-stage pipeline: deterministic checks (lint/typecheck/test/build/secret grep) → launch multiple fresh-context reviewers (security-reviewer / spec-compliance-reviewer / adversarial-reviewer) in parallel → reproduce-and-verify HIGH/CRITICAL findings with finding-validator. Can be invoked at any time, with or without a PR. If the working tree has uncommitted changes, use AskUserQuestion to confirm whether to include them. Zero side effects (no commit, push, or state writes), fail-open (this skill itself does not block the merge; it only reports findings). Invoked by "self-review this", "review this", or "/iroha-review". Distinct from the existing `self-review` skill, which is narrowed to security-sensitive packages such as packages/git (pre-push only, specialized for 4-pattern regression checks) — this skill is for the whole repository, at any time.
 user-invocable: true
-allowed-tools: Bash(git rev-parse *) Bash(git symbolic-ref *) Bash(git show-ref *) Bash(git merge-base *) Bash(git diff *) Bash(git status *) Bash(pnpm lint) Bash(pnpm lint:packages) Bash(pnpm typecheck) Bash(pnpm test) Bash(pnpm build) Bash(grep *) Read Grep Glob AskUserQuestion Agent(security-reviewer) Agent(spec-compliance-reviewer) Agent(adversarial-reviewer) Agent(finding-validator) ReportFindings
+allowed-tools: Bash(git rev-parse *) Bash(git symbolic-ref *) Bash(git show-ref *) Bash(git merge-base *) Bash(git diff *) Bash(git status *) Bash(pnpm lint) Bash(pnpm lint:packages) Bash(pnpm knip) Bash(pnpm typecheck) Bash(pnpm test) Bash(pnpm build) Bash(grep *) Read Grep Glob AskUserQuestion Agent(security-reviewer) Agent(spec-compliance-reviewer) Agent(adversarial-reviewer) Agent(finding-validator) ReportFindings
 ---
 
 # iroha-review — whole-project self-review
@@ -53,6 +53,7 @@ Depending on the scope, run these from the repository root (the same suite as "R
 ```bash
 pnpm lint
 pnpm lint:packages   # sherif: package.json consistency (run when the diff touches any manifest)
+pnpm knip            # dead code / unused deps / unused exports (review-time signal, not a hard gate)
 pnpm typecheck
 pnpm test
 pnpm build

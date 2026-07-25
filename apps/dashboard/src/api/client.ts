@@ -23,10 +23,10 @@ import type {
   SyncStatusData,
 } from "@iroha/api";
 
-export type SearchMode = "hybrid" | "lexical" | "vector" | "graph";
+type SearchMode = "hybrid" | "lexical" | "vector" | "graph";
 
 /** Hybrid-retrieval filters accepted by `POST /v1/search` (mirrors the API's `searchSchema.filters`). */
-export interface SearchFilters {
+interface SearchFilters {
   entityTypes?: string[];
   statuses?: string[];
   labels?: string[];
