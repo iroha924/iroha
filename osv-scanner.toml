@@ -13,3 +13,42 @@ ignoreUntil = 2027-01-25
 # requires migrating off react-router-dom to react-router v8. Re-evaluate at
 # expiry (has the dashboard moved to v8, or a 7.x-compatible fix appeared).
 reason = "react-router GHSA-qwww-vcr4-c8h2 is RSC-mode-only; the dashboard is a client SPA with no RSC usage, so it is unreachable. No 7.x fix exists."
+
+# The next four are all transitive dependencies of **verdaccio** — a
+# devDependency that only backs the local `pnpm release:smoke` registry
+# (decision-log ID-084). verdaccio is never in the published `@irohalabs/iroha`
+# artifact (bin-only, ID-038) and is never run in CI (release:smoke is
+# local-only), and even locally it is a loopback registry serving our own
+# artifact + an npmjs proxy — none of these DoS/bounds bugs take attacker input.
+# So they are unreachable in anything shipped or CI-run. Re-evaluate at expiry
+# (a verdaccio bump may drop these transitives) rather than forcing a version:
+# the only uuid fix is a v8→v11 major jump that could break verdaccio itself.
+
+[[IgnoredVulns]]
+id = "GHSA-52cp-r559-cp3m"
+ignoreUntil = 2027-07-25
+# js-yaml quadratic-complexity DoS via merge keys (fixed 4.3.0), pulled by
+# @verdaccio/config. verdaccio parses only its own config / package metadata.
+reason = "js-yaml DoS reachable only through verdaccio (devDependency, local release:smoke registry); not in any shipped or CI-run code."
+
+[[IgnoredVulns]]
+id = "GHSA-h67p-54hq-rp68"
+ignoreUntil = 2027-07-25
+# js-yaml quadratic-complexity DoS in merge-key handling (fixed 4.2.0), same
+# @verdaccio/config path as GHSA-52cp-r559-cp3m.
+reason = "js-yaml DoS reachable only through verdaccio (devDependency, local release:smoke registry); not in any shipped or CI-run code."
+
+[[IgnoredVulns]]
+id = "GHSA-q8mj-m7cp-5q26"
+ignoreUntil = 2027-07-25
+# qs remotely-triggerable DoS in qs.stringify (fixed 6.15.2), pulled by
+# verdaccio's express stack. The registry is loopback-only.
+reason = "qs DoS reachable only through verdaccio (devDependency, local release:smoke registry); not in any shipped or CI-run code."
+
+[[IgnoredVulns]]
+id = "GHSA-w5hq-g745-h8pq"
+ignoreUntil = 2027-07-25
+# uuid missing buffer-bounds check in v3/v5/v6 (fixed 11.1.1), pulled by
+# verdaccio. IDs are internally generated, not attacker-controlled. The only fix
+# is uuid v8→v11 (a major jump), which is not forced to avoid breaking verdaccio.
+reason = "uuid bounds bug reachable only through verdaccio (devDependency, local release:smoke registry); not in any shipped or CI-run code, and no in-range (v8) fix exists."
