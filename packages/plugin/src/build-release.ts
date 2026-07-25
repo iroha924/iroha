@@ -6,7 +6,7 @@
  * marketplace `npm` source finds them), and `LICENSE`.
  *
  * The generated `package.json` (ID-011: internal `@iroha/*`, published
- * `@irohalabs/iroha`) renames the package, drops the `@iroha/*` workspace
+ * `@irohalabs/iroha` — renamed in ID-070) renames the package, drops the `@iroha/*` workspace
  * dependencies — they are bundled into `dist/bin.mjs` by tsdown, not resolved at
  * runtime — and resolves every remaining `catalog:` dependency to the concrete
  * version from `pnpm-workspace.yaml`, so the tarball is installable by an
