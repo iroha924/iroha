@@ -1,6 +1,6 @@
 # Install, update, and uninstall iroha
 
-iroha ships as one npm package, `@iroha-labs/iroha`, which provides the `iroha`
+iroha ships as one npm package, `@irohalabs/iroha`, which provides the `iroha`
 binary. That binary is the runtime for everything — the CLI you run directly, the
 lifecycle hooks, and the MCP server — so installing it is the one required step on
 both Claude Code and Codex. The Claude and Codex plugins add editor integration
@@ -15,7 +15,7 @@ both Claude Code and Codex. The Claude and Codex plugins add editor integration
 ## 1. Install the CLI (required)
 
 ```bash
-npm install -g @iroha-labs/iroha
+npm install -g @irohalabs/iroha
 ```
 
 This puts `iroha` on your `PATH`. Verify:
@@ -78,7 +78,7 @@ which always works.
 ## Update
 
 ```bash
-npm update -g @iroha-labs/iroha
+npm update -g @irohalabs/iroha
 ```
 
 Then refresh the plugin metadata:
@@ -96,7 +96,7 @@ Remove the plugin first, then the marketplace, then the CLI:
   `codex plugin marketplace remove iroha`
 
 ```bash
-npm uninstall -g @iroha-labs/iroha
+npm uninstall -g @irohalabs/iroha
 ```
 
 Uninstalling does not touch a repository's Git-tracked `.iroha/` directory (your

@@ -33,10 +33,10 @@ And to be clear: iroha is not a surveillance or productivity-ranking tool, and t
 
 ## Install
 
-iroha ships as one npm package, `@iroha-labs/iroha`, which provides the `iroha` binary. That binary *is* everything — the CLI, the lifecycle hooks, and the MCP server — so installing it is the one step you can't skip.
+iroha ships as one npm package, `@irohalabs/iroha`, which provides the `iroha` binary. That binary *is* everything — the CLI, the lifecycle hooks, and the MCP server — so installing it is the one step you can't skip.
 
 ```bash
-npm install -g @iroha-labs/iroha
+npm install -g @irohalabs/iroha
 ```
 
 Then, in any Git repository:

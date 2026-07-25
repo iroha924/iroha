@@ -1,6 +1,6 @@
 /**
  * Release-package smoke test (WP-11c `test:package`). Assembles the publishable
- * `@iroha-labs/iroha` package and verifies, via `npm pack --dry-run`, that the
+ * `@irohalabs/iroha` package and verifies, via `npm pack --dry-run`, that the
  * tarball is correct and installable: the right name, the plugin config + binary
  * + skills present, no source/tooling/workspace leakage, concrete dependency
  * versions, and no developer home path embedded in any shipped file
@@ -53,7 +53,7 @@ afterAll(async () => {
 });
 
 describe("published package.json", () => {
-  it("is named @iroha-labs/iroha at the plugin version", () => {
+  it("is named @irohalabs/iroha at the plugin version", () => {
     expect(publishManifest.name).toBe(PUBLISHED_PACKAGE_NAME);
     expect(publishManifest.version).toBe(PLUGIN_VERSION);
   });
@@ -70,7 +70,7 @@ describe("published package.json", () => {
     // @iroha/core is bundled into the binary but its npm deps stay external
     // (tsdown only inlines `@iroha/*`), so a dep it imports — picomatch, for the
     // guardrail `guard.paths` matcher — must be declared in the plugin manifest
-    // or a clean `npm i @iroha-labs/iroha` fails with ERR_MODULE_NOT_FOUND when
+    // or a clean `npm i @irohalabs/iroha` fails with ERR_MODULE_NOT_FOUND when
     // the hook loads it. The monorepo hoists it, so only the published manifest
     // (this assembled package.json) proves it is actually shipped.
     expect(publishManifest.dependencies.picomatch).toBeDefined();
@@ -152,7 +152,7 @@ describe("the published binary runs from an installed layout", () => {
   it("runs `iroha init` and `doctor` — shipped assets resolve at package-relative paths", async () => {
     // A fresh staging package plus a `node_modules` linked to the plugin's own
     // (it declares exactly the runtime deps, including the native
-    // `@libsql/client`) reproduces what `npm i -g @iroha-labs/iroha` provides,
+    // `@libsql/client`) reproduces what `npm i -g @irohalabs/iroha` provides,
     // WITHOUT the monorepo layout that masked the shipped-asset gap. Proves the
     // bundled CLI finds `migrations/` at `../migrations` (`iroha init`) and the
     // shipped platform manifests (`iroha doctor`) — the checks that would have

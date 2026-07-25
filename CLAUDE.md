@@ -30,7 +30,7 @@ Machine-readable contracts live under `<spec-root>/schemas/` and `<spec-root>/mi
 ## Product invariants
 
 - Product, plugin, MCP server, and CLI name: `iroha`.
-- Publisher: `iroha labs`; npm package: `@iroha-labs/iroha`.
+- Publisher: `iroha labs`; npm package: `@irohalabs/iroha`.
 - TypeScript and Node.js `>=24 <25` only.
 - Git-tracked `.iroha/` is the team-shared canonical source.
 - libSQL is a local, disposable, rebuildable index. It is never the sole source of approved knowledge.

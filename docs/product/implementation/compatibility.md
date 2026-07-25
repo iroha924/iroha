@@ -79,7 +79,7 @@ The dependency graph must be acyclic. Domain packages must not depend on platfor
 - Changesets uses a fixed group for every published package.
 - Git tag format is `v<semver>`.
 - Plugin archives contain compiled artifacts and must not require an install lifecycle script.
-- npm package name is `@iroha-labs/iroha`; the executable remains `iroha`.
+- npm package name is `@irohalabs/iroha`; the executable remains `iroha`.
 - The unscoped npm name `iroha` is already occupied and must not be used.
 
 ## 4. Logical package boundaries
@@ -104,7 +104,7 @@ The dependency graph must be acyclic. Domain packages must not depend on platfor
 | `@iroha/plugin` | manifests, hooks, skills, packaged dist | cli, mcp, adapters |
 | `apps/dashboard` | React SPA | generated API client only |
 
-`@iroha/*` is the internal workspace namespace. Only `@iroha-labs/iroha` is published initially; other packages remain private until there is a concrete external API need.
+`@iroha/*` is the internal workspace namespace. Only `@irohalabs/iroha` is published initially; other packages remain private until there is a concrete external API need.
 
 ## 5. Module and build rules
 
@@ -256,7 +256,7 @@ Rationale: `voyage-4-large` is a current general-purpose multilingual retrieval 
 Initial channels:
 
 1. GitHub Releases with plugin archives and SHA-256 checksums;
-2. npm package `@iroha-labs/iroha` exposing the `iroha` binary;
+2. npm package `@irohalabs/iroha` exposing the `iroha` binary;
 3. Claude marketplace manifest hosted from the repository;
 4. Codex marketplace manifest hosted from the repository.
 
