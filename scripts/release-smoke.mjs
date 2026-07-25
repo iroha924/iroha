@@ -75,24 +75,47 @@ try {
 
   console.log(chalk.bold("\n4/5 Installing it globally into a clean prefix…"));
   await $`npm install -g @irohalabs/iroha --prefix ${prefix} --userconfig ${npmrc} --registry ${REGISTRY}`;
-  const bin = path.join(prefix, "bin", "iroha");
+  // npm's global executable layout is platform-specific: `{prefix}/bin/iroha` on
+  // Unix, a `{prefix}/iroha.cmd` shim on Windows.
+  const bin =
+    process.platform === "win32"
+      ? path.join(prefix, "iroha.cmd")
+      : path.join(prefix, "bin", "iroha");
 
   console.log(chalk.bold("\n5/5 Running the installed CLI against a fresh repo…"));
   await fs.ensureDir(repo);
   await $({ cwd: repo })`git init --initial-branch=main`;
   await $({ cwd: repo })`git config user.email smoke@example.com`;
   await $({ cwd: repo })`git config user.name smoke`;
+
+  // The version the CLI reports must match the artifact actually published —
+  // otherwise a release that bumps one version constant but not the other would
+  // pass this smoke with a lying binary.
+  const publishedVersion = JSON.parse(
+    await fs.readFile(path.join(releaseDir, "package.json"), "utf8"),
+  ).version;
   const version = (await $`${bin} --version`).stdout.trim();
+  if (!version.includes(publishedVersion)) {
+    throw new Error(`iroha --version "${version}" does not match published ${publishedVersion}`);
+  }
+
   const init = JSON.parse((await $({ cwd: repo })`${bin} init --json`).stdout);
   if (init.ok !== true) throw new Error(`iroha init did not report ok: ${JSON.stringify(init)}`);
   const doctor = JSON.parse((await $({ cwd: repo })`${bin} doctor --json`).stdout);
-  const initCheck = doctor.doctor?.checks?.find((c) => c.name === "iroha-init");
-  if (initCheck?.status !== "ok") {
-    throw new Error(`iroha doctor iroha-init check not ok: ${JSON.stringify(initCheck)}`);
+  // Assert both the init check and the storage-capabilities check — the latter
+  // is what proves the native `@libsql/client` (FTS5 + vector) loaded from the
+  // globally-installed package, which is the whole point of this smoke.
+  for (const name of ["iroha-init", "storage-capabilities"]) {
+    const check = doctor.doctor?.checks?.find((c) => c.name === name);
+    if (check?.status !== "ok") {
+      throw new Error(`iroha doctor ${name} check not ok: ${JSON.stringify(check)}`);
+    }
   }
 
   console.log(
-    chalk.green.bold(`\n✓ Release smoke passed — iroha ${version} publishes, installs, and runs.`),
+    chalk.green.bold(
+      `\n✓ Release smoke passed — iroha ${publishedVersion} publishes, installs, and runs.`,
+    ),
   );
 } finally {
   if (verdaccio) await verdaccio.kill().catch(() => {});
