@@ -29,6 +29,10 @@ catalog:
   # Also pinned in `overrides` below (a pnpm override wins unconditionally, so a
   # bump here alone is silently ignored) — keep the two in sync.
   "@hono/node-server": 2.0.10
+  # @iroha/api dashboard routes: OpenAPI 3.1 generation + request validation from
+  # the existing Zod schemas. Bundles @hono/zod-validator, so it is the only
+  # direct dep needed (validator is used transitively by `.openapi()` routes).
+  "@hono/zod-openapi": 1.5.1
   "@libsql/client": 0.17.4
   "@modelcontextprotocol/sdk": 1.29.0
   "@playwright/test": 1.61.1

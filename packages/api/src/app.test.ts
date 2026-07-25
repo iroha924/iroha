@@ -488,4 +488,25 @@ describe("dashboard API", () => {
     const suggestions = await get(app, "/api/v1/search/suggestions", cookie);
     expect(suggestions.status).toBe(404);
   });
+
+  it("serves an OpenAPI 3.1 document, unauthenticated, describing the routes and request bodies", async () => {
+    const repo = await setupApiRepo();
+    dir = repo.dir;
+    const { app } = makeApp(repo.dir);
+
+    // No session cookie: the doc is the API shape only (no repository data).
+    const res = await app.request("/api/doc", { headers: { Host: HOST } });
+    expect(res.status).toBe(200);
+    const doc = (await res.json()) as {
+      openapi: string;
+      paths: Record<string, Record<string, { requestBody?: unknown }>>;
+    };
+    expect(doc.openapi).toBe("3.1.0");
+
+    // A representative mutation and its request body are documented.
+    expect(doc.paths["/api/v1/candidates/{id}/approve"]?.post?.requestBody).toBeDefined();
+    // A GET with a query param is present; the doc endpoint does not describe itself.
+    expect(doc.paths["/api/v1/sessions"]?.get).toBeDefined();
+    expect(doc.paths["/api/doc"]).toBeUndefined();
+  });
 });

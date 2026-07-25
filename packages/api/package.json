@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@hono/node-server": "catalog:",
+    "@hono/zod-openapi": "catalog:",
     "@iroha/core": "workspace:*",
     "hono": "catalog:",
     "zod": "catalog:"

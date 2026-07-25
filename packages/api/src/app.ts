@@ -1,3 +1,4 @@
+import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import {
   approveCandidate,
   type CandidateClassification,
@@ -32,10 +33,9 @@ import {
   updateLocalSettings,
   updateSharedConfig,
 } from "@iroha/core";
-import { type Context, Hono, type MiddlewareHandler } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
-import { z } from "zod";
 import { type Auth, SESSION_COOKIE } from "./auth.js";
 import { failureBody, httpStatusForCode, newRequestId, successBody } from "./envelope.js";
 import { securityHeaders } from "./security.js";
@@ -54,6 +54,11 @@ interface Variables {
   requestId: string;
 }
 
+interface Vars {
+  Variables: Variables;
+}
+
+// Request-body schemas (strict — an invalid body is a 400 via `defaultHook`).
 const actorSchema = z.strictObject({
   provider: z.enum(["git", "github", "gitlab", "local"]),
   displayName: z.string().min(1).max(120),
@@ -125,6 +130,82 @@ const editSchema = z.strictObject({
   draft: z.record(z.string(), z.unknown()),
 });
 
+// Query params are documented as loose strings and parsed by the lenient helpers
+// below (numOpt/isoOpt/enumOpt) — an invalid value is dropped, never a 400
+// (dashboard-api.md query behavior: `?from=not-a-date` lists unfiltered). A
+// `z.string()` never rejects a present value, so validation stays a no-op while
+// the parameter still lands in the OpenAPI spec; the strict coercion the SPA
+// depends on happens in the handler. `.catch()` would express this directly but
+// is unrepresentable by the OpenAPI generator, so we keep the split.
+const optionalQuery = (description: string, example?: string) =>
+  z
+    .string()
+    .optional()
+    .openapi(example === undefined ? { description } : { description, example });
+
+const sessionsQuery = z.object({
+  limit: optionalQuery("Max sessions to return", "50"),
+  cursor: optionalQuery("Opaque pagination cursor"),
+  platform: optionalQuery("claude_code | codex"),
+  summaryStatus: optionalQuery("none | draft | approved"),
+  from: optionalQuery("RFC3339 lower bound compared against last_seen_at"),
+  to: optionalQuery("RFC3339 upper bound compared against last_seen_at"),
+});
+const candidatesQuery = z.object({
+  status: optionalQuery("pending | approved | rejected | superseded"),
+  limit: optionalQuery("Max candidates to return"),
+  cursor: optionalQuery("Opaque pagination cursor"),
+});
+// `status`/`type` are repeatable and read via `c.req.queries()` in the handler
+// (a single value must still parse as a one-element filter, which neither a
+// string nor an array schema expresses without `.catch()`), so only the scalar
+// params appear here.
+const knowledgeQuery = z.object({
+  limit: optionalQuery("Max knowledge items to return"),
+  cursor: optionalQuery("Opaque pagination cursor"),
+});
+const relationsQuery = z.object({ limit: optionalQuery("Max relations to return") });
+const graphPathQuery = z.object({
+  from: z.string().min(1).openapi({ description: "Source entity id" }),
+  to: z.string().min(1).openapi({ description: "Target entity id" }),
+});
+
+const idParam = z.object({ id: z.string().openapi({ param: { name: "id", in: "path" } }) });
+const runParam = z.object({
+  id: z.string().openapi({ param: { name: "id", in: "path" } }),
+  runId: z.string().openapi({ param: { name: "runId", in: "path" } }),
+});
+
+// Response envelopes for the OpenAPI document (dashboard-api.md §4). Responses
+// are not validated at runtime — the handlers answer through `respond()`, whose
+// dynamic status the literal-typed response union cannot express — so these
+// schemas are documentation only.
+const metaSchema = z.object({ requestId: z.string() });
+const successEnvelope = z.object({ ok: z.literal(true), data: z.unknown(), meta: metaSchema });
+const errorEnvelope = z.object({
+  ok: z.literal(false),
+  error: z.object({
+    code: z.string(),
+    message: z.string(),
+    retryable: z.boolean(),
+    fieldErrors: z.record(z.string(), z.string()),
+  }),
+  meta: metaSchema,
+});
+const RESPONSES = {
+  200: { content: { "application/json": { schema: successEnvelope } }, description: "Success" },
+  400: { content: { "application/json": { schema: errorEnvelope } }, description: "Invalid input" },
+  401: {
+    content: { "application/json": { schema: errorEnvelope } },
+    description: "Missing or invalid session",
+  },
+} as const;
+
+/** A required JSON request body of the given schema. */
+const jsonBody = <T extends z.ZodType>(schema: T) => ({
+  body: { required: true, content: { "application/json": { schema } } },
+});
+
 function fieldErrorsOf(error: z.ZodError): Record<string, string> {
   const fieldErrors: Record<string, string> = {};
   for (const issue of error.issues) {
@@ -136,15 +217,32 @@ function fieldErrorsOf(error: z.ZodError): Record<string, string> {
 /**
  * Builds the local dashboard Hono app: security headers, cookie session auth,
  * anti-CSRF guard on mutations, and every `/api/v1` endpoint wired to an
- * `@iroha/core` use case. Each endpoint's response `data` shape is the return
- * type of its use case, re-exported from `@iroha/api` for the SPA's typed
- * client (index.ts).
+ * `@iroha/core` use case. Routes are declared with `@hono/zod-openapi`, which
+ * validates each request body/param against its Zod schema and generates the
+ * OpenAPI 3.1 document served at `GET /api/doc`. Each endpoint's response `data`
+ * shape is the return type of its use case, re-exported from `@iroha/api` for the
+ * SPA's typed client (index.ts).
  */
 export function createApp(config: AppConfig) {
   const { cwd, clock, random, auth } = config;
   const useCaseCtx = { cwd, clock, random };
 
-  const app = new Hono<{ Variables: Variables }>();
+  const app = new OpenAPIHono<Vars>({
+    // A request that fails Zod validation becomes the standard failure envelope
+    // with per-field errors, matching the pre-migration `readJson` behavior.
+    defaultHook: (result, c) => {
+      if (!result.success) {
+        return c.json(
+          failureBody(
+            c.get("requestId"),
+            { code: "INVALID_INPUT", message: "Request failed validation", retryable: false },
+            fieldErrorsOf(result.error),
+          ),
+          400,
+        );
+      }
+    },
+  });
 
   app.use("*", securityHeaders());
   app.use("*", async (c, next) => {
@@ -155,7 +253,7 @@ export function createApp(config: AppConfig) {
   // Anti-CSRF for every state-changing request (dashboard-api.md §3): exact
   // same-origin, JSON content type, and the custom `X-Iroha-Request` header a
   // cross-site form or `<img>`/`<script>` load can never set.
-  const antiCsrf: MiddlewareHandler<{ Variables: Variables }> = async (c, next) => {
+  const antiCsrf: MiddlewareHandler<Vars> = async (c, next) => {
     const method = c.req.method;
     if (method === "POST" || method === "PATCH" || method === "DELETE" || method === "PUT") {
       const origin = c.req.header("Origin");
@@ -178,7 +276,7 @@ export function createApp(config: AppConfig) {
   };
   app.use("*", antiCsrf);
 
-  const requireCookie: MiddlewareHandler<{ Variables: Variables }> = async (c, next) => {
+  const requireCookie: MiddlewareHandler<Vars> = async (c, next) => {
     if (!auth.verify(getCookie(c, SESSION_COOKIE))) {
       return c.json(
         failureBody(c.get("requestId"), {
@@ -207,19 +305,26 @@ export function createApp(config: AppConfig) {
     ),
   );
 
-  const routes = app
-    .post("/api/auth/exchange", async (c) => {
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/auth/exchange",
+      tags: ["auth"],
+      summary: "Exchange a one-time launch token for a session cookie",
+      request: jsonBody(exchangeSchema),
+      responses: RESPONSES,
+    }),
+    (c) => {
       const rid = c.get("requestId");
-      const body = await readJson(c, exchangeSchema, rid);
-      if (!body.ok) return body.res;
-      const cookieValue = auth.exchange(body.value.token);
+      const cookieValue = auth.exchange(c.req.valid("json").token);
       if (cookieValue === null) {
-        return c.json(
-          failureBody(rid, {
+        return fail(
+          c,
+          {
             code: "INVALID_SESSION_TOKEN",
             message: "Launch token is invalid or already used",
             retryable: false,
-          }),
+          },
           401,
         );
       }
@@ -229,96 +334,199 @@ export function createApp(config: AppConfig) {
         path: "/",
         secure: false,
       });
-      return c.json(successBody(rid, { authenticated: true }));
-    })
-    .post("/api/auth/logout", (c) => {
+      return ok(c, rid, { authenticated: true });
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/auth/logout",
+      tags: ["auth"],
+      summary: "Revoke the session cookie",
+      responses: RESPONSES,
+    }),
+    (c) => {
       auth.revoke(getCookie(c, SESSION_COOKIE));
       deleteCookie(c, SESSION_COOKIE, { path: "/" });
-      return c.json(successBody(c.get("requestId"), { authenticated: false }));
-    })
-    .get("/api/v1/health", (c) => c.json(successBody(c.get("requestId"), { status: "ok" })))
-    .get("/api/v1/bootstrap", (c) => respond(c, getBootstrap(useCaseCtx)))
-    .get("/api/v1/overview", (c) => respond(c, getOverview(useCaseCtx)))
-    .get("/api/v1/sessions", (c) =>
-      respond(
+      return ok(c, c.get("requestId"), { authenticated: false });
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/v1/health",
+      tags: ["system"],
+      summary: "Liveness probe",
+      responses: RESPONSES,
+    }),
+    (c) => ok(c, c.get("requestId"), { status: "ok" }),
+  );
+
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/v1/bootstrap",
+      tags: ["overview"],
+      summary: "Initial dashboard bootstrap payload",
+      responses: RESPONSES,
+    }),
+    (c) => respond(c, getBootstrap(useCaseCtx)),
+  );
+
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/v1/overview",
+      tags: ["overview"],
+      summary: "Repository overview metrics",
+      responses: RESPONSES,
+    }),
+    (c) => respond(c, getOverview(useCaseCtx)),
+  );
+
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/v1/sessions",
+      tags: ["sessions"],
+      summary: "List agent sessions",
+      request: { query: sessionsQuery },
+      responses: RESPONSES,
+    }),
+    (c) => {
+      const q = c.req.valid("query");
+      return respond(
         c,
         listDashboardSessions({
           ...useCaseCtx,
-          ...numOpt("limit", c.req.query("limit")),
-          ...strOpt("cursor", c.req.query("cursor")),
-          ...enumOpt<"claude_code" | "codex">("platform", c.req.query("platform"), [
-            "claude_code",
-            "codex",
-          ]),
-          ...enumOpt<"none" | "draft" | "approved">("summaryStatus", c.req.query("summaryStatus"), [
+          ...numOpt("limit", q.limit),
+          ...strOpt("cursor", q.cursor),
+          ...enumOpt<"claude_code" | "codex">("platform", q.platform, ["claude_code", "codex"]),
+          ...enumOpt<"none" | "draft" | "approved">("summaryStatus", q.summaryStatus, [
             "none",
             "draft",
             "approved",
           ]),
-          ...isoOpt("from", c.req.query("from")),
-          ...isoOpt("to", c.req.query("to")),
+          ...isoOpt("from", q.from),
+          ...isoOpt("to", q.to),
         }),
-      ),
-    )
-    .get("/api/v1/sessions/:id", (c) =>
-      respond(c, getSessionDetail({ ...useCaseCtx, sessionId: c.req.param("id") })),
-    )
-    .get("/api/v1/sessions/:id/runs/:runId", (c) =>
-      respond(c, getRunDetail({ ...useCaseCtx, runId: c.req.param("runId") })),
-    )
-    .get("/api/v1/checkpoints/:id", (c) =>
-      respond(c, getCheckpointDetail({ ...useCaseCtx, checkpointId: c.req.param("id") })),
-    )
-    .get("/api/v1/candidates", (c) =>
-      respond(
+      );
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/v1/sessions/{id}",
+      tags: ["sessions"],
+      summary: "Session detail",
+      request: { params: idParam },
+      responses: RESPONSES,
+    }),
+    (c) => respond(c, getSessionDetail({ ...useCaseCtx, sessionId: c.req.valid("param").id })),
+  );
+
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/v1/sessions/{id}/runs/{runId}",
+      tags: ["sessions"],
+      summary: "Run detail",
+      request: { params: runParam },
+      responses: RESPONSES,
+    }),
+    (c) => respond(c, getRunDetail({ ...useCaseCtx, runId: c.req.valid("param").runId })),
+  );
+
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/v1/checkpoints/{id}",
+      tags: ["sessions"],
+      summary: "Checkpoint detail",
+      request: { params: idParam },
+      responses: RESPONSES,
+    }),
+    (c) =>
+      respond(c, getCheckpointDetail({ ...useCaseCtx, checkpointId: c.req.valid("param").id })),
+  );
+
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/v1/candidates",
+      tags: ["review"],
+      summary: "List the review queue",
+      request: { query: candidatesQuery },
+      responses: RESPONSES,
+    }),
+    (c) => {
+      const q = c.req.valid("query");
+      return respond(
         c,
         listCandidateQueue({
           ...useCaseCtx,
-          ...enumOpt<CandidateStatus>("status", c.req.query("status"), [
+          ...enumOpt<CandidateStatus>("status", q.status, [
             "pending",
             "approved",
             "rejected",
             "superseded",
           ]),
-          ...numOpt("limit", c.req.query("limit")),
-          ...strOpt("cursor", c.req.query("cursor")),
+          ...numOpt("limit", q.limit),
+          ...strOpt("cursor", q.cursor),
         }),
-      ),
-    )
-    .get("/api/v1/candidates/:id", (c) =>
-      respond(c, getCandidateDetail({ ...useCaseCtx, candidateId: c.req.param("id") })),
-    )
-    .patch("/api/v1/candidates/:id", async (c) => {
-      const rid = c.get("requestId");
-      const body = await readJson(c, editSchema, rid);
-      if (!body.ok) return body.res;
-      const { classification: rawClassification, ...proposalPart } = body.value.draft;
+      );
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/v1/candidates/{id}",
+      tags: ["review"],
+      summary: "Candidate detail",
+      request: { params: idParam },
+      responses: RESPONSES,
+    }),
+    (c) => respond(c, getCandidateDetail({ ...useCaseCtx, candidateId: c.req.valid("param").id })),
+  );
+
+  app.openapi(
+    createRoute({
+      method: "patch",
+      path: "/api/v1/candidates/{id}",
+      tags: ["review"],
+      summary: "Edit a candidate draft",
+      request: { params: idParam, ...jsonBody(editSchema) },
+      responses: RESPONSES,
+    }),
+    (c) => {
+      const body = c.req.valid("json");
+      const { classification: rawClassification, ...proposalPart } = body.draft;
       const proposalParsed = proposalSchema.safeParse(proposalPart);
       if (!proposalParsed.success) {
-        return c.json(
-          failureBody(
-            rid,
-            { code: "INVALID_INPUT", message: "Draft failed validation", retryable: false },
-            fieldErrorsOf(proposalParsed.error),
-          ),
+        return fail(
+          c,
+          { code: "INVALID_INPUT", message: "Draft failed validation", retryable: false },
           400,
+          fieldErrorsOf(proposalParsed.error),
         );
       }
       let classification: CandidateClassification | undefined;
       if (rawClassification !== undefined) {
         const clsParsed = classificationSchema.safeParse(rawClassification);
         if (!clsParsed.success) {
-          return c.json(
-            failureBody(
-              rid,
-              {
-                code: "INVALID_INPUT",
-                message: "Classification failed validation",
-                retryable: false,
-              },
-              fieldErrorsOf(clsParsed.error),
-            ),
+          return fail(
+            c,
+            {
+              code: "INVALID_INPUT",
+              message: "Classification failed validation",
+              retryable: false,
+            },
             400,
+            fieldErrorsOf(clsParsed.error),
           );
         }
         // Zod `.optional()` widens each field to `T | undefined`; the runtime
@@ -329,62 +537,103 @@ export function createApp(config: AppConfig) {
         c,
         editCandidate({
           ...useCaseCtx,
-          candidateId: c.req.param("id"),
-          revisionToken: body.value.revisionToken,
+          candidateId: c.req.valid("param").id,
+          revisionToken: body.revisionToken,
           draft: { ...proposalParsed.data, ...(classification ? { classification } : {}) },
         }),
       );
-    })
-    .post("/api/v1/candidates/:id/approve", async (c) => {
-      const rid = c.get("requestId");
-      const body = await readJson(c, approveSchema, rid);
-      if (!body.ok) return body.res;
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/v1/candidates/{id}/approve",
+      tags: ["review"],
+      summary: "Approve a candidate into canonical knowledge",
+      request: { params: idParam, ...jsonBody(approveSchema) },
+      responses: RESPONSES,
+    }),
+    (c) => {
+      const body = c.req.valid("json");
       return respond(
         c,
         approveCandidate({
           ...useCaseCtx,
-          candidateId: c.req.param("id"),
-          revisionToken: body.value.revisionToken,
-          actor: body.value.actor,
-          ...(body.value.comment !== undefined ? { comment: body.value.comment } : {}),
+          candidateId: c.req.valid("param").id,
+          revisionToken: body.revisionToken,
+          actor: body.actor,
+          ...(body.comment !== undefined ? { comment: body.comment } : {}),
         }),
       );
-    })
-    .post("/api/v1/candidates/:id/reject", async (c) => {
-      const rid = c.get("requestId");
-      const body = await readJson(c, rejectSchema, rid);
-      if (!body.ok) return body.res;
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/v1/candidates/{id}/reject",
+      tags: ["review"],
+      summary: "Reject a candidate",
+      request: { params: idParam, ...jsonBody(rejectSchema) },
+      responses: RESPONSES,
+    }),
+    (c) => {
+      const body = c.req.valid("json");
       return respond(
         c,
         rejectCandidate({
           ...useCaseCtx,
-          candidateId: c.req.param("id"),
-          revisionToken: body.value.revisionToken,
-          ...(body.value.reason !== undefined ? { reason: body.value.reason } : {}),
+          candidateId: c.req.valid("param").id,
+          revisionToken: body.revisionToken,
+          ...(body.reason !== undefined ? { reason: body.reason } : {}),
         }),
       );
-    })
-    .post("/api/v1/candidates/:id/supersede", async (c) => {
-      const rid = c.get("requestId");
-      const body = await readJson(c, supersedeSchema, rid);
-      if (!body.ok) return body.res;
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/v1/candidates/{id}/supersede",
+      tags: ["review"],
+      summary: "Supersede a candidate",
+      request: { params: idParam, ...jsonBody(supersedeSchema) },
+      responses: RESPONSES,
+    }),
+    (c) => {
+      const body = c.req.valid("json");
       return respond(
         c,
         supersedeCandidate({
           ...useCaseCtx,
-          candidateId: c.req.param("id"),
-          revisionToken: body.value.revisionToken,
-          ...(body.value.comment !== undefined ? { comment: body.value.comment } : {}),
+          candidateId: c.req.valid("param").id,
+          revisionToken: body.revisionToken,
+          ...(body.comment !== undefined ? { comment: body.comment } : {}),
         }),
       );
-    })
-    .get("/api/v1/knowledge", (c) =>
-      respond(
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/v1/knowledge",
+      tags: ["knowledge"],
+      summary: "List approved knowledge",
+      description:
+        "Repeatable `status` (approved|superseded|archived) and `type` (entity type) filters narrow the list; invalid values are ignored.",
+      request: { query: knowledgeQuery },
+      responses: RESPONSES,
+    }),
+    (c) => {
+      const q = c.req.valid("query");
+      return respond(
         c,
         listKnowledge({
           ...useCaseCtx,
-          ...numOpt("limit", c.req.query("limit")),
-          ...strOpt("cursor", c.req.query("cursor")),
+          ...numOpt("limit", q.limit),
+          ...strOpt("cursor", q.cursor),
           ...enumArrOpt("statuses", c.req.queries("status"), [
             "approved",
             "superseded",
@@ -400,100 +649,254 @@ export function createApp(config: AppConfig) {
             "review_learning",
           ]),
         }),
-      ),
-    )
-    .get("/api/v1/knowledge/:id", (c) =>
-      respond(c, getKnowledgeDetail({ ...useCaseCtx, entityId: c.req.param("id") })),
-    )
-    .get("/api/v1/entities/:id/relations", (c) =>
+      );
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/v1/knowledge/{id}",
+      tags: ["knowledge"],
+      summary: "Knowledge detail",
+      request: { params: idParam },
+      responses: RESPONSES,
+    }),
+    (c) => respond(c, getKnowledgeDetail({ ...useCaseCtx, entityId: c.req.valid("param").id })),
+  );
+
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/v1/entities/{id}/relations",
+      tags: ["graph"],
+      summary: "Direct relations of an entity",
+      request: { params: idParam, query: relationsQuery },
+      responses: RESPONSES,
+    }),
+    (c) =>
       respond(
         c,
         getEntityRelations({
           ...useCaseCtx,
-          entityId: c.req.param("id"),
-          ...numOpt("limit", c.req.query("limit")),
+          entityId: c.req.valid("param").id,
+          ...numOpt("limit", c.req.valid("query").limit),
         }),
       ),
-    )
-    .post("/api/v1/graph/query", async (c) => {
-      const rid = c.get("requestId");
-      const body = await readJson(c, graphQuerySchema, rid);
-      if (!body.ok) return body.res;
+  );
+
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/v1/graph/query",
+      tags: ["graph"],
+      summary: "Expand the graph from root entities",
+      request: jsonBody(graphQuerySchema),
+      responses: RESPONSES,
+    }),
+    (c) => {
+      const body = c.req.valid("json");
       return respond(
         c,
         graphQuery({
           ...useCaseCtx,
-          roots: body.value.roots,
-          ...(body.value.depth !== undefined ? { depth: body.value.depth } : {}),
+          roots: body.roots,
+          ...(body.depth !== undefined ? { depth: body.depth } : {}),
         }),
       );
-    })
-    .get("/api/v1/graph/path", async (c) => {
-      const from = c.req.query("from");
-      const to = c.req.query("to");
-      if (from === undefined || to === undefined) {
-        return c.json(
-          failureBody(c.get("requestId"), {
-            code: "INVALID_INPUT",
-            message: "from and to are required",
-            retryable: false,
-          }),
-          400,
-        );
-      }
-      return respond(c, graphPath({ ...useCaseCtx, fromId: from, toId: to }));
-    })
-    .post("/api/v1/search", async (c) => {
-      const rid = c.get("requestId");
-      const body = await readJson(c, searchSchema, rid);
-      if (!body.ok) return body.res;
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/v1/graph/path",
+      tags: ["graph"],
+      summary: "Shortest path between two entities",
+      request: { query: graphPathQuery },
+      responses: RESPONSES,
+    }),
+    (c) => {
+      const q = c.req.valid("query");
+      return respond(c, graphPath({ ...useCaseCtx, fromId: q.from, toId: q.to }));
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/v1/search",
+      tags: ["search"],
+      summary: "Hybrid retrieval over the knowledge graph",
+      request: jsonBody(searchSchema),
+      responses: RESPONSES,
+    }),
+    (c) => {
+      const body = c.req.valid("json");
       return respond(
         c,
         mcpSearch({
           ...useCaseCtx,
-          query: body.value.query,
-          ...(body.value.mode !== undefined ? { mode: body.value.mode } : {}),
-          ...(body.value.limit !== undefined ? { limit: body.value.limit } : {}),
-          ...(body.value.includeBody !== undefined ? { includeBody: body.value.includeBody } : {}),
-          ...(body.value.filters !== undefined ? { filters: body.value.filters } : {}),
+          query: body.query,
+          ...(body.mode !== undefined ? { mode: body.mode } : {}),
+          ...(body.limit !== undefined ? { limit: body.limit } : {}),
+          ...(body.includeBody !== undefined ? { includeBody: body.includeBody } : {}),
+          ...(body.filters !== undefined ? { filters: body.filters } : {}),
         }),
       );
-    })
-    .post("/api/v1/sync", (c) => respond(c, runDashboardSync(useCaseCtx)))
-    .get("/api/v1/sync/status", (c) => respond(c, getSyncStatus(useCaseCtx)))
-    .get("/api/v1/settings", (c) => respond(c, getSettings(useCaseCtx)))
-    .patch("/api/v1/settings/shared", async (c) => {
-      const rid = c.get("requestId");
-      const body = await readJson(c, repositoryConfigSchema, rid);
-      if (!body.ok) return body.res;
-      return respond(c, updateSharedConfig({ ...useCaseCtx, config: body.value }));
-    })
-    .patch("/api/v1/settings/local", async (c) => {
-      const rid = c.get("requestId");
-      const body = await readJson(c, localSettingSchema, rid);
-      if (!body.ok) return body.res;
-      return respond(
-        c,
-        updateLocalSettings({ ...useCaseCtx, key: body.value.key, value: body.value.value }),
-      );
-    })
-    .get("/api/v1/doctor", (c) => respond(c, runDoctor(cwd)))
-    .post("/api/v1/doctor/repair", async (c) => {
-      const rid = c.get("requestId");
-      const body = await readJson(c, doctorRepairSchema, rid);
-      if (!body.ok) return body.res;
-      return respond(c, doctorRepair({ ...useCaseCtx, operation: body.value.operation }));
-    });
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/v1/sync",
+      tags: ["sync"],
+      summary: "Rebuild the index from canonical files",
+      responses: RESPONSES,
+    }),
+    (c) => respond(c, runDashboardSync(useCaseCtx)),
+  );
+
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/v1/sync/status",
+      tags: ["sync"],
+      summary: "Canonical sync status",
+      responses: RESPONSES,
+    }),
+    (c) => respond(c, getSyncStatus(useCaseCtx)),
+  );
+
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/v1/settings",
+      tags: ["settings"],
+      summary: "Read shared and local settings",
+      responses: RESPONSES,
+    }),
+    (c) => respond(c, getSettings(useCaseCtx)),
+  );
+
+  app.openapi(
+    createRoute({
+      method: "patch",
+      path: "/api/v1/settings/shared",
+      tags: ["settings"],
+      summary: "Update the git-tracked shared config",
+      request: jsonBody(repositoryConfigSchema),
+      responses: RESPONSES,
+    }),
+    (c) => respond(c, updateSharedConfig({ ...useCaseCtx, config: c.req.valid("json") })),
+  );
+
+  app.openapi(
+    createRoute({
+      method: "patch",
+      path: "/api/v1/settings/local",
+      tags: ["settings"],
+      summary: "Update a local (untracked) setting",
+      request: jsonBody(localSettingSchema),
+      responses: RESPONSES,
+    }),
+    (c) => {
+      const body = c.req.valid("json");
+      return respond(c, updateLocalSettings({ ...useCaseCtx, key: body.key, value: body.value }));
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/v1/doctor",
+      tags: ["doctor"],
+      summary: "Run environment diagnostics",
+      responses: RESPONSES,
+    }),
+    (c) => respond(c, runDoctor(cwd)),
+  );
+
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/v1/doctor/repair",
+      tags: ["doctor"],
+      summary: "Apply a diagnostic repair operation",
+      request: jsonBody(doctorRepairSchema),
+      responses: RESPONSES,
+    }),
+    (c) => respond(c, doctorRepair({ ...useCaseCtx, operation: c.req.valid("json").operation })),
+  );
+
+  // The OpenAPI 3.1 document for every `.openapi()` route above. Unauthenticated
+  // by design: it is the API's shape (paths, request schemas) with no repository
+  // data or secrets, on a loopback-only server — the same openness as
+  // `/api/auth/exchange`. Registered with `.get()` so it does not describe itself.
+  app.get("/api/doc", (c) =>
+    c.json(
+      app.getOpenAPI31Document({
+        openapi: "3.1.0",
+        info: {
+          title: "iroha dashboard API",
+          version: "0.1.0",
+          description: "Local, loopback-only API for the iroha dashboard (dashboard-api.md).",
+        },
+      }),
+    ),
+  );
 
   // Serve the built SPA (+ SPA fallback) for everything that is not an API route.
   if (config.staticRoot !== undefined) {
     app.get("*", createStaticHandler(config.staticRoot));
   }
 
-  return routes;
+  return app;
 }
 
 export type AppType = ReturnType<typeof createApp>;
+
+/**
+ * Renders an `@iroha/core` use-case Result as the success/failure envelope.
+ * Returns `never` because the envelope's HTTP status is chosen at runtime from
+ * the use case's error code — a dynamic status the literal-typed `responses`
+ * union of `@hono/zod-openapi` cannot express. The SPA reads this runtime
+ * envelope (client.ts), not RPC response types, so the single cast here keeps
+ * every handler free of per-route response typing.
+ */
+async function respond<T>(
+  c: Context<Vars>,
+  resultPromise: Promise<
+    | { ok: true; value: T }
+    | { ok: false; error: { code: string; message: string; retryable: boolean } }
+  >,
+): Promise<never> {
+  const requestId = c.get("requestId");
+  const result = await resultPromise;
+  if (!result.ok) {
+    return c.json(
+      failureBody(requestId, result.error),
+      httpStatusForCode(result.error.code) as ContentfulStatusCode,
+    ) as never;
+  }
+  return c.json(successBody(requestId, result.value)) as never;
+}
+
+/** Success envelope for handlers that do not front a use case (see `respond`). */
+function ok<T>(c: Context<Vars>, requestId: string, data: T): never {
+  return c.json(successBody(requestId, data)) as never;
+}
+
+/** Failure envelope for in-handler validation/auth branches (see `respond`). */
+function fail(
+  c: Context<Vars>,
+  error: { code: string; message: string; retryable: boolean },
+  status: ContentfulStatusCode,
+  fieldErrors?: Record<string, string>,
+): never {
+  return c.json(failureBody(c.get("requestId"), error, fieldErrors), status) as never;
+}
 
 function safeHost(origin: string): string | null {
   try {
@@ -537,60 +940,4 @@ function enumArrOpt<T extends string>(
   if (values === undefined) return {};
   const filtered = values.filter((v): v is T => (allowed as readonly string[]).includes(v));
   return filtered.length > 0 ? { [key]: filtered } : {};
-}
-
-async function readJson<T extends z.ZodType>(
-  c: Context<{ Variables: Variables }>,
-  schema: T,
-  requestId: string,
-): Promise<{ ok: true; value: z.infer<T> } | { ok: false; res: Response }> {
-  let raw: unknown;
-  try {
-    raw = await c.req.json();
-  } catch {
-    return {
-      ok: false,
-      res: c.json(
-        failureBody(requestId, {
-          code: "INVALID_INPUT",
-          message: "Request body is not valid JSON",
-          retryable: false,
-        }),
-        400,
-      ),
-    };
-  }
-  const parsed = schema.safeParse(raw);
-  if (!parsed.success) {
-    return {
-      ok: false,
-      res: c.json(
-        failureBody(
-          requestId,
-          { code: "INVALID_INPUT", message: "Request failed validation", retryable: false },
-          fieldErrorsOf(parsed.error),
-        ),
-        400,
-      ),
-    };
-  }
-  return { ok: true, value: parsed.data };
-}
-
-async function respond<T>(
-  c: Context<{ Variables: Variables }>,
-  resultPromise: Promise<
-    | { ok: true; value: T }
-    | { ok: false; error: { code: string; message: string; retryable: boolean } }
-  >,
-): Promise<Response> {
-  const requestId = c.get("requestId");
-  const result = await resultPromise;
-  if (!result.ok) {
-    return c.json(
-      failureBody(requestId, result.error),
-      httpStatusForCode(result.error.code) as ContentfulStatusCode,
-    );
-  }
-  return c.json(successBody(requestId, result.value));
 }

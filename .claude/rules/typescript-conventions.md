@@ -39,6 +39,14 @@ Implementation conventions specific to this repository. Not general TS practices
 
 - When validating a structured format such as Markdown or YAML, do not make do with a hand-written regex parser. Use a real parser like `mdast-util-from-markdown` — a naive `#`-prefix regex falsely detects heading-like lines inside a fenced code block, but a real CommonMark AST parser correctly ignores them.
 
+## HTTP API routes (`packages/api`)
+
+The dashboard API is built with **`@hono/zod-openapi`** (`OpenAPIHono` + `createRoute`): each route declares its Zod request schema, and `GET /api/doc` serves the generated OpenAPI 3.1 document. When adding or changing a route, follow the patterns already in `app.ts` (they encode constraints that are non-obvious and were verified against the tests):
+
+- **Import `z` from `@hono/zod-openapi`**, not `zod` — it is the same Zod 4 instance extended with `.openapi()` for OpenAPI metadata. Route paths use `{id}` (OpenAPI style), not `:id`; declare each path param in `request.params`.
+- **Handlers return `never`.** Every endpoint answers through the shared success/failure envelope whose HTTP status is chosen at runtime from the use-case error code — a dynamic status the literal-typed `responses` union cannot express. `respond()`/`ok()`/`fail()` cast the `Response` to `never` in one place so `.openapi()`'s compile-time response check passes and each handler stays free of per-route response typing. The SPA reads this runtime envelope (`apps/dashboard/src/api/client.ts`), not Hono RPC response types, so `AppType` precision does not matter. `responses` in `createRoute` is therefore **documentation only** (not validated at runtime).
+- **Body validation is strict; query validation must stay lenient.** An invalid request body is a 400 via the app-level `defaultHook` (which rebuilds the `fieldErrors` envelope). Query params must **not** 400 on a bad value (e.g. `?from=not-a-date` lists unfiltered — there is a test) — but `.catch(undefined)`, the natural way to express "drop invalid", makes the OpenAPI generator throw `Unknown zod object type`. So declare scalar query params as loose `z.string().optional().openapi({ description })` (never rejects, still appears in the spec) and parse them with the lenient helpers (`numOpt`/`isoOpt`/`enumOpt`). A **repeatable** filter (a param that may be a single value or repeated, like `knowledge` `status`/`type`) cannot be a `z.string()` (repeats → array → 400) nor a `z.array()` (single → 400) without `.catch()`; read it via `c.req.queries()` in the handler and document it in the route `description`.
+
 ## Testing
 
 - Use `vitest` with its CLI default configuration as-is (`vitest.config.ts` is not needed for now). Before adding a config file, consider whether the package really needs it.
