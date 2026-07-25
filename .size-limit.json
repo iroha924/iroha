@@ -1,0 +1,12 @@
+[
+  {
+    "name": "dashboard JS (brotli)",
+    "path": "apps/dashboard/dist/assets/index-*.js",
+    "limit": "320 kB"
+  },
+  {
+    "name": "dashboard CSS (brotli)",
+    "path": "apps/dashboard/dist/assets/index-*.css",
+    "limit": "18 kB"
+  }
+]
