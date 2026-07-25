@@ -149,7 +149,10 @@ describe("runCli", () => {
     expect(byName.get("iroha-init")?.status).toBe("ok");
   });
 
-  it("finds a synced canonical document via `iroha search`", async () => {
+  // Six sequential real-CLI invocations (init → sync → five searches), each
+  // opening a libSQL connection and spawning git — the default 5s timeout is
+  // tight under CI x64 load, so give it explicit headroom (windows-ci-compat.md).
+  it("finds a synced canonical document via `iroha search`", { timeout: 30_000 }, async () => {
     repoDir = await createTempGitRepo();
     process.chdir(repoDir);
     await runCli(["init", "--json"]);
