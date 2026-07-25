@@ -103,7 +103,11 @@ minimumReleaseAgeExclude:
 #     the SDK's Streamable HTTP transport (the sole @hono/node-server consumer)
 #     is never on iroha's runtime path; forcing 2.0.10 dedupes it onto the
 #     version the direct deps (@iroha/api, @iroha/plugin) already resolve to.
+#   - js-yaml 5.2.1 (GHSA-pm4m-ph32-ghv5) is pulled by markdownlint-cli2 (whose
+#     latest, 0.23.1, pins it); 5.2.2 is the patch. Scoped to 5.2.1 so the
+#     unrelated 3.x/4.x js-yaml still in the tree keep their own major.
 overrides:
   fast-uri: 3.1.4
   "@hono/node-server": 2.0.10
   brace-expansion: 5.0.8
+  "js-yaml@5.2.1": 5.2.2
