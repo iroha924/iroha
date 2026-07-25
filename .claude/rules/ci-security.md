@@ -12,6 +12,7 @@ runs at least privilege (the default is `contents: read`; a scanner escalates on
 | **gitleaks** | `secrets-scan` | Committed secrets (entropy + patterns) across git history | **Yes** |
 | **CodeQL** | `codeql` | SAST for JS/TS (dataflow, injection, unsafe patterns) | No — uploads to the Security tab |
 | **Trivy** | `trivy` | Deps + secrets + **config/IaC misconfiguration** | No — advisory (`exit-code: 0`), Security tab |
+| **Semgrep** | `semgrep` | iroha's **own** invariants (custom rules, `.semgrep/`) | **Yes** — hard gate (`--error`) |
 
 - **Gating vs advisory.** osv and gitleaks **fail** the build — a real vulnerable dependency or a
   committed secret must block merge. CodeQL and Trivy are **advisory**: they surface findings in the
@@ -27,9 +28,27 @@ runs at least privilege (the default is `contents: read`; a scanner escalates on
   the CI-only checks are treated (`~/.claude/rules/ci-discipline.md`): a green local run does not prove
   these will pass.
 
+## Semgrep — iroha's own invariants (a hard gate, unlike CodeQL/Trivy)
+
+Unlike the generic scanners above, Semgrep runs a **local, repo-owned ruleset** (`.semgrep/`, no Semgrep
+registry or cloud) that encodes conventions only this project knows — so it is a **hard gate**
+(`--error`), not advisory. The codebase currently has zero matches, so each rule only prevents a
+regression. Each rule maps to a documented rule and was verified to both (a) flag a deliberate violation
+and (b) leave the current code clean:
+
+- `zod-use-safeparse` — flags `<name>Schema.parse(...)`; boundaries must use `.safeParse()` and return a
+  `Result`, never throw ([[typescript-conventions]]).
+- `subprocess-env-no-spread` — flags `{...process.env}`; a subprocess env must be an allowlist copied out
+  of an empty environment, not a spread ([[secure-subprocess-and-credentials]]). The pattern matches the
+  object spread only, not a legitimate `helper(process.env)` call or `process.env.X` read.
+- `no-dynamic-eval` — flags `eval(...)`.
+
+Run locally with `pnpm semgrep` (needs semgrep on PATH — it is a Python tool, `pipx install semgrep`,
+not an npm dependency; CI installs a pinned version via pipx). When you add a rule, add it to `.semgrep/`
+with a `message` that cites the rule it enforces, and confirm it flags a deliberate violation before
+relying on it.
+
 ## Related
 
-- Custom static-analysis rules that encode iroha's *own* invariants (Semgrep) are added in a later
-  batch and documented alongside their ruleset.
 - Review bots (Greptile / Codex) are a different axis from these scanners: [[ci-review-bots]].
 - Local, non-security dev tooling: [[dev-tooling]].

@@ -13,6 +13,7 @@
     "lint:md": "markdownlint-cli2",
     "lint:packages": "sherif",
     "knip": "knip",
+    "semgrep": "semgrep --config .semgrep/ --error .",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:contracts": "turbo run test:contracts",

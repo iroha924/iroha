@@ -169,3 +169,15 @@ jobs:
       - uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
         with:
           sarif_file: trivy-results.sarif
+
+  # Custom static rules that encode iroha's OWN invariants (Zod .safeParse-only,
+  # subprocess env allowlist, no eval) — the generic scanners can't know these
+  # project conventions. Local ruleset only (no Semgrep registry/cloud), pinned
+  # semgrep via pipx, and a hard gate (--error). See .claude/rules/ci-security.md.
+  semgrep:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - run: pipx install semgrep==1.157.0
+      - run: semgrep --config .semgrep/ --error .
