@@ -131,3 +131,41 @@ jobs:
       - run: corepack enable
       - run: corepack pnpm install --frozen-lockfile
       - run: pnpm check:package
+
+  # GitHub's SAST for JS/TS. Uploads results to the Security tab; it does not
+  # fail the build on findings. Escalates security-events like dependency-scan.
+  codeql:
+    permissions:
+      contents: read
+      security-events: write
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: github/codeql-action/init@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
+        with:
+          languages: javascript-typescript
+      - uses: github/codeql-action/analyze@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
+
+  # Trivy filesystem scan. It overlaps osv-scanner (deps) and gitleaks (secrets),
+  # so it is kept advisory (exit-code 0); its unique value here is config/IaC
+  # misconfiguration scanning. Findings are uploaded to the Security tab.
+  trivy:
+    permissions:
+      contents: read
+      security-events: write
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          format: sarif
+          output: trivy-results.sarif
+          exit-code: "0"
+      - uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
+        with:
+          sarif_file: trivy-results.sarif
