@@ -79,8 +79,22 @@ the **trigger** (when to run it).
 - **What:** `pnpm deps:check` runs `taze -r` (recursive, catalog-aware) and *reports* available
   upgrades without writing anything. Add `-w` to write, `taze major` to include majors.
 - **Trigger:** use it for an ad-hoc look at what is upgradable locally. Routine, PR-based updates are
-  Renovate's job (see [[ci-review-bots]]) — taze is the manual, interactive counterpart, not a
-  replacement for the bot.
+  Renovate's job (below) — taze is the manual, interactive counterpart, not a replacement for the bot.
+
+## Automated dependency PRs — Renovate
+
+- **What:** `.github/renovate.json` configures the Renovate app to open the routine dependency-update
+  PRs (npm + the `pnpm-workspace.yaml` catalog + GitHub Actions). It **replaces Dependabot** (there is
+  no `.github/dependabot.yml`; decision-log ID-083): Renovate understands the pnpm catalog, groups
+  non-major bumps into one PR while majors stay separate, keeps action pins as commit SHAs + a version
+  comment (`helpers:pinGitHubActionDigests`), and — matching this repo's supply-chain caution — holds a
+  new release for `minimumReleaseAge: 3 days` before proposing it. Commits are Conventional
+  (`:semanticCommits` → `chore(deps):` / `ci(deps):` for Actions), so they satisfy `commitlint`.
+- **Trigger:** it runs itself on the weekly schedule; there is nothing to run locally. When you edit
+  the config, validate it with `npx --yes --package renovate renovate-config-validator .github/renovate.json`.
+- **One-time human setup (outside the repo):** the Renovate **GitHub App must be installed** on the
+  repo/org for the config to take effect — unlike Dependabot, which is GitHub-native. Until then the
+  config is valid but inert.
 
 ## Published-package validation — publint + attw
 
