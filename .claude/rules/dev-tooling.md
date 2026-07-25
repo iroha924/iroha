@@ -68,6 +68,9 @@ the **trigger** (when to run it).
     name (string) at codegen time, not by import.
   - `apps/e2e` ignores `@iroha/cli`/`@iroha/dashboard`: e2e spawns the built binary/dashboard as
     subprocesses — the deps only guarantee they build first.
+  - `ignoreBinaries: ["semgrep"]`: the `pnpm semgrep` script invokes `semgrep`, which is a Python/pipx
+    tool (see [[ci-security]]), not an npm dependency — so knip cannot resolve it and would otherwise
+    report it as an unlisted binary.
 - When knip flags a genuinely unused export that is still used **within its own file**, remove the
   `export` keyword (make it file-local) rather than deleting the symbol.
 
