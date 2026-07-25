@@ -8,7 +8,7 @@
 /** Product name; also the plugin identifier and the npm binary (ID-011). */
 export const PLUGIN_NAME = "iroha";
 
-/** Published npm package the marketplaces resolve the plugin from (ID-011; renamed in ID-070). */
+/** Published npm package the marketplaces resolve the plugin from (ID-070). */
 export const PUBLISHED_PACKAGE_NAME = "@irohalabs/iroha";
 
 /**
