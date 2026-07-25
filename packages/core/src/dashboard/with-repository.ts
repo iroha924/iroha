@@ -58,9 +58,11 @@ export async function withDashboardRepository<T>(
 
 /**
  * `withDashboardRepository` plus the per-repository write lock (write-mutex.ts):
- * the dashboard serves concurrent HTTP requests, so this serializes its
- * in-process mutations (approve/reject/supersede/edit) rather than letting them
- * each block on libSQL's native busy wait. Every write use case uses it; reads
+ * the dashboard serves concurrent HTTP requests, so this serializes the
+ * optimistic-token candidate mutations (`reject`/`supersede`/`edit` via this
+ * helper; `approve` inlines the same lock) rather than letting them each block on
+ * libSQL's native busy wait. Writes that are already one atomic step (the
+ * settings file's temp+rename, a local-setting upsert) or self-serialize (`sync`)
  * use `withDashboardRepository` directly.
  */
 export function withDashboardWrite<T>(
