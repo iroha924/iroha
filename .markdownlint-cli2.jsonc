@@ -23,8 +23,9 @@
     "**/dist/**",
     "**/build/**",
     ".iroha/**",
-    // docs/ is the internal product spec (large, maintainer-facing); linted separately.
-    "docs/**",
+    // docs/product/ is the large, maintainer-facing internal spec bundle; the
+    // user-facing docs/install.md (linked from the README) is still linted.
+    "docs/product/**",
     "packages/*/release/**",
     "**/CHANGELOG.md"
   ]
