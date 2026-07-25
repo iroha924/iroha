@@ -46,6 +46,21 @@ function hasExactTokenMarker(tokens: readonly string[]): boolean {
 }
 
 /**
+ * CJK (Han/kana) and Hangul are written without inter-word spaces, so a run of
+ * them glued to a Latin/digit run (`なぜrepository`) is a single whitespace
+ * token that neither FTS arm can match: unicode61 indexes the whole run as one
+ * token, and the trigram arm would need the mixed substring verbatim. Splitting
+ * at the script boundary lets the Latin term match unicode61 and the CJK run
+ * match trigram independently, so the FTS-only default recovers mixed-script
+ * recall without an embedding provider.
+ */
+const CJK_SCRIPTS = "\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}\\p{Script=Hangul}";
+const SCRIPT_BOUNDARY = new RegExp(
+  `(?<=[${CJK_SCRIPTS}])(?=[A-Za-z0-9])|(?<=[A-Za-z0-9])(?=[${CJK_SCRIPTS}])`,
+  "gu",
+);
+
+/**
  * FTS5's `MATCH` right-hand side is its own query language (`AND`/`OR`/
  * `NOT`, `-` exclusion, `column:` filters, `NEAR`) — confirmed by
  * reproduction that an unquoted query containing a hyphen (e.g.
@@ -66,7 +81,10 @@ function hasExactTokenMarker(tokens: readonly string[]): boolean {
  * only from the vector arm; OR just recovers same-language partial matches.
  */
 export function buildMatchQuery(query: string): string {
-  const tokens = query.split(/\s+/u).filter((word) => word.length > 0);
+  const tokens = query
+    .replace(SCRIPT_BOUNDARY, " ")
+    .split(/\s+/u)
+    .filter((word) => word.length > 0);
   const phrases = tokens.map((word) => `"${word.replace(/"/g, '""')}"`);
   if (phrases.length <= 1) {
     return phrases.join(" ");

@@ -115,6 +115,38 @@ describe("searchText", () => {
     }
   });
 
+  it("retrieves an English document from a glued mixed-script query via the FTS-only path", async () => {
+    const opened = await openMigratedTestDb();
+    tempDir = opened.dir;
+    db = opened.db;
+    const repositoryId = repoId("m");
+    await insertRepository(db, {
+      id: repositoryId,
+      rootFingerprint: "fp-m",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    await seedSearchDocument(db, repositoryId, "dec_0000000000000000000000010", {
+      searchDocumentId: sdocId("m"),
+      title: "Use the repository pattern for all libSQL access",
+      body: "All database access goes through typed repository functions that wrap parameterized SQL.",
+    });
+    await seedSearchDocument(db, repositoryId, "dec_0000000000000000000000011", {
+      searchDocumentId: sdocId("n"),
+      title: "日本語の全文検索の仕組み",
+      body: "日本語その他のCJKテキストはトライグラム全文インデックスで照合する。",
+    });
+
+    // The Latin terms are glued to kana with no whitespace; script-boundary
+    // segmentation is what lets the unicode61 arm reach the English document
+    // (without it this query returns nothing on the FTS-only path).
+    const result = await searchText(db, "なぜrepository patternを使うのか");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.map((hit) => hit.entityId)).toContain("dec_0000000000000000000000010");
+    }
+  });
+
   it("ranks a document matched by both indexes above one matched by only one", async () => {
     const opened = await openMigratedTestDb();
     tempDir = opened.dir;
