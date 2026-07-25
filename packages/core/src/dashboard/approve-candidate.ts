@@ -11,14 +11,13 @@ import {
   withTransaction,
 } from "@iroha/storage";
 import { importCanonicalDocument, insertCanonicalDocumentRelations } from "../sync-canonical.js";
-import { withRepositoryWriteLock } from "../write-mutex.js";
 import {
   buildCanonicalDocumentFromCandidate,
   type CandidateDraft,
   type CanonicalActorRef,
   type CanonicalProvenanceSource,
 } from "./build-canonical.js";
-import { withDashboardRepository } from "./with-repository.js";
+import { withDashboardWrite } from "./with-repository.js";
 
 /** The AI agent that authored a candidate, recorded as `created_by` (NFR-006: AI-vs-human provenance). */
 const AGENT_ACTOR: CanonicalActorRef = { provider: "local", display_name: "iroha agent" };
@@ -100,163 +99,158 @@ export async function approveCandidate(
   }
   const candidateId = parsedId.value;
 
-  return withDashboardRepository(
+  return withDashboardWrite(
     { cwd: input.cwd, clock: input.clock, random: input.random },
-    (ctx) =>
-      withRepositoryWriteLock(ctx.repo.repositoryId, async () => {
-        // Step 2: reload the candidate and verify the optimistic token.
-        const candidateResult = await getCandidateById(ctx.db, candidateId);
-        if (!candidateResult.ok) {
-          return candidateResult;
-        }
-        const candidate = candidateResult.value;
-        if (candidate === null) {
-          return err(new IrohaErrorClass("NOT_FOUND", "Candidate not found"));
-        }
-        if (candidate.status !== "pending") {
+    async (ctx) => {
+      // Step 2: reload the candidate and verify the optimistic token.
+      const candidateResult = await getCandidateById(ctx.db, candidateId);
+      if (!candidateResult.ok) {
+        return candidateResult;
+      }
+      const candidate = candidateResult.value;
+      if (candidate === null) {
+        return err(new IrohaErrorClass("NOT_FOUND", "Candidate not found"));
+      }
+      if (candidate.status !== "pending") {
+        return err(
+          new IrohaErrorClass(
+            "CONFLICT",
+            "Candidate is no longer pending; reload before approving",
+          ),
+        );
+      }
+      if (candidate.revisionToken !== input.revisionToken) {
+        return err(
+          new IrohaErrorClass("CONFLICT", "The candidate changed. Reload before approving."),
+        );
+      }
+
+      const draft = JSON.parse(candidate.payloadJson) as CandidateDraft;
+      const nowIso = ctx.clock.now().toISOString();
+
+      // Steps 3-7: build, validate, and atomically write the canonical file.
+      const built = buildCanonicalDocumentFromCandidate({
+        candidateType: candidate.candidateType,
+        draft,
+        repositoryId: ctx.repo.repositoryId,
+        candidateId,
+        createdBy: AGENT_ACTOR,
+        approvedBy: { provider: input.actor.provider, display_name: input.actor.displayName },
+        createdAt: candidate.createdAt,
+        approvedAt: nowIso,
+        revision: 1,
+        provenance: provenanceFor(candidate.sourceSessionId, candidate.sourceCheckpointId),
+      });
+      if (!built.ok) {
+        return built;
+      }
+
+      // Cross-process double-approval guard (ID-065's deterministic id makes two
+      // processes approving the same candidate target the same path; in-process
+      // locking does not serialize across processes — ID-022 lineage). If that
+      // file already exists and the candidate is no longer pending, another
+      // approval already committed it — abort instead of overwriting it. A
+      // same-process retry after a crash (candidate still pending) still overwrites
+      // its own file, which is the idempotent-retry behavior #42 wants.
+      const targetPath = join(ctx.repo.irohaCanonicalDir, computeCanonicalPath(built.value));
+      if (await pathExists(targetPath)) {
+        const recheck = await getCandidateById(ctx.db, candidateId);
+        if (recheck.ok && recheck.value !== null && recheck.value.status !== "pending") {
           return err(
             new IrohaErrorClass(
               "CONFLICT",
-              "Candidate is no longer pending; reload before approving",
+              "The candidate was already approved. Reload before approving.",
             ),
           );
         }
-        if (candidate.revisionToken !== input.revisionToken) {
-          return err(
-            new IrohaErrorClass("CONFLICT", "The candidate changed. Reload before approving."),
-          );
-        }
+      }
 
-        const draft = JSON.parse(candidate.payloadJson) as CandidateDraft;
-        const nowIso = ctx.clock.now().toISOString();
+      const writeResult = await writeCanonicalDocument(
+        built.value,
+        ctx.repo.irohaCanonicalDir,
+        ctx.random,
+      );
+      if (!writeResult.ok) {
+        return writeResult;
+      }
+      const document = writeResult.value.document;
+      const hash = writeResult.value.hash;
+      const canonicalPath = computeCanonicalPath(document);
+      const entityId = document.frontmatter.id;
 
-        // Steps 3-7: build, validate, and atomically write the canonical file.
-        const built = buildCanonicalDocumentFromCandidate({
-          candidateType: candidate.candidateType,
-          draft,
-          repositoryId: ctx.repo.repositoryId,
-          candidateId,
-          createdBy: AGENT_ACTOR,
-          approvedBy: { provider: input.actor.provider, display_name: input.actor.displayName },
-          createdAt: candidate.createdAt,
-          approvedAt: nowIso,
-          revision: 1,
-          provenance: provenanceFor(candidate.sourceSessionId, candidate.sourceCheckpointId),
-        });
-        if (!built.ok) {
-          return built;
-        }
-
-        // Cross-process double-approval guard (ID-065's deterministic id makes two
-        // processes approving the same candidate target the same path; in-process
-        // locking does not serialize across processes — ID-022 lineage). If that
-        // file already exists and the candidate is no longer pending, another
-        // approval already committed it — abort instead of overwriting it. A
-        // same-process retry after a crash (candidate still pending) still overwrites
-        // its own file, which is the idempotent-retry behavior #42 wants.
-        const targetPath = join(ctx.repo.irohaCanonicalDir, computeCanonicalPath(built.value));
-        if (await pathExists(targetPath)) {
-          const recheck = await getCandidateById(ctx.db, candidateId);
-          if (recheck.ok && recheck.value !== null && recheck.value.status !== "pending") {
-            return err(
-              new IrohaErrorClass(
-                "CONFLICT",
-                "The candidate was already approved. Reload before approving.",
-              ),
-            );
-          }
-        }
-
-        const writeResult = await writeCanonicalDocument(
-          built.value,
-          ctx.repo.irohaCanonicalDir,
+      // Steps 8-9: one DB transaction mirroring the rebuild import path.
+      const committed = await withTransaction<ApproveCandidateData>(ctx.db, "write", async (tx) => {
+        const imported = await importCanonicalDocument(
+          tx,
+          ctx.repo.repositoryId,
+          canonicalPath,
+          hash,
+          document,
+          ctx.clock,
           ctx.random,
         );
-        if (!writeResult.ok) {
-          return writeResult;
+        if (!imported.ok) {
+          return imported;
         }
-        const document = writeResult.value.document;
-        const hash = writeResult.value.hash;
-        const canonicalPath = computeCanonicalPath(document);
-        const entityId = document.frontmatter.id;
-
-        // Steps 8-9: one DB transaction mirroring the rebuild import path.
-        const committed = await withTransaction<ApproveCandidateData>(
-          ctx.db,
-          "write",
-          async (tx) => {
-            const imported = await importCanonicalDocument(
-              tx,
-              ctx.repo.repositoryId,
-              canonicalPath,
-              hash,
-              document,
-              ctx.clock,
-              ctx.random,
-            );
-            if (!imported.ok) {
-              return imported;
-            }
-            const relations = await insertCanonicalDocumentRelations(
-              tx,
-              ctx.repo.repositoryId,
-              document,
-              ctx.clock,
-              ctx.random,
-            );
-            if (!relations.ok) {
-              return relations;
-            }
-            const status = await updateCandidateStatus(tx, candidateId, {
-              from: "pending",
-              to: "approved",
-              expectedRevisionToken: input.revisionToken,
-              newRevisionToken: Buffer.from(ctx.random.bytes(16)).toString("base64url"),
-              reviewedAt: nowIso,
-            });
-            if (!status.ok) {
-              return status;
-            }
-            const approval = await insertApproval(tx, {
-              id: makeTypedId("apr", ctx.clock, ctx.random),
-              candidateId,
-              action: "approve",
-              afterHash: hash,
-              ...(input.comment !== undefined ? { comment: input.comment } : {}),
-              createdAt: nowIso,
-            });
-            if (!approval.ok) {
-              return approval;
-            }
-            return ok({
-              candidateId,
-              entityId,
-              canonicalPath,
-              type: document.frontmatter.type,
-              revision: document.frontmatter.revision,
-            });
-          },
+        const relations = await insertCanonicalDocumentRelations(
+          tx,
+          ctx.repo.repositoryId,
+          document,
+          ctx.clock,
+          ctx.random,
         );
-
-        if (!committed.ok) {
-          // The canonical file already landed and is authoritative; record a
-          // divergence marker so the next `sync` reconciles the DB (§12).
-          await insertDirtyMarker(ctx.db, {
-            id: makeTypedId("dirty", ctx.clock, ctx.random),
-            repositoryId: ctx.repo.repositoryId,
-            markerType: "canonical_db_divergence",
-            entityId,
-            detailsJson: JSON.stringify({
-              reason: "approval_db_commit_failed",
-              path: canonicalPath,
-              candidateId,
-            }),
-            createdAt: nowIso,
-          }).catch(() => undefined);
-          return committed;
+        if (!relations.ok) {
+          return relations;
         }
+        const status = await updateCandidateStatus(tx, candidateId, {
+          from: "pending",
+          to: "approved",
+          expectedRevisionToken: input.revisionToken,
+          newRevisionToken: Buffer.from(ctx.random.bytes(16)).toString("base64url"),
+          reviewedAt: nowIso,
+        });
+        if (!status.ok) {
+          return status;
+        }
+        const approval = await insertApproval(tx, {
+          id: makeTypedId("apr", ctx.clock, ctx.random),
+          candidateId,
+          action: "approve",
+          afterHash: hash,
+          ...(input.comment !== undefined ? { comment: input.comment } : {}),
+          createdAt: nowIso,
+        });
+        if (!approval.ok) {
+          return approval;
+        }
+        return ok({
+          candidateId,
+          entityId,
+          canonicalPath,
+          type: document.frontmatter.type,
+          revision: document.frontmatter.revision,
+        });
+      });
 
+      if (!committed.ok) {
+        // The canonical file already landed and is authoritative; record a
+        // divergence marker so the next `sync` reconciles the DB (§12).
+        await insertDirtyMarker(ctx.db, {
+          id: makeTypedId("dirty", ctx.clock, ctx.random),
+          repositoryId: ctx.repo.repositoryId,
+          markerType: "canonical_db_divergence",
+          entityId,
+          detailsJson: JSON.stringify({
+            reason: "approval_db_commit_failed",
+            path: canonicalPath,
+            candidateId,
+          }),
+          createdAt: nowIso,
+        }).catch(() => undefined);
         return committed;
-      }),
+      }
+
+      return committed;
+    },
   );
 }
