@@ -89,12 +89,21 @@ jobs:
             packages/plugin/release/checksums.txt
             packages/plugin/release/sbom.cyclonedx.json
 
+      - name: Ensure npm supports trusted publishing
+        # OIDC trusted publishing needs npm >= 11.5.1; Node 24's bundled npm can
+        # be older, so upgrade before publishing.
+        if: ${{ inputs.publish }}
+        run: npm install -g npm@latest
+
       - name: Publish to npm
         if: ${{ inputs.publish }}
         working-directory: packages/plugin/release
-        run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # Trusted publishing (OIDC): npm authenticates via this job's id-token and
+        # auto-generates provenance — no NPM_TOKEN, no --provenance flag. The
+        # package is already public, so --access is unnecessary. The trusted
+        # publisher is configured on npm for org iroha924 / repo iroha / this
+        # workflow file (release.yml).
+        run: npm publish
 
       - name: Create GitHub Release
         if: ${{ inputs.publish }}
