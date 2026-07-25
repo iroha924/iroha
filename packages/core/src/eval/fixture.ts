@@ -3,9 +3,12 @@ import type { RelationType } from "@iroha/storage";
 /**
  * The search-evaluation corpus and query set (database-schema.md §14). It is a
  * synthetic, deterministic `.iroha`-shaped knowledge base about a fictional
- * payments platform, authored so every query's relevant documents are
- * retrievable (distinctive terms for the lexical/vector path, scope for the
- * scope boost, relations for the graph path). Entity ids are readable and
+ * payments platform: relevant docs carry distinctive terms for the lexical/
+ * vector path, scope for the scope boost, and relations for the graph path,
+ * plus `dist_*` distractor docs that compete for top-10 slots. The distractors
+ * are deliberately strong enough that a few relevant docs fall just outside
+ * top-10 (so Recall@10 is not structurally 1.0) — the eval gate measures that,
+ * it does not assume every relevant doc is recalled. Entity ids are readable and
  * stable so `queries.relevant` can reference them; `entities.id` has no format
  * constraint in the schema.
  */

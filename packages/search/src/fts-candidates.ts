@@ -59,6 +59,19 @@ const SCRIPT_BOUNDARY = new RegExp(
   `(?<=[${CJK_SCRIPTS}])(?=[A-Za-z0-9])|(?<=[A-Za-z0-9])(?=[${CJK_SCRIPTS}])`,
   "gu",
 );
+const CJK_CHAR = new RegExp(`[${CJK_SCRIPTS}]`, "u");
+
+/**
+ * A CJK/kana/Hangul run is natural-language text: unicode61 indexes it as one
+ * whole-run token that rarely equals a document's tokens, so joining it with
+ * `AND` collapses recall to zero. A mixed-script query therefore routes to `OR`
+ * even when a segmented Latin sub-token looks like an identifier (`libSQL`), so
+ * that Latin term can still match on its own — `AND` precision is reserved for
+ * queries made only of exact Latin identifier/path tokens.
+ */
+function hasNaturalLanguageRun(tokens: readonly string[]): boolean {
+  return tokens.some((token) => CJK_CHAR.test(token));
+}
 
 /**
  * FTS5's `MATCH` right-hand side is its own query language (`AND`/`OR`/
@@ -76,9 +89,10 @@ const SCRIPT_BOUNDARY = new RegExp(
  * to zero recall for long natural-language and cross-lingual queries. So a
  * multi-word natural-language query is joined with `OR` (any word, BM25-ranked,
  * precision recovered by the RRF authority/scope/graph boosts), while an
- * exact-token query (identifiers, paths) keeps `AND` for precision. A
- * single-token query is identical either way. Cross-lingual recall still comes
- * only from the vector arm; OR just recovers same-language partial matches.
+ * all-identifier/path query with no CJK run keeps `AND` for precision (see
+ * `hasNaturalLanguageRun`). A single-token query is identical either way.
+ * Cross-lingual recall still comes only from the vector arm; OR just recovers
+ * same-language partial matches.
  */
 export function buildMatchQuery(query: string): string {
   const tokens = query
@@ -89,7 +103,8 @@ export function buildMatchQuery(query: string): string {
   if (phrases.length <= 1) {
     return phrases.join(" ");
   }
-  return phrases.join(hasExactTokenMarker(tokens) ? " AND " : " OR ");
+  const useAnd = hasExactTokenMarker(tokens) && !hasNaturalLanguageRun(tokens);
+  return phrases.join(useAnd ? " AND " : " OR ");
 }
 
 export async function queryFtsRanked(

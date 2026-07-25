@@ -145,6 +145,17 @@ describe("searchText", () => {
     if (result.ok) {
       expect(result.value.map((hit) => hit.entityId)).toContain("dec_0000000000000000000000010");
     }
+
+    // A camelCase identifier glued to kana must still retrieve the document that
+    // contains it: the identifier marker must not force an AND join across the
+    // un-matchable kana runs (that returned nothing before the routing fix).
+    const identifierResult = await searchText(db, "libSQLを使う理由");
+    expect(identifierResult.ok).toBe(true);
+    if (identifierResult.ok) {
+      expect(identifierResult.value.map((hit) => hit.entityId)).toContain(
+        "dec_0000000000000000000000010",
+      );
+    }
   });
 
   it("ranks a document matched by both indexes above one matched by only one", async () => {

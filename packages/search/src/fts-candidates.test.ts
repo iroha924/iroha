@@ -34,6 +34,14 @@ describe("buildMatchQuery", () => {
     expect(buildMatchQuery("パターン2")).toBe('"パターン" OR "2"');
   });
 
+  it("routes a mixed-script query to OR even when a Latin token looks like an identifier", () => {
+    // `libSQL` is camelCase (an exact-token marker), but the query also has kana
+    // runs that only ever match as whole-run tokens; AND would require those to
+    // match and collapse recall to zero, so a CJK run forces OR.
+    expect(buildMatchQuery("libSQLを使う理由")).toBe('"libSQL" OR "を使う理由"');
+    expect(buildMatchQuery("getUserById のバグ")).toBe('"getUserById" OR "のバグ"');
+  });
+
   it("leaves a Latin/digit run with internal case or dots intact", () => {
     expect(buildMatchQuery("voyage-4-large")).toBe('"voyage-4-large"');
     expect(buildMatchQuery("v0.1")).toBe('"v0.1"');

@@ -38,18 +38,22 @@ const NDCG_AT_10 = 0.7;
 const MRR_AT_10 = 0.7;
 
 // Regression gate: the metrics actually achieved with the committed
-// embeddings.recorded.json. The eval is deterministic, so any drop below
-// (baseline - BASELINE_TOLERANCE) is a real ranking regression, not noise — the
-// absolute floors above are too loose to catch a metric slipping from ~0.95 to
-// 0.87. When a fixture or ranking change legitimately moves these, re-record and
-// update BASELINE to the values printed in the "eval metrics" CI log line.
+// embeddings.recorded.json. A drop below (baseline - BASELINE_TOLERANCE) is a
+// ranking regression the loose absolute floors above (0.85/0.70) would miss.
+// Tolerance exceeds one Recall@10 quantum (1/60 ≈ 0.0167): the vector arm is
+// libSQL's native ANN (vector_top_k), whose top-k membership for a doc sitting
+// on the rank-10 boundary is not guaranteed bit-identical across the x64/arm64
+// CI matrix, so one boundary doc flipping must not red CI — while a real
+// regression moves many queries and drops far more than this. When a fixture or
+// ranking change legitimately moves these, re-record and update BASELINE to the
+// values printed in the "eval metrics" CI log line. ruleRecallAt10 is gated
+// separately by the exact `toBe(1)` assertion (spec §14), not here.
 const BASELINE = {
   recallAt10: 0.975,
   ndcgAt10: 0.967,
   mrrAt10: 0.975,
-  ruleRecallAt10: 1,
 };
-const BASELINE_TOLERANCE = 0.01;
+const BASELINE_TOLERANCE = 0.03;
 
 describe("search evaluation gate", () => {
   let dir: string | undefined;
@@ -129,9 +133,6 @@ describe("search evaluation gate", () => {
         BASELINE.ndcgAt10 - BASELINE_TOLERANCE,
       );
       expect(report.overall.mrrAt10).toBeGreaterThanOrEqual(BASELINE.mrrAt10 - BASELINE_TOLERANCE);
-      expect(report.ruleRecallAt10).toBeGreaterThanOrEqual(
-        BASELINE.ruleRecallAt10 - BASELINE_TOLERANCE,
-      );
     },
     30_000,
   );
