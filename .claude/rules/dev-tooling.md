@@ -130,6 +130,31 @@ the **trigger** (when to run it).
   adoption; decision-log ID-077). It is a devDependency by a high-reputation author, so this is
   accepted — but prefer an already-aged version for any future bump.
 
+## End-to-end release smoke — Verdaccio + zx
+
+- **What:** `pnpm release:smoke` runs `scripts/release-smoke.mjs` (a **zx** script) which publishes the
+  exact `@irohalabs/iroha` artifact to a throwaway **Verdaccio** registry, installs it globally into a
+  clean prefix, and runs `iroha --version` / `init` / `doctor` against a fresh git repo. It exercises
+  the real publish → `npm install -g` → run path — native `@libsql/client`, `bin` resolution, bundled
+  runtime assets — that the in-tree `test:package` (decision-log ID-038) cannot, because that never
+  leaves the workspace. Everything is created in a temp dir and torn down in a `finally`.
+- **Trigger:** run it before a release, or after changing `build-release.ts` / the plugin's packaging.
+  It needs **network** (Verdaccio proxies dependencies to npmjs) and a free port **4873**; it is a
+  local convenience, deliberately **not** a CI job (it is slow and network-bound).
+- **Convention:** `verdaccio` is spawned as a binary from the zx script (not imported), and `zx` runs
+  the script — knip resolves both, so no `knip.json` entry is needed (unlike a purely runtime-string
+  dependency). Both are pinned in the strict catalog (`verdaccio@6.8.0`, `zx@8.8.5`).
+
+## Local CI reproduction — act
+
+- **What:** `pnpm ci:local` runs **act**, which executes the `.github/workflows` jobs locally in Docker.
+  Use it to reproduce a CI failure without pushing.
+- **Trigger:** when a CI job fails in a way you cannot reproduce with the plain `pnpm` scripts, or before
+  pushing a workflow change. `act -l` lists jobs; `act -j <job>` runs one (e.g. `act -j verify`).
+- **Not an npm dependency:** act is a Go binary (`brew install act`, like `semgrep` is a pipx tool), so
+  it is in `knip.json` `ignoreBinaries` and needs Docker running. A green `act` run is a strong signal
+  but not identical to GitHub's runners (image and hardware differ) — see `~/.claude/rules/ci-discipline.md`.
+
 ## Related
 
 - Core build/typecheck/test conventions: [[typescript-conventions]].
