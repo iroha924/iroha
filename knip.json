@@ -1,0 +1,38 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignore": ["tests/fixtures/**"],
+  "workspaces": {
+    "apps/dashboard": {
+      "entry": ["src/components/ui/**"]
+    },
+    "apps/e2e": {
+      "ignoreDependencies": ["@iroha/cli", "@iroha/dashboard"]
+    },
+    "packages/canonical": {
+      "ignoreDependencies": [
+        "secretlint",
+        "@secretlint/secretlint-rule-pattern",
+        "@secretlint/secretlint-rule-preset-recommend"
+      ]
+    },
+    "packages/forge-github": {
+      "ignoreDependencies": ["@graphql-codegen/typescript", "@octokit/graphql-schema"]
+    },
+    "packages/plugin": {
+      "ignoreDependencies": [
+        "@hono/node-server",
+        "@libsql/client",
+        "@secretlint/node",
+        "@secretlint/secretlint-rule-pattern",
+        "@secretlint/secretlint-rule-preset-recommend",
+        "gunshi",
+        "hono",
+        "mdast-util-from-markdown",
+        "mdast-util-to-string",
+        "picomatch",
+        "secretlint",
+        "unist-util-visit"
+      ]
+    }
+  }
+}

@@ -15,7 +15,7 @@ import {
 } from "@iroha/storage";
 
 /** canonical-schema.md §5 source kinds. */
-export type SourceKind =
+type SourceKind =
   | "session"
   | "checkpoint"
   | "issue"

@@ -14,7 +14,7 @@ const TYPE_COLOR: Record<string, string> = {
   checkpoint: "#968D7C",
 };
 
-export function colorFor(type: string): string {
+function colorFor(type: string): string {
   return TYPE_COLOR[type] ?? "#6F675A";
 }
 
