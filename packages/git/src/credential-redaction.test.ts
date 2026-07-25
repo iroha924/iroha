@@ -1,3 +1,4 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import {
   redactAbsolutePathsInText,
@@ -156,22 +157,26 @@ describe("redactUrlLikeCredentialsInText", () => {
     expect(out).toContain("example.invalid");
   });
 
-  it("schemeStartIndices equals the unbounded reference regex on every short string (parity guard)", () => {
+  it("schemeStartIndices equals the unbounded reference regex (fast-check parity property)", () => {
     // This refactor's safety rests entirely on schemeStartIndices producing the
     // exact index set of the ORIGINAL unbounded regex — a divergence is a
-    // credential-redaction false negative. Enumerate every string up to length 5
-    // over a representative alphabet (letter, upper, digit, scheme punctuation,
-    // the `:`/`/` delimiters, and `@`) and assert the two agree exactly.
+    // credential-redaction false negative. fast-check generates strings over the
+    // structurally-relevant alphabet (letter, upper, digit, scheme punctuation,
+    // the `:`/`/` delimiters, and `@`), at lengths a hand-written enumeration
+    // could not reach, and asserts the two agree — shrinking any divergence to a
+    // minimal reproducer.
     const reference = (s: string): number[] =>
       [...s.matchAll(/[a-zA-Z][a-zA-Z0-9+.-]*:\/\//g)].map((m) => m.index ?? 0);
-    const alphabet = ["a", "A", "0", "+", ".", "-", ":", "/", "@"];
-    const walk = (prefix: string, depth: number): void => {
-      expect(schemeStartIndices(prefix)).toEqual(reference(prefix));
-      if (depth === 0) return;
-      for (const c of alphabet) walk(prefix + c, depth - 1);
-    };
-    walk("", 5);
-  }, 20_000);
+    const schemeIsh = fc
+      .array(fc.constantFrom("a", "A", "0", "+", ".", "-", ":", "/", "@"), { maxLength: 48 })
+      .map((chars) => chars.join(""));
+    fc.assert(
+      fc.property(schemeIsh, (s) => {
+        expect(schemeStartIndices(s)).toEqual(reference(s));
+      }),
+      { numRuns: 10_000 },
+    );
+  });
 
   it("redacts a credentialed URL whose password itself contains a comma", () => {
     // A comma/semicolon is a legal unencoded userinfo character (RFC 3986

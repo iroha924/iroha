@@ -48,6 +48,7 @@ catalog:
   "@vitejs/plugin-react": 6.0.3
   "@xyflow/react": 12.11.2
   czg: 1.13.1
+  fast-check: 4.9.0
   graphql: 16.14.2
   gunshi: 0.37.1
   hono: 4.12.30
