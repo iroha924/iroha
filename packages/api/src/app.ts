@@ -35,6 +35,7 @@ import {
 } from "@iroha/core";
 import type { Context, MiddlewareHandler } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import { HTTPException } from "hono/http-exception";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { type Auth, SESSION_COOKIE } from "./auth.js";
 import { failureBody, httpStatusForCode, newRequestId, successBody } from "./envelope.js";
@@ -130,44 +131,48 @@ const editSchema = z.strictObject({
   draft: z.record(z.string(), z.unknown()),
 });
 
-// Query params are documented as loose strings and parsed by the lenient helpers
-// below (numOpt/isoOpt/enumOpt) — an invalid value is dropped, never a 400
-// (dashboard-api.md query behavior: `?from=not-a-date` lists unfiltered). A
-// `z.string()` never rejects a present value, so validation stays a no-op while
-// the parameter still lands in the OpenAPI spec; the strict coercion the SPA
-// depends on happens in the handler. `.catch()` would express this directly but
-// is unrepresentable by the OpenAPI generator, so we keep the split.
-const optionalQuery = (description: string, example?: string) =>
+// A query param may arrive once (a string) or repeated (an array). The SPA sends
+// each once, but a duplicated param must not 400 — the query behavior is lenient
+// (dashboard-api.md: an invalid or unknown value is ignored, `?from=not-a-date`
+// lists unfiltered). So accept the single-or-array shape (a plain `z.string()`
+// would reject the array form) and read the first value with `firstOf` in the
+// handler, matching the pre-migration `c.req.query()`; the lenient helpers below
+// (numOpt/isoOpt/enumOpt) then drop anything invalid. `.catch()` would express
+// the leniency directly but is unrepresentable by the OpenAPI generator.
+const queryParam = (description: string, example?: string) =>
   z
-    .string()
+    .union([z.string(), z.array(z.string())])
     .optional()
     .openapi(example === undefined ? { description } : { description, example });
 
 const sessionsQuery = z.object({
-  limit: optionalQuery("Max sessions to return", "50"),
-  cursor: optionalQuery("Opaque pagination cursor"),
-  platform: optionalQuery("claude_code | codex"),
-  summaryStatus: optionalQuery("none | draft | approved"),
-  from: optionalQuery("RFC3339 lower bound compared against last_seen_at"),
-  to: optionalQuery("RFC3339 upper bound compared against last_seen_at"),
+  limit: queryParam("Max sessions to return", "50"),
+  cursor: queryParam("Opaque pagination cursor"),
+  platform: queryParam("claude_code | codex"),
+  summaryStatus: queryParam("none | draft | approved"),
+  from: queryParam("RFC3339 lower bound compared against last_seen_at"),
+  to: queryParam("RFC3339 upper bound compared against last_seen_at"),
 });
 const candidatesQuery = z.object({
-  status: optionalQuery("pending | approved | rejected | superseded"),
-  limit: optionalQuery("Max candidates to return"),
-  cursor: optionalQuery("Opaque pagination cursor"),
+  status: queryParam("pending | approved | rejected | superseded"),
+  limit: queryParam("Max candidates to return"),
+  cursor: queryParam("Opaque pagination cursor"),
 });
-// `status`/`type` are repeatable and read via `c.req.queries()` in the handler
-// (a single value must still parse as a one-element filter, which neither a
-// string nor an array schema expresses without `.catch()`), so only the scalar
-// params appear here.
+// `status`/`type` are repeatable filters read via `c.req.queries()` in the handler
+// (`enumArrOpt` keeps the valid values and drops the rest), so they are documented
+// in the route `description` rather than as scalar params here.
 const knowledgeQuery = z.object({
-  limit: optionalQuery("Max knowledge items to return"),
-  cursor: optionalQuery("Opaque pagination cursor"),
+  limit: queryParam("Max knowledge items to return"),
+  cursor: queryParam("Opaque pagination cursor"),
 });
-const relationsQuery = z.object({ limit: optionalQuery("Max relations to return") });
-const graphPathQuery = z.object({
-  from: z.string().min(1).openapi({ description: "Source entity id" }),
-  to: z.string().min(1).openapi({ description: "Target entity id" }),
+const relationsQuery = z.object({ limit: queryParam("Max relations to return") });
+
+// The anti-CSRF marker every state-changing request must carry (dashboard-api.md
+// §3). Documented on each mutation so a client generated from `/api/doc` sends it
+// (without it the `antiCsrf` middleware 403s). Enforcement is the middleware, not
+// this schema — the header is always present by the time route validation runs.
+const mutationHeaders = z.object({
+  "x-iroha-request": z.literal("1").openapi({ description: 'Anti-CSRF marker; must be "1"' }),
 });
 
 const idParam = z.object({ id: z.string().openapi({ param: { name: "id", in: "path" } }) });
@@ -192,6 +197,10 @@ const errorEnvelope = z.object({
   }),
   meta: metaSchema,
 });
+// `respond()` maps each use-case error code to its HTTP status via
+// `httpStatusForCode` (404/409/500/503, plus 403 from the anti-CSRF guard), all
+// carrying the same failure envelope — documented as a `default` response so the
+// spec covers the full error set, not just the two explicit codes.
 const RESPONSES = {
   200: { content: { "application/json": { schema: successEnvelope } }, description: "Success" },
   400: { content: { "application/json": { schema: errorEnvelope } }, description: "Invalid input" },
@@ -199,12 +208,19 @@ const RESPONSES = {
     content: { "application/json": { schema: errorEnvelope } },
     description: "Missing or invalid session",
   },
+  default: {
+    content: { "application/json": { schema: errorEnvelope } },
+    description: "Error envelope (403/404/409/500/503 per the error code)",
+  },
 } as const;
 
 /** A required JSON request body of the given schema. */
 const jsonBody = <T extends z.ZodType>(schema: T) => ({
   body: { required: true, content: { "application/json": { schema } } },
 });
+
+/** Adds the required anti-CSRF header to a state-changing route's request declaration. */
+const withCsrf = <R extends object>(request: R) => ({ headers: mutationHeaders, ...request });
 
 function fieldErrorsOf(error: z.ZodError): Record<string, string> {
   const fieldErrors: Record<string, string> = {};
@@ -293,17 +309,31 @@ export function createApp(config: AppConfig) {
   app.use("/api/auth/logout", requireCookie);
 
   // A thrown handler error (a use case should return a Result, not throw)
-  // becomes a clean INTERNAL_ERROR envelope — never a stack trace (§4).
-  app.onError((_err, c) =>
-    c.json(
-      failureBody(c.get("requestId") ?? "req_unknown", {
+  // becomes a clean INTERNAL_ERROR envelope — never a stack trace (§4). The one
+  // exception is a request body that is not parseable JSON: `@hono/zod-openapi`'s
+  // validator throws an `HTTPException(400)` before `defaultHook` runs, so map it
+  // back to the same 400 the pre-migration `readJson` returned rather than a 500.
+  app.onError((err, c) => {
+    const requestId = c.get("requestId") ?? "req_unknown";
+    if (err instanceof HTTPException) {
+      return c.json(
+        failureBody(requestId, {
+          code: "INVALID_INPUT",
+          message: "Request body is not valid JSON",
+          retryable: false,
+        }),
+        400,
+      );
+    }
+    return c.json(
+      failureBody(requestId, {
         code: "INTERNAL_ERROR",
         message: "Unexpected server error",
         retryable: false,
       }),
       500,
-    ),
-  );
+    );
+  });
 
   app.openapi(
     createRoute({
@@ -311,7 +341,7 @@ export function createApp(config: AppConfig) {
       path: "/api/auth/exchange",
       tags: ["auth"],
       summary: "Exchange a one-time launch token for a session cookie",
-      request: jsonBody(exchangeSchema),
+      request: withCsrf(jsonBody(exchangeSchema)),
       responses: RESPONSES,
     }),
     (c) => {
@@ -344,6 +374,7 @@ export function createApp(config: AppConfig) {
       path: "/api/auth/logout",
       tags: ["auth"],
       summary: "Revoke the session cookie",
+      request: withCsrf({}),
       responses: RESPONSES,
     }),
     (c) => {
@@ -401,16 +432,19 @@ export function createApp(config: AppConfig) {
         c,
         listDashboardSessions({
           ...useCaseCtx,
-          ...numOpt("limit", q.limit),
-          ...strOpt("cursor", q.cursor),
-          ...enumOpt<"claude_code" | "codex">("platform", q.platform, ["claude_code", "codex"]),
-          ...enumOpt<"none" | "draft" | "approved">("summaryStatus", q.summaryStatus, [
+          ...numOpt("limit", firstOf(q.limit)),
+          ...strOpt("cursor", firstOf(q.cursor)),
+          ...enumOpt<"claude_code" | "codex">("platform", firstOf(q.platform), [
+            "claude_code",
+            "codex",
+          ]),
+          ...enumOpt<"none" | "draft" | "approved">("summaryStatus", firstOf(q.summaryStatus), [
             "none",
             "draft",
             "approved",
           ]),
-          ...isoOpt("from", q.from),
-          ...isoOpt("to", q.to),
+          ...isoOpt("from", firstOf(q.from)),
+          ...isoOpt("to", firstOf(q.to)),
         }),
       );
     },
@@ -468,14 +502,14 @@ export function createApp(config: AppConfig) {
         c,
         listCandidateQueue({
           ...useCaseCtx,
-          ...enumOpt<CandidateStatus>("status", q.status, [
+          ...enumOpt<CandidateStatus>("status", firstOf(q.status), [
             "pending",
             "approved",
             "rejected",
             "superseded",
           ]),
-          ...numOpt("limit", q.limit),
-          ...strOpt("cursor", q.cursor),
+          ...numOpt("limit", firstOf(q.limit)),
+          ...strOpt("cursor", firstOf(q.cursor)),
         }),
       );
     },
@@ -499,7 +533,7 @@ export function createApp(config: AppConfig) {
       path: "/api/v1/candidates/{id}",
       tags: ["review"],
       summary: "Edit a candidate draft",
-      request: { params: idParam, ...jsonBody(editSchema) },
+      request: withCsrf({ params: idParam, ...jsonBody(editSchema) }),
       responses: RESPONSES,
     }),
     (c) => {
@@ -551,7 +585,7 @@ export function createApp(config: AppConfig) {
       path: "/api/v1/candidates/{id}/approve",
       tags: ["review"],
       summary: "Approve a candidate into canonical knowledge",
-      request: { params: idParam, ...jsonBody(approveSchema) },
+      request: withCsrf({ params: idParam, ...jsonBody(approveSchema) }),
       responses: RESPONSES,
     }),
     (c) => {
@@ -575,7 +609,7 @@ export function createApp(config: AppConfig) {
       path: "/api/v1/candidates/{id}/reject",
       tags: ["review"],
       summary: "Reject a candidate",
-      request: { params: idParam, ...jsonBody(rejectSchema) },
+      request: withCsrf({ params: idParam, ...jsonBody(rejectSchema) }),
       responses: RESPONSES,
     }),
     (c) => {
@@ -598,7 +632,7 @@ export function createApp(config: AppConfig) {
       path: "/api/v1/candidates/{id}/supersede",
       tags: ["review"],
       summary: "Supersede a candidate",
-      request: { params: idParam, ...jsonBody(supersedeSchema) },
+      request: withCsrf({ params: idParam, ...jsonBody(supersedeSchema) }),
       responses: RESPONSES,
     }),
     (c) => {
@@ -632,8 +666,8 @@ export function createApp(config: AppConfig) {
         c,
         listKnowledge({
           ...useCaseCtx,
-          ...numOpt("limit", q.limit),
-          ...strOpt("cursor", q.cursor),
+          ...numOpt("limit", firstOf(q.limit)),
+          ...strOpt("cursor", firstOf(q.cursor)),
           ...enumArrOpt("statuses", c.req.queries("status"), [
             "approved",
             "superseded",
@@ -680,7 +714,7 @@ export function createApp(config: AppConfig) {
         getEntityRelations({
           ...useCaseCtx,
           entityId: c.req.valid("param").id,
-          ...numOpt("limit", c.req.valid("query").limit),
+          ...numOpt("limit", firstOf(c.req.valid("query").limit)),
         }),
       ),
   );
@@ -691,7 +725,7 @@ export function createApp(config: AppConfig) {
       path: "/api/v1/graph/query",
       tags: ["graph"],
       summary: "Expand the graph from root entities",
-      request: jsonBody(graphQuerySchema),
+      request: withCsrf(jsonBody(graphQuerySchema)),
       responses: RESPONSES,
     }),
     (c) => {
@@ -713,12 +747,23 @@ export function createApp(config: AppConfig) {
       path: "/api/v1/graph/path",
       tags: ["graph"],
       summary: "Shortest path between two entities",
-      request: { query: graphPathQuery },
+      description: "Required query params `from` and `to` (entity ids).",
       responses: RESPONSES,
     }),
+    // `from`/`to` are required and read directly (an empty string is a valid,
+    // if empty-result, id — not a 400), so this route parses them by hand rather
+    // than through a scalar query schema.
     (c) => {
-      const q = c.req.valid("query");
-      return respond(c, graphPath({ ...useCaseCtx, fromId: q.from, toId: q.to }));
+      const from = c.req.query("from");
+      const to = c.req.query("to");
+      if (from === undefined || to === undefined) {
+        return fail(
+          c,
+          { code: "INVALID_INPUT", message: "from and to are required", retryable: false },
+          400,
+        );
+      }
+      return respond(c, graphPath({ ...useCaseCtx, fromId: from, toId: to }));
     },
   );
 
@@ -728,7 +773,7 @@ export function createApp(config: AppConfig) {
       path: "/api/v1/search",
       tags: ["search"],
       summary: "Hybrid retrieval over the knowledge graph",
-      request: jsonBody(searchSchema),
+      request: withCsrf(jsonBody(searchSchema)),
       responses: RESPONSES,
     }),
     (c) => {
@@ -752,7 +797,8 @@ export function createApp(config: AppConfig) {
       method: "post",
       path: "/api/v1/sync",
       tags: ["sync"],
-      summary: "Rebuild the index from canonical files",
+      summary: "Reconcile the index with the canonical files (not a full rebuild)",
+      request: withCsrf({}),
       responses: RESPONSES,
     }),
     (c) => respond(c, runDashboardSync(useCaseCtx)),
@@ -786,7 +832,7 @@ export function createApp(config: AppConfig) {
       path: "/api/v1/settings/shared",
       tags: ["settings"],
       summary: "Update the git-tracked shared config",
-      request: jsonBody(repositoryConfigSchema),
+      request: withCsrf(jsonBody(repositoryConfigSchema)),
       responses: RESPONSES,
     }),
     (c) => respond(c, updateSharedConfig({ ...useCaseCtx, config: c.req.valid("json") })),
@@ -798,7 +844,7 @@ export function createApp(config: AppConfig) {
       path: "/api/v1/settings/local",
       tags: ["settings"],
       summary: "Update a local (untracked) setting",
-      request: jsonBody(localSettingSchema),
+      request: withCsrf(jsonBody(localSettingSchema)),
       responses: RESPONSES,
     }),
     (c) => {
@@ -824,7 +870,7 @@ export function createApp(config: AppConfig) {
       path: "/api/v1/doctor/repair",
       tags: ["doctor"],
       summary: "Apply a diagnostic repair operation",
-      request: jsonBody(doctorRepairSchema),
+      request: withCsrf(jsonBody(doctorRepairSchema)),
       responses: RESPONSES,
     }),
     (c) => respond(c, doctorRepair({ ...useCaseCtx, operation: c.req.valid("json").operation })),
@@ -904,6 +950,11 @@ function safeHost(origin: string): string | null {
   } catch {
     return null;
   }
+}
+
+/** The first value of a query param that Hono may hand back as a string or an array. */
+function firstOf(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
 }
 
 function strOpt(key: string, value: string | undefined): Record<string, string> {

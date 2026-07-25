@@ -106,7 +106,7 @@ Rules:
 - errors do not contain SQL, stack traces, absolute paths, or secret values;
 - all user-visible errors have stable codes.
 
-The API is built with `@hono/zod-openapi`: each route validates its request body/params against a Zod schema, and the generated **OpenAPI 3.1** document is served at `GET /api/doc`. That endpoint is unauthenticated by design — it describes the API's shape (paths, request schemas) with no repository data or secrets, on the loopback-only server — the same openness as `POST /api/auth/exchange`. Query parameters are documented as loose strings and parsed leniently in the handler (an invalid value is ignored, never a 400), so the strict body validation and the lenient query behavior above both hold.
+The API is built with `@hono/zod-openapi`: each route validates its request body/params against a Zod schema, and the generated **OpenAPI 3.1** document is served at `GET /api/doc`. That endpoint is unauthenticated by design — it describes the API's shape (paths, request schemas, the required `X-Iroha-Request` header on mutations) with no repository data or secrets, on the loopback-only server — the same openness as `POST /api/auth/exchange`. Query parameters accept a single or repeated value and are parsed leniently in the handler (an invalid value is ignored, never a 400), so the strict body validation and the lenient query behavior above both hold.
 
 ## 5. Endpoint contract
 

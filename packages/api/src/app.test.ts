@@ -489,6 +489,37 @@ describe("dashboard API", () => {
     expect(suggestions.status).toBe(404);
   });
 
+  it("returns 400 (not 500) for a malformed JSON body, in the standard failure envelope", async () => {
+    const repo = await setupApiRepo();
+    dir = repo.dir;
+    const { app } = makeApp(repo.dir);
+
+    // Passes anti-CSRF (headers are present) but the body is not parseable JSON;
+    // @hono/zod-openapi's validator throws before the defaultHook, so onError must
+    // rebuild the envelope the SPA client reads (`json.error.code`), not a bare 500.
+    const res = await app.request("/api/auth/exchange", {
+      method: "POST",
+      headers: CSRF,
+      body: "{ this is : not valid json",
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { ok: boolean; error: { code: string } };
+    expect(body.ok).toBe(false);
+    expect(body.error.code).toBe("INVALID_INPUT");
+  });
+
+  it("does not 400 a duplicated scalar query param; it stays lenient", async () => {
+    const repo = await setupApiRepo();
+    dir = repo.dir;
+    const { app } = makeApp(repo.dir);
+    const cookie = await exchange(app);
+
+    // A repeated scalar param (abnormal — the SPA sends each once) must not 400;
+    // the value is read leniently (first value), matching the pre-migration handler.
+    const res = await get(app, "/api/v1/sessions?platform=codex&platform=claude_code", cookie);
+    expect(res.status).toBe(200);
+  });
+
   it("serves an OpenAPI 3.1 document, unauthenticated, describing the routes and request bodies", async () => {
     const repo = await setupApiRepo();
     dir = repo.dir;
@@ -499,12 +530,29 @@ describe("dashboard API", () => {
     expect(res.status).toBe(200);
     const doc = (await res.json()) as {
       openapi: string;
-      paths: Record<string, Record<string, { requestBody?: unknown }>>;
+      paths: Record<
+        string,
+        Record<
+          string,
+          {
+            requestBody?: unknown;
+            parameters?: { name: string; in: string; required?: boolean }[];
+            responses?: Record<string, unknown>;
+          }
+        >
+      >;
     };
     expect(doc.openapi).toBe("3.1.0");
 
     // A representative mutation and its request body are documented.
-    expect(doc.paths["/api/v1/candidates/{id}/approve"]?.post?.requestBody).toBeDefined();
+    const approve = doc.paths["/api/v1/candidates/{id}/approve"]?.post;
+    expect(approve?.requestBody).toBeDefined();
+    // The mandatory anti-CSRF header is on the mutation, so a generated client sends it.
+    expect(
+      approve?.parameters?.some((p) => p.name === "x-iroha-request" && p.in === "header"),
+    ).toBe(true);
+    // The error set (403/404/409/500/503) is covered via a `default` response.
+    expect(approve?.responses?.default).toBeDefined();
     // A GET with a query param is present; the doc endpoint does not describe itself.
     expect(doc.paths["/api/v1/sessions"]?.get).toBeDefined();
     expect(doc.paths["/api/doc"]).toBeUndefined();
