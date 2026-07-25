@@ -99,19 +99,41 @@ A teammate who clones the repo runs `iroha init` then `iroha sync --rebuild` to 
 
 ## Configuration
 
-`iroha init` writes `.iroha/config.yaml`. It records **environment-variable names**, never secret values — the values are read from your environment at runtime and are never stored, logged, or committed.
+The two features that reach the network are **off by default**, and turning one on takes two steps: put the key in your environment, then flip the flag in `.iroha/config.yaml`.
 
-| Environment variable | Purpose | Required | Without it |
-|---|---|---|---|
-| `VOYAGE_API_KEY` | Semantic (vector) search embeddings via Voyage | No | Search stays full-text + graph only |
-| `GITHUB_TOKEN` | GitHub forge sync (pull requests, reviews) | No | Forge sync is simply off |
+**1. Set the key in your shell** (e.g. in `~/.zshrc` or `~/.bashrc`):
 
-Heads up: the key is only half of it — both features are **off by default in `config.yaml`** too. Set `search.embedding.enabled: true` (plus `VOYAGE_API_KEY`) for semantic search, and `forge.enabled: true` (plus `GITHUB_TOKEN`) for GitHub sync.
+```bash
+export VOYAGE_API_KEY="your-voyage-key"   # for semantic search
+export GITHUB_TOKEN="your-github-token"   # for GitHub sync
+```
 
-Other `config.yaml` settings worth knowing:
+**2. Turn the feature on in `.iroha/config.yaml`** — `iroha init` already created this file, so you're just flipping a flag:
 
-- `default_language` — `en` (default) or `ja`; the dashboard's startup locale.
-- `canonical.require_human_approval` — keep it `true` so nothing becomes authoritative without review.
+```yaml
+search:
+  embedding:
+    enabled: true    # semantic search — reads VOYAGE_API_KEY
+forge:
+  enabled: true      # GitHub sync — reads GITHUB_TOKEN
+```
+
+`config.yaml` only ever records the **name** of an environment variable, never the secret value itself — the value is read from your environment at runtime and is never stored, logged, or committed.
+
+| Environment variable | Turns on | Without it |
+|---|---|---|
+| `VOYAGE_API_KEY` | Semantic (vector) search via Voyage | Search stays full-text + graph only |
+| `GITHUB_TOKEN` | GitHub sync (pull requests, reviews) | GitHub sync is simply off |
+
+**Where the keys come from — and what they cost:**
+
+- **`VOYAGE_API_KEY`** — sign up at [voyageai.com](https://www.voyageai.com/) and create a key. The cost is next to nothing: iroha uses `voyage-4-large` at **$0.12 per million tokens**, and every account gets its **first 200 million tokens free** ([Voyage pricing](https://docs.voyageai.com/docs/pricing)). A whole team's knowledge base is a few million tokens at most, so in practice you never leave the free tier — and even past it, embedding ~10,000 notes of ~500 tokens each (5M tokens) costs about **$0.60**.
+- **`GITHUB_TOKEN`** — create a [personal access token](https://github.com/settings/tokens) with read access to the repo: a classic token with the `repo` scope, or a fine-grained token granting **Contents: Read** and **Pull requests: Read**. Then point `GITHUB_TOKEN` at it.
+
+Two other settings worth knowing:
+
+- `default_language` — `en` (default) or `ja`; the language the dashboard opens in.
+- `canonical.require_human_approval` — keep it `true` so nothing joins your knowledge base without a human approving it first.
 
 ## How it works
 
