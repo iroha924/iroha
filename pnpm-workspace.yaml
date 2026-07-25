@@ -11,7 +11,7 @@ catalog:
   ajv: 8.20.0
   ajv-formats: 3.0.1
   "@arethetypeswrong/cli": 0.18.5
-  "@biomejs/biome": 2.5.4
+  "@biomejs/biome": 2.5.5
   "@changesets/cli": 2.31.1
   "@commitlint/cli": 21.2.1
   "@commitlint/config-conventional": 21.2.0
@@ -19,7 +19,7 @@ catalog:
   "@graphql-codegen/cli": 7.2.0
   "@graphql-codegen/typed-document-node": 7.1.0
   "@graphql-codegen/typescript": 6.1.0
-  "@graphql-codegen/typescript-operations": 6.1.1
+  "@graphql-codegen/typescript-operations": 6.1.2
   "@graphql-typed-document-node/core": 3.2.0
   "@octokit/core": 7.0.6
   "@octokit/graphql-schema": 15.26.1
@@ -28,10 +28,10 @@ catalog:
   "@octokit/plugin-throttling": 11.0.3
   # Also pinned in `overrides` below (a pnpm override wins unconditionally, so a
   # bump here alone is silently ignored) — keep the two in sync.
-  "@hono/node-server": 2.0.10
+  "@hono/node-server": 2.0.11
   "@libsql/client": 0.17.4
   "@modelcontextprotocol/sdk": 1.29.0
-  "@playwright/test": 1.61.1
+  "@playwright/test": 1.62.0
   "@secretlint/node": 13.0.2
   "@secretlint/secretlint-rule-pattern": 13.0.2
   "@secretlint/secretlint-rule-preset-recommend": 13.0.2
@@ -123,6 +123,6 @@ minimumReleaseAgeExclude:
 #     unrelated 3.x/4.x js-yaml still in the tree keep their own major.
 overrides:
   fast-uri: 3.1.4
-  "@hono/node-server": 2.0.10
+  "@hono/node-server": 2.0.11
   brace-expansion: 5.0.8
   "js-yaml@5.2.1": 5.2.2
