@@ -16,7 +16,7 @@ export const PUBLISHED_PACKAGE_NAME = "@irohalabs/iroha";
  * test asserts equality, and WP-11b's release workflow additionally gates
  * package/manifest/changelog/tag agreement (compatibility.md §13).
  */
-export const PLUGIN_VERSION = "0.1.1";
+export const PLUGIN_VERSION = "0.1.2";
 
 export const PLUGIN_DESCRIPTION = "Local-first Engineering Memory Graph for Claude Code and Codex.";
 
