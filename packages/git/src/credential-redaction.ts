@@ -55,11 +55,36 @@ const HARD_DELIMITER = /[\s'"<>()[\]{}]/;
 // candidates are resolved by whichever comes first: the next scheme start
 // that isn't itself inside the current candidate's userinfo (see the
 // `nextStart`-extension loop below), or a HARD_DELIMITER.
-// The scheme body is bounded (`{0,63}`, not `*`) so the global scan stays
-// linear-time: a URI scheme is short (RFC 3986), and an unbounded `*` before
-// `://` lets a long run of scheme-class chars drive quadratic backtracking on
-// adversarial input (e.g. Git stderr echoing a caller-supplied argument).
-const SCHEME_START = /[a-zA-Z][a-zA-Z0-9+.-]{0,63}:\/\//g;
+// Single-character classes for the linear `scheme://` scan below (RFC 3986:
+// scheme = ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )).
+const SCHEME_CHAR = /[a-zA-Z0-9+.-]/;
+const SCHEME_ALPHA = /[a-zA-Z]/;
+
+/**
+ * Start index of every `scheme://` in `text` — the same set a global
+ * `/[a-zA-Z][a-zA-Z0-9+.-]*:\/\//g` reports, found by a linear scan instead of a
+ * backtracking regex. The regex form is quadratic (a long run of scheme-class
+ * chars with no `://` re-backtracks at every start position), and a bounded
+ * `{0,N}` "fix" silently misses a valid scheme longer than N — a
+ * credential-redaction false negative (a scheme's length is not bounded by URI
+ * syntax or Git). This scan has no length bound and is O(n): scheme chars exclude
+ * `/` and `:`, so each `://` maps to at most one scheme.
+ */
+export function schemeStartIndices(text: string): number[] {
+  const starts: number[] = [];
+  for (let sep = text.indexOf("://"); sep !== -1; sep = text.indexOf("://", sep + 3)) {
+    // Walk back over the scheme-char run just before `://`, then advance to its
+    // first ALPHA: the scheme must start with a letter, so this is exactly the
+    // index the leftmost regex match reports (a leading digit, e.g. the "0" in
+    // "0abc://", is not a valid scheme start and is skipped — matching the regex).
+    let runStart = sep;
+    while (runStart > 0 && SCHEME_CHAR.test(text[runStart - 1] as string)) runStart--;
+    let start = runStart;
+    while (start < sep && !SCHEME_ALPHA.test(text[start] as string)) start++;
+    if (start < sep) starts.push(start);
+  }
+  return starts;
+}
 
 // Matches only "scheme://[userinfo@]" — the same backtracking userinfo
 // logic as SCHEME_URL, but stops right after the userinfo instead of also
@@ -89,7 +114,7 @@ const QUERY_START = /[?#]/;
  * `redactUrlLikeCredentials` does).
  */
 export function redactUrlLikeCredentialsInText(text: string): string {
-  const starts = [...text.matchAll(SCHEME_START)].map((match) => match.index ?? 0);
+  const starts = schemeStartIndices(text);
   if (starts.length === 0) {
     return text;
   }
