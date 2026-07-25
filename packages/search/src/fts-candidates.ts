@@ -46,6 +46,39 @@ function hasExactTokenMarker(tokens: readonly string[]): boolean {
 }
 
 /**
+ * CJK (Han/kana) and Hangul are written without inter-word spaces, so a run of
+ * them glued to a Latin/digit run (`なぜrepository`) is a single whitespace
+ * token that neither FTS arm can match: unicode61 indexes the whole run as one
+ * token, and the trigram arm would need the mixed substring verbatim. Splitting
+ * at the script boundary lets the Latin term match unicode61 and the CJK run
+ * match trigram independently, so the FTS-only default recovers mixed-script
+ * recall without an embedding provider.
+ *
+ * `Script_Extensions` (not `Script`) is required so the prolonged sound mark
+ * `ー` (U+30FC) and other shared kana marks — whose primary `Script` is Common —
+ * still count as CJK; otherwise `ユーザーID` would not split before `ID`.
+ */
+const CJK_SCRIPTS =
+  "\\p{Script_Extensions=Han}\\p{Script_Extensions=Hiragana}\\p{Script_Extensions=Katakana}\\p{Script_Extensions=Hangul}";
+const SCRIPT_BOUNDARY = new RegExp(
+  `(?<=[${CJK_SCRIPTS}])(?=[A-Za-z0-9])|(?<=[A-Za-z0-9])(?=[${CJK_SCRIPTS}])`,
+  "gu",
+);
+const CJK_CHAR = new RegExp(`[${CJK_SCRIPTS}]`, "u");
+
+/**
+ * A CJK/kana/Hangul run is natural-language text: unicode61 indexes it as one
+ * whole-run token that rarely equals a document's tokens, so joining it with
+ * `AND` collapses recall to zero. A mixed-script query therefore routes to `OR`
+ * even when a segmented Latin sub-token looks like an identifier (`libSQL`), so
+ * that Latin term can still match on its own — `AND` precision is reserved for
+ * queries made only of exact Latin identifier/path tokens.
+ */
+function hasNaturalLanguageRun(tokens: readonly string[]): boolean {
+  return tokens.some((token) => CJK_CHAR.test(token));
+}
+
+/**
  * FTS5's `MATCH` right-hand side is its own query language (`AND`/`OR`/
  * `NOT`, `-` exclusion, `column:` filters, `NEAR`) — confirmed by
  * reproduction that an unquoted query containing a hyphen (e.g.
@@ -61,17 +94,22 @@ function hasExactTokenMarker(tokens: readonly string[]): boolean {
  * to zero recall for long natural-language and cross-lingual queries. So a
  * multi-word natural-language query is joined with `OR` (any word, BM25-ranked,
  * precision recovered by the RRF authority/scope/graph boosts), while an
- * exact-token query (identifiers, paths) keeps `AND` for precision. A
- * single-token query is identical either way. Cross-lingual recall still comes
- * only from the vector arm; OR just recovers same-language partial matches.
+ * all-identifier/path query with no CJK run keeps `AND` for precision (see
+ * `hasNaturalLanguageRun`). A single-token query is identical either way.
+ * Cross-lingual recall still comes only from the vector arm; OR just recovers
+ * same-language partial matches.
  */
 export function buildMatchQuery(query: string): string {
-  const tokens = query.split(/\s+/u).filter((word) => word.length > 0);
+  const tokens = query
+    .replace(SCRIPT_BOUNDARY, " ")
+    .split(/\s+/u)
+    .filter((word) => word.length > 0);
   const phrases = tokens.map((word) => `"${word.replace(/"/g, '""')}"`);
   if (phrases.length <= 1) {
     return phrases.join(" ");
   }
-  return phrases.join(hasExactTokenMarker(tokens) ? " AND " : " OR ");
+  const useAnd = hasExactTokenMarker(tokens) && !hasNaturalLanguageRun(tokens);
+  return phrases.join(useAnd ? " AND " : " OR ");
 }
 
 export async function queryFtsRanked(
