@@ -94,6 +94,18 @@ the **trigger** (when to run it).
   `exports`/types (decision-log ID-038). attw exits 0 on this, so it does not fail the gate; do not add
   library types just to satisfy it.
 
+## Bundle-size gate — size-limit
+
+- **What:** `pnpm size` builds the dashboard and checks the **brotli** size of its JS/CSS bundles
+  against the ceilings in `.size-limit.json` (currently ~295 kB JS / ~15 kB CSS, capped at 320 / 18 kB).
+  The dashboard is the only large shipped artifact — the CLI/plugin are small.
+- **Trigger:** it runs on every PR (CI `size` job); run it locally after adding a UI dependency or a
+  heavy import. Bumping a ceiling is a deliberate act — do it in the same PR that adds the weight, with
+  a note on why.
+- **Supply-chain note:** size-limit 13.0.1 is in `minimumReleaseAgeExclude` (it was one day old at
+  adoption; decision-log ID-077). It is a devDependency by a high-reputation author, so this is
+  accepted — but prefer an already-aged version for any future bump.
+
 ## Related
 
 - Core build/typecheck/test conventions: [[typescript-conventions]].

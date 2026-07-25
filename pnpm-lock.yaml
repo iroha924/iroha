@@ -72,6 +72,9 @@ catalogs:
     '@secretlint/secretlint-rule-preset-recommend':
       specifier: 13.0.2
       version: 13.0.2
+    '@size-limit/file':
+      specifier: 13.0.1
+      version: 13.0.1
     '@tailwindcss/vite':
       specifier: 4.3.3
       version: 4.3.3
@@ -186,6 +189,9 @@ catalogs:
     sherif:
       specifier: 1.13.0
       version: 1.13.0
+    size-limit:
+      specifier: 13.0.1
+      version: 13.0.1
     tailwind-merge:
       specifier: 3.6.0
       version: 3.6.0
@@ -245,6 +251,9 @@ importers:
       '@commitlint/config-conventional':
         specifier: 'catalog:'
         version: 21.2.0
+      '@size-limit/file':
+        specifier: 'catalog:'
+        version: 13.0.1(size-limit@13.0.1)
       czg:
         specifier: 'catalog:'
         version: 1.13.1
@@ -263,6 +272,9 @@ importers:
       sherif:
         specifier: 'catalog:'
         version: 1.13.0
+      size-limit:
+        specifier: 'catalog:'
+        version: 13.0.1
       taze:
         specifier: 'catalog:'
         version: 19.16.0
@@ -2748,6 +2760,12 @@ packages:
     resolution: {integrity: sha512-tlqY9xq5ukxTUZBmoOp+m61cqwQD5pHJtFY3Mn8CA8ps6yghLH/Hw8UPdqg4OLmFW3IFlcXnQNmo/dh8HzXYIQ==}
     engines: {node: '>=18'}
 
+  '@size-limit/file@13.0.1':
+    resolution: {integrity: sha512-qdbGUxRAjym5gnkYEjsNsdOfmkDUvDX06FLhLGUxQ0oJtIWDd2lsOmTMwh5JuAV1XmJCplbqpMJ2b5eIhHl7Lg==}
+    engines: {node: ^20.0.0 || ^22.0.0 || >=24.0.0}
+    peerDependencies:
+      size-limit: 13.0.1
+
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
@@ -3513,6 +3531,10 @@ packages:
   bundle-name@4.1.0:
     resolution: {integrity: sha512-tjwM5exMg6BGRI+kNmTntNsvdZS1X8BFYS6tnJ2hdH0kVxM6/eVZ2xy+FqStSWvYmtfFMDLIxurorHwDKfDz5Q==}
     engines: {node: '>=18'}
+
+  bytes-iec@3.1.1:
+    resolution: {integrity: sha512-fey6+4jDK7TFtFg/klGSvNKJctyU7n2aQdnM+CO0ruLPbqqMOM8Tio0Pc+deqUeVKX1tL5DQep1zQ7+37aTAsA==}
+    engines: {node: '>= 0.8'}
 
   bytes@3.1.2:
     resolution: {integrity: sha512-/Nf7TyzTx6S3yRJObOAV7956r8cr2+Oj8AC5dt8wSP3BQAoeX58NoHyCU8P8zGkNXStjTSi6fzO6F0pBdcYbEg==}
@@ -4801,6 +4823,10 @@ packages:
     resolution: {integrity: sha512-NXYBzinNrblfraPGyrbPoD19C1h9lfI/1mzgWYvXUTe414Gz/X1FD2XBZSZM7rRTrMA8JL3OtAaGifrIKhQ5yQ==}
     engines: {node: '>= 12.0.0'}
 
+  lilconfig@3.1.3:
+    resolution: {integrity: sha512-/vlFKAoH5Cgt3Ie+JLhRbwOsCQePABiU3tJ1egGvyQ+33R/vcwM2Zl2QR/LzjsBeItPt3oSVXapn+m4nQDvpzw==}
+    engines: {node: '>=14'}
+
   lines-and-columns@1.2.4:
     resolution: {integrity: sha512-7ylylesZQ/PV29jhEDl3Ufjo6ZX7gCqJr5F7PKrqc93v7fzSymt1BpwEU8nAUXs8qzzvqhbjhK5QZg6Mt/HkBg==}
 
@@ -5076,6 +5102,9 @@ packages:
     resolution: {integrity: sha512-bzlKTyNJ7+LdGIIwy8ijFpIqEQIvafahV7eYykJ8Cvh42EdJeODoJ6gUJXpQJvej1BddH8OqTXZNE/KfbWAu8Q==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
+
+  nanospinner@1.2.2:
+    resolution: {integrity: sha512-Zt/AmG6qRU3e+WnzGGLuMCEAO/dAu45stNbHY223tUxldaDAeE+FxSPsd9Q+j+paejmm0ZbrNVs5Sraqy3dRxA==}
 
   negotiator@1.0.0:
     resolution: {integrity: sha512-8Ofs/AUQh8MaEcrlq5xOX0CQ9ypTF5dl78mjlMNfOK08fzpgTHQRQPBxcPlEtIw0yRpws+Zo/3r+5WRby7u3Gg==}
@@ -5736,6 +5765,11 @@ packages:
 
   sisteransi@1.0.5:
     resolution: {integrity: sha512-bLGGlR1QxBcynn2d5YmDX4MGjlZvy2MRBDRNHLJ8VI6l6+9FUiyTFNJ0IveOSP0bcXgVDPRcfGqA0pjaqUpfVg==}
+
+  size-limit@13.0.1:
+    resolution: {integrity: sha512-LKWgnVUfw79W5gcKGIHqjEqBMoZ+YgfYYzlDheYwbRJq1DaaRgOjotFm61YOI/4hbgh4V1Es0uGGp6HLktI3Vw==}
+    engines: {node: ^22.18.0 || ^24.0.0 || >=26.0.0}
+    hasBin: true
 
   skin-tone@2.0.0:
     resolution: {integrity: sha512-kUMbT1oBJCpgrnKoSr0o6wPtvRWT9W9UKvGLwfJYO2WuahZRHOpEyL1ckyMGgMWh0UdpmaoFqKKD29WTomNEGA==}
@@ -8397,6 +8431,10 @@ snapshots:
 
   '@sindresorhus/merge-streams@4.0.0': {}
 
+  '@size-limit/file@13.0.1(size-limit@13.0.1)':
+    dependencies:
+      size-limit: 13.0.1
+
   '@standard-schema/spec@1.1.0': {}
 
   '@standard-schema/utils@0.3.0': {}
@@ -9029,6 +9067,8 @@ snapshots:
   bundle-name@4.1.0:
     dependencies:
       run-applescript: 7.1.0
+
+  bytes-iec@3.1.1: {}
 
   bytes@3.1.2: {}
 
@@ -10176,6 +10216,8 @@ snapshots:
       lightningcss-win32-arm64-msvc: 1.32.0
       lightningcss-win32-x64-msvc: 1.32.0
 
+  lilconfig@3.1.3: {}
+
   lines-and-columns@1.2.4: {}
 
   linkify-it@5.0.2:
@@ -10561,6 +10603,10 @@ snapshots:
       thenify-all: 1.6.0
 
   nanoid@3.3.16: {}
+
+  nanospinner@1.2.2:
+    dependencies:
+      picocolors: 1.1.1
 
   negotiator@1.0.0: {}
 
@@ -11316,6 +11362,13 @@ snapshots:
   signal-exit@4.1.0: {}
 
   sisteransi@1.0.5: {}
+
+  size-limit@13.0.1:
+    dependencies:
+      bytes-iec: 3.1.1
+      lilconfig: 3.1.3
+      nanospinner: 1.2.2
+      picocolors: 1.1.1
 
   skin-tone@2.0.0:
     dependencies:
