@@ -34,14 +34,16 @@ Commit as its own PR (`chore(release): vX.Y.Z`), let CI go green, and merge.
 ## 2. Local sanity check
 
 ```bash
-pnpm build && pnpm --filter @iroha/plugin build:release
+pnpm check:package   # builds the release, then validates it with publint + attw
 node -p "const p=require('./packages/plugin/release/package.json'); p.name+'@'+p.version"
 # expect: @irohalabs/iroha@X.Y.Z
 (cd packages/plugin/release && npm publish --dry-run --access public)
 ```
 
-Confirm the assembled name/version and the file list look right. Do **not** run a real
-`npm publish` locally — the release goes through the workflow so it is attested.
+Confirm the assembled name/version and the file list look right. `check:package` (also a CI job and a
+`release.yml` step) must pass — publint "All good", and attw's "does not contain types" is expected for
+this CLI package (see [[dev-tooling]]). Do **not** run a real `npm publish` locally — the release goes
+through the workflow so it is attested.
 
 ## 3. Dry-run the Release workflow
 
