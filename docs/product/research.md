@@ -242,7 +242,7 @@ Codexの公式仕様では、hosted toolsはlocal function-tool Hook pathを通�
 | Tier 1 OS | macOS 14 arm64/x64、Ubuntu 22.04 arm64/x64、Windows 11 x64、WSL2 |
 | Embedding | 任意のVoyage `voyage-4-large`、1024次元。ゼロ設定はFTS+Graph |
 | Forge | Git metadataをP0、GitHubを最初のP1 provider、GitLabはport/fixtureのみ |
-| 配布 | `@iroha-labs/iroha`、GitHub Releases、Claude/Codexの各marketplace manifest |
+| 配布 | `@irohalabs/iroha`、GitHub Releases、Claude/Codexの各marketplace manifest |
 
 厳密なversion、OS、package、feature detectionは [Compatibility Contract](./implementation/compatibility.md)、Hookのイベント・入出力・timeoutは [Hook Contract](./implementation/hooks-contract.md) を正本とする。
 

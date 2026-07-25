@@ -9,7 +9,7 @@
 export const PLUGIN_NAME = "iroha";
 
 /** Published npm package the marketplaces resolve the plugin from (ID-011). */
-export const PUBLISHED_PACKAGE_NAME = "@iroha-labs/iroha";
+export const PUBLISHED_PACKAGE_NAME = "@irohalabs/iroha";
 
 /**
  * Product version. Kept in lockstep with `packages/plugin/package.json` — a unit

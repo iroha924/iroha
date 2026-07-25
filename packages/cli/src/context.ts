@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 /**
  * Resolve a runtime asset shipped both inside this monorepo and inside the
- * published `@iroha-labs/iroha` package. The bundled code runs from two layouts:
+ * published `@irohalabs/iroha` package. The bundled code runs from two layouts:
  * in the monorepo the asset sits at the repo root (`../../..` from
  * `packages/cli/{src,dist}/…` or the plugin's `packages/plugin/dist/…`), while in
  * the published package `build-release.ts` ships it at the package root (`..`

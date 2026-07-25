@@ -9,7 +9,7 @@
       "name": "iroha",
       "source": {
         "source": "npm",
-        "package": "@iroha-labs/iroha"
+        "package": "@irohalabs/iroha"
       },
       "description": "Local-first Engineering Memory Graph for Claude Code and Codex.",
       "homepage": "https://github.com/iroha924/iroha",

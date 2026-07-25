@@ -3,7 +3,7 @@
 > Status: Ready for Claude Code  
 > Updated: 2026-07-18
 
-このbundleは、iroha v0.1を空のrepositoryから実装するための確定仕様である。プロダクト名、Plugin名、CLI名はすべて`iroha`。公開npm packageは`@iroha-labs/iroha`。
+このbundleは、iroha v0.1を空のrepositoryから実装するための確定仕様である。プロダクト名、Plugin名、CLI名はすべて`iroha`。公開npm packageは`@irohalabs/iroha`。
 
 ## Claude Codeへ渡す方法
 

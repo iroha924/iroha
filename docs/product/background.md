@@ -130,7 +130,7 @@ Embedding API、GitHub/GitLab API、Hookの一部が利用できなくても、G
 |---|---|
 | 名称 | iroha |
 | 発行主体 | iroha labs / `iroha-labs.com` |
-| npm package | `@iroha-labs/iroha`（CLIは`iroha`） |
+| npm package | `@irohalabs/iroha`（CLIは`iroha`） |
 | 対応対象 | Claude Code、Codex |
 | 言語 | TypeScript |
 | Toolchain | Node.js `>=24 <25`、pnpm 11、Turborepo、ESM-only |

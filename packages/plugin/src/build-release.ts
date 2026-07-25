@@ -1,12 +1,12 @@
 /**
- * Assemble the publishable `@iroha-labs/iroha` npm package into a staging
+ * Assemble the publishable `@irohalabs/iroha` npm package into a staging
  * directory (WP-11c). Under Option A (decision-log ID-038) one npm package is
  * both the runtime and the plugin, so the tarball root carries the `iroha`
  * binary (`dist/`), the two platform manifests + hook/MCP config + skills (so a
  * marketplace `npm` source finds them), and `LICENSE`.
  *
  * The generated `package.json` (ID-011: internal `@iroha/*`, published
- * `@iroha-labs/iroha`) renames the package, drops the `@iroha/*` workspace
+ * `@irohalabs/iroha`) renames the package, drops the `@iroha/*` workspace
  * dependencies — they are bundled into `dist/bin.mjs` by tsdown, not resolved at
  * runtime — and resolves every remaining `catalog:` dependency to the concrete
  * version from `pnpm-workspace.yaml`, so the tarball is installable by an

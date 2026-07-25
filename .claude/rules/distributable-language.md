@@ -4,7 +4,7 @@ iroha's **distributables and artifacts default to English**. Japanese is "an add
 
 ## Write in English (the default for everything that ships or guides development)
 
-- Product / CLI / package names (`iroha`, `@iroha-labs/iroha`).
+- Product / CLI / package names (`iroha`, `@irohalabs/iroha`).
 - CLI output, error messages, help text.
 - Source-code comments, docstrings, identifiers.
 - **Everything under `.claude/**`** — rules (`.claude/rules/`), skills (`.claude/skills/*/SKILL.md`, incl. the frontmatter `description`), agents (`.claude/agents/`), hooks, and commands. This repo is public and its `.claude/` files are read by English-context reviewers (Codex reads `.claude/rules/*.md` in CI per `AGENTS.md`).

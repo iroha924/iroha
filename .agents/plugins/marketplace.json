@@ -8,7 +8,7 @@
       "name": "iroha",
       "source": {
         "source": "npm",
-        "package": "@iroha-labs/iroha"
+        "package": "@irohalabs/iroha"
       },
       "category": "Productivity"
     }

@@ -22,7 +22,7 @@
 - 候補の確認、編集、承認、却下を行うローカルDashboard
 - pull後の明示的なsync
 - GitHub/GitLab連携のためのprovider interface
-- scoped npm package `@iroha-labs/iroha`と、Claude Code/Codex用の別manifestを持つ配布物
+- scoped npm package `@irohalabs/iroha`と、Claude Code/Codex用の別manifestを持つ配布物
 
 ### 2.2 MVPの対象外
 

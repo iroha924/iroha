@@ -1,6 +1,6 @@
 /**
  * Runnable entrypoint for `pnpm --filter @iroha/plugin build:release`. Assembles
- * the publishable `@iroha-labs/iroha` package into `packages/plugin/release`;
+ * the publishable `@irohalabs/iroha` package into `packages/plugin/release`;
  * the WP-11c release workflow packs/publishes from there. Kept separate from
  * `build-release.ts` so the side-effecting run lives in its own tsdown entry
  * chunk (see `build-archive-cli.ts` for the rationale).

@@ -40,7 +40,7 @@ Before flagging something as a spec gap or missing consideration, check `docs/pr
 
 ## Product invariants
 
-- Product, plugin, MCP server, and CLI name: `iroha`. Publisher: `iroha labs`; npm package: `@iroha-labs/iroha`.
+- Product, plugin, MCP server, and CLI name: `iroha`. Publisher: `iroha labs`; npm package: `@irohalabs/iroha`.
 - Git-tracked `.iroha/` is the team-shared canonical source; libSQL is a local, disposable, rebuildable index and never the sole source of approved knowledge.
 - Candidate knowledge is not authoritative until a human approves it; raw prompts and transcripts are not written to canonical files.
 - Session-end-only summarization is forbidden — use the Turn/Checkpoint lifecycle.

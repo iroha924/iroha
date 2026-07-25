@@ -57,7 +57,7 @@ flowchart TB
 | Runtime | Node.js `>=24.0.0 <25` |
 | Language | TypeScript 7、strict、ESM-only |
 | Workspace | pnpm 11.14.0 + Turborepo 2.10.5、単一lockfile |
-| Published package | `@iroha-labs/iroha`、binaryは`iroha` |
+| Published package | `@irohalabs/iroha`、binaryは`iroha` |
 | Dashboard | React 19.2.7 + Vite 8.1.5 SPA |
 | Local API | Hono 4.12.30、same-origin、loopback only |
 | Validation | Zod 4 + JSON Schema 2020-12 |
@@ -94,7 +94,7 @@ flowchart TB
 | `@iroha/plugin` | manifests、Hooks、Skills、packaged artifact |
 | `apps/dashboard` | React SPA。generated API client以外のserver packageへ依存しない |
 
-`domain`はstorage、adapter、CLI、API、UIへ依存しない。workspace cycleは禁止する。初期公開packageは`@iroha-labs/iroha`だけとし、内部packageはprivateにする。
+`domain`はstorage、adapter、CLI、API、UIへ依存しない。workspace cycleは禁止する。初期公開packageは`@irohalabs/iroha`だけとし、内部packageはprivateにする。
 
 ## 5. Plugin and process model
 
@@ -356,6 +356,6 @@ Guardrailは完全なsecurity boundaryではない。決定的に判定できる
 | ADR-012 | Advisory ruleとGuardrailを分離 | Accepted |
 | ADR-013 | No cloud、no daemon、no realtime | Accepted |
 | ADR-014 | No transcript core dependency、no surveillance | Accepted |
-| ADR-015 | scoped npm `@iroha-labs/iroha` | Accepted |
+| ADR-015 | scoped npm `@irohalabs/iroha` | Accepted |
 
 Public licenseの選択だけは初回release前のdecision gateであり、local implementationを止めない。
