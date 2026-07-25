@@ -82,7 +82,7 @@ A review by yourself (in the same conversation context that invoked this skill) 
 
 ## Step 8 — Whole-repository verification gate
 
-Always run `pnpm lint && pnpm typecheck && pnpm test && pnpm build` before you push. Run it across the whole repository, not just the individual package.
+Always run `pnpm lint && pnpm typecheck && pnpm test && pnpm build` before you push. Run it across the whole repository, not just the individual package. When your change added, removed, or reordered a dependency in any `package.json`, also run `pnpm lint:packages` (sherif) — see [[dev-tooling]].
 
 ## Step 9 — Record the assumptions
 
