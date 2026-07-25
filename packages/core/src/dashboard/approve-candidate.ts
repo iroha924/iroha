@@ -9,6 +9,7 @@ import {
   withTransaction,
 } from "@iroha/storage";
 import { importCanonicalDocument, insertCanonicalDocumentRelations } from "../sync-canonical.js";
+import { withRepositoryWriteLock } from "../write-mutex.js";
 import {
   buildCanonicalDocumentFromCandidate,
   type CandidateDraft,
@@ -16,7 +17,6 @@ import {
   type CanonicalProvenanceSource,
 } from "./build-canonical.js";
 import { withDashboardRepository } from "./with-repository.js";
-import { withRepositoryWriteLock } from "./write-mutex.js";
 
 /** The AI agent that authored a candidate, recorded as `created_by` (NFR-006: AI-vs-human provenance). */
 const AGENT_ACTOR: CanonicalActorRef = { provider: "local", display_name: "iroha agent" };

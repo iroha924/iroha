@@ -7,6 +7,7 @@ import {
   insertIdempotencyRecord,
   withTransaction,
 } from "@iroha/storage";
+import { withRepositoryWriteLock } from "../write-mutex.js";
 
 const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -33,6 +34,14 @@ export interface IdempotentWriteArgs<T> {
  * result is then returned instead of the constraint error.
  */
 export async function runIdempotentWrite<T>(
+  args: IdempotentWriteArgs<T>,
+): Promise<Result<T, IrohaError>> {
+  // Serialize this repository's in-process writes: parallel MCP tool calls
+  // otherwise each block ~2.5s on libSQL's native busy wait (see write-mutex.ts).
+  return withRepositoryWriteLock(args.repositoryId, () => runIdempotentWriteLocked(args));
+}
+
+async function runIdempotentWriteLocked<T>(
   args: IdempotentWriteArgs<T>,
 ): Promise<Result<T, IrohaError>> {
   const existing = await getIdempotencyRecord(

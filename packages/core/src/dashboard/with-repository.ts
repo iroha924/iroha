@@ -1,6 +1,7 @@
 import type { Clock, IrohaError, RandomSource, Result } from "@iroha/domain";
 import { closeDatabase, type Database, openDatabase } from "@iroha/storage";
 import { type ResolvedRepository, resolveInitializedRepository } from "../resolve-repository.js";
+import { withRepositoryWriteLock } from "../write-mutex.js";
 
 export interface DashboardRepositoryContext {
   db: Database;
@@ -53,4 +54,20 @@ export async function withDashboardRepository<T>(
   } finally {
     await closeDatabase(db);
   }
+}
+
+/**
+ * `withDashboardRepository` plus the per-repository write lock (write-mutex.ts):
+ * the dashboard serves concurrent HTTP requests, so this serializes its
+ * in-process mutations (approve/reject/supersede/edit) rather than letting them
+ * each block on libSQL's native busy wait. Every write use case uses it; reads
+ * use `withDashboardRepository` directly.
+ */
+export function withDashboardWrite<T>(
+  input: WithDashboardRepositoryInput,
+  fn: (ctx: DashboardRepositoryContext) => Promise<Result<T, IrohaError>>,
+): Promise<Result<T, IrohaError>> {
+  return withDashboardRepository(input, (ctx) =>
+    withRepositoryWriteLock(ctx.repo.repositoryId, () => fn(ctx)),
+  );
 }
