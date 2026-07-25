@@ -1,75 +1,146 @@
-# iroha
+<p align="center">
+  <img src="apps/dashboard/public/iroha-lockup-horizontal.svg" alt="iroha" width="320">
+</p>
 
-A local-first Engineering Memory Graph for Claude Code and Codex.
+<p align="center">
+  English | <a href="./README.ja.md">日本語</a>
+</p>
 
-It links development sessions, Issues, implementations, commits, PRs, reviews, decisions, rules, and incidents — each with provenance and human approval.
+<p align="center">
+  <a href="https://github.com/iroha924/iroha/actions/workflows/ci.yml"><img src="https://github.com/iroha924/iroha/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <img src="https://img.shields.io/badge/node-%3E%3D24%20%3C25-6E7B57" alt="Node >=24 <25">
+  <img src="https://img.shields.io/badge/license-Apache--2.0-6F675A" alt="License Apache-2.0">
+</p>
 
-## Specifications
+**iroha** is a local-first Engineering Memory Graph for Claude Code and Codex. It takes the decisions, rules, and hard-won lessons from your agent sessions and turns them into a searchable, git-tracked knowledge base your whole team shares — and nothing gets written to it until a human says yes.
 
-The confirmed specification lives in [docs/product/](./docs/product/). The implementation entry point is [CLAUDE.md](./CLAUDE.md) (Codex and others: [AGENTS.md](./AGENTS.md)).
+AI is astonishingly smart, yet forgets everything the two of you decided the moment the session ends. iroha fixes that amnesia. Every approved item keeps its provenance — the session, pull request, commit, or review it came from — so your agent can search that memory over MCP and start the next session already knowing *why* the code is the way it is.
 
-## Development
+## Why iroha
 
-Requires Node.js `>=24 <25` and pnpm 11.14.0 (via Corepack).
+- **Your agents stop forgetting.** A decision or convention captured in one session shows up — with sources — in the next, across Claude Code *and* Codex.
+- **A human always has the last word.** Agents propose *candidate* knowledge; you approve what's worth keeping. No agent quietly writing "this seems important!" into your knowledge base behind your back. Only approved items become canonical Markdown under `.iroha/`, committed to git and shared with your team.
+- **Local-first, private by default.** No cloud account, no telemetry, no server somewhere. Raw prompts and transcripts never touch your knowledge base. The only things that reach the network are two features *you* opt into: embedding generation (Voyage) and GitHub forge sync — and neither moves a byte until you turn it on with your own key.
+- **Search works with zero config.** Full-text and graph search run out of the box (Japanese and other CJK text included!). Enable semantic search in your config and add an embedding key and you get that too; without them, iroha quietly stays on lexical search instead of falling over.
+
+And to be clear: iroha is not a surveillance or productivity-ranking tool, and there's no hosted backend. It's a memory graph *you* own.
+
+## Requirements
+
+- **Node.js** `>=24 <25`
+- **Git** — iroha works on a Git repository
+- **Claude Code** `>=2.1.198` and/or **Codex** `>=0.144.5` (either or both)
+
+## Install
+
+iroha ships as one npm package, `@iroha-labs/iroha`, which provides the `iroha` binary. That binary *is* everything — the CLI, the lifecycle hooks, and the MCP server — so installing it is the one step you can't skip.
 
 ```bash
-corepack pnpm install --frozen-lockfile
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm build
+npm install -g @iroha-labs/iroha
 ```
 
-## Running the dashboard
-
-The dashboard is a local, single-origin app: `iroha dashboard` serves the built SPA and its JSON API from one loopback port and hands the browser a one-time launch token. Human approval of knowledge candidates lives only here (and in the CLI) — agents never see it. There are three ways to run it.
-
-### `pnpm dashboard` — verify iroha itself
-
-This repository is already initialized (it dogfoods its own `.iroha/`), so from the repo root:
+Then, in any Git repository:
 
 ```bash
-pnpm dashboard
+iroha init      # create .iroha/ and the local index (rerun any time; commit the result)
+iroha doctor    # check Node, Git, detected agents, and database capabilities
 ```
 
-This builds everything, then serves the dashboard at `http://127.0.0.1:<random-port>` and opens the browser. The URL carries the launch token in its fragment (`#token=…`), which the SPA exchanges once for an HttpOnly session cookie.
+The `iroha` CLI (`init | sync | search | dashboard | doctor`) works entirely on its own — the plugins below just add editor integration on top.
 
-### `iroha` command — dogfood in another project
+## Set up your agent
 
-To use `iroha` as a global command in any other repository:
+The plugin registers iroha's skills, lifecycle hooks, and MCP server with your agent. Both plugins call the globally installed `iroha` binary, so do the step above first.
 
-```bash
-pnpm setup        # once: puts pnpm's global bin dir on PATH, then reload your shell
-pnpm link:global  # link the @iroha/cli binary globally
+### Claude Code
+
+```text
+/plugin marketplace add iroha924/iroha
+/plugin install iroha@iroha
 ```
 
-Then, inside any Git repository:
+Skills then show up as `/iroha:init`, `/iroha:sync`, `/iroha:search`, `/iroha:checkpoint`, `/iroha:dashboard`, and `/iroha:doctor`.
+
+### OpenAI Codex
 
 ```bash
-iroha init        # if not initialized yet
+codex plugin marketplace add iroha924/iroha
+```
+
+Install the `iroha` plugin from that marketplace with your Codex version's plugin flow (`/plugins` in the Codex CLI). Codex won't trust plugin hooks until you say so — run `/hooks` and trust them. Until you do, the MCP server and CLI still work fine; Codex skills are invoked as `$init`, `$sync`, and so on.
+
+Full install, update, and uninstall details — including the Codex hook-trust flow — live in [docs/install.md](./docs/install.md).
+
+## Quick start
+
+Once a plugin is set up, the whole loop is: work as usual, then curate.
+
+```bash
+# 1. Work with your agent as usual. iroha's hooks watch the session, and when
+#    something worth remembering shows up (a decision, a rule, a lesson), your
+#    agent proposes it as a candidate through the MCP server.
+
+# 2. Review and approve candidates in the local dashboard:
 iroha dashboard
+#    → opens http://127.0.0.1:<port>/#token=… ; approve what's worth keeping.
+
+# 3. Approved knowledge is now canonical Markdown under .iroha/ — commit it:
+git add .iroha && git commit -m "chore: approve knowledge"
+
+# 4. Search your memory any time (agents do this over MCP; you can from the CLI):
+iroha search "why do we use the repository pattern"
 ```
 
-### HMR development — editing the UI
+A teammate who clones the repo runs `iroha init` then `iroha sync --rebuild` to rebuild their local index from the committed `.iroha/`.
 
-For hot-module-reload work on the SPA. Vite proxies `/api` same-origin, so the real cookie + anti-CSRF auth is reused (no auth bypass):
+## The approval dashboard
 
-```bash
-pnpm dashboard:api   # terminal 1 — API on fixed port 5178 with a fixed dev token
-pnpm dashboard:web   # terminal 2 — Vite dev server (HMR), proxying /api to :5178
-```
+`iroha dashboard` serves a local, single-origin app from one loopback port and hands your browser a one-time launch token. It's where you review candidate knowledge, see each item's provenance and relationships, and approve or reject it. The dashboard is the *only* place approval happens — it's a human's call, never an agent's. It binds to loopback only, so nothing is exposed off your machine.
 
-Then open `http://localhost:5173/#token=iroha-dev`.
+## Configuration
 
-`IROHA_DASHBOARD_DEV_TOKEN` (used by `pnpm dashboard:api`) is a loopback-development convenience only; when it is unset, each start mints a fresh random 256-bit token, as in production.
+`iroha init` writes `.iroha/config.yaml`. It records **environment-variable names**, never secret values — the values are read from your environment at runtime and are never stored, logged, or committed.
 
-## End-to-end tests
+| Environment variable | Purpose | Required | Without it |
+|---|---|---|---|
+| `VOYAGE_API_KEY` | Semantic (vector) search embeddings via Voyage | No | Search stays full-text + graph only |
+| `GITHUB_TOKEN` | GitHub forge sync (pull requests, reviews) | No | Forge sync is simply off |
 
-The dashboard has a Playwright end-to-end test (`apps/e2e`) that launches the real `iroha dashboard` binary, seeds a candidate, and drives the full approve flow in a browser. It is **opt-in and local only** — it is not part of the CI verify matrix, so `pnpm test` never downloads a browser. Run it explicitly:
+Heads up: the key is only half of it — both features are **off by default in `config.yaml`** too. Set `search.embedding.enabled: true` (plus `VOYAGE_API_KEY`) for semantic search, and `forge.enabled: true` (plus `GITHUB_TOKEN`) for GitHub sync.
 
-```bash
-pnpm exec playwright install chromium   # once, downloads the browser
-pnpm test:e2e
-```
+Other `config.yaml` settings worth knowing:
 
-The package's `lint` and `typecheck` (both browser-free) do run in CI, so the harness stays current even though the browser run does not.
+- `default_language` — `en` (default) or `ja`; the dashboard's startup locale.
+- `canonical.require_human_approval` — keep it `true` so nothing becomes authoritative without review.
+
+## How it works
+
+1. **Adapters normalize both agents.** Claude Code and Codex sessions become the same domain events, so one memory graph serves both.
+2. **Knowledge is captured *during* work,** through a Turn/Checkpoint lifecycle rather than one session-end summary (Codex has no session-end hook, for one).
+3. **Candidates carry provenance.** Each proposed decision, rule, or insight links back to its source and to related items.
+4. **A human approves.** Approved knowledge is written to canonical Markdown under `.iroha/` and committed — the team-shared source of truth.
+5. **A local libSQL index makes it searchable** (lexical always; semantic once you enable embeddings with a key). The index is disposable and rebuildable from `.iroha/` any time — break it, delete it, whatever; it's never the sole source of approved knowledge.
+
+## FAQ
+
+**Does anything leave my machine?** By default, no. iroha is local-first with no cloud account and no telemetry. Two features reach the network only when you opt in with your own key — semantic-search embeddings (Voyage) and GitHub forge sync — and until then, not a single byte goes out.
+
+**I don't have an embedding key.** No problem — search still works. Full-text and graph search run with zero configuration, Japanese and other CJK queries included; semantic search is a nice-to-have on top.
+
+**How is my knowledge stored?** As plain, git-tracked Markdown under `.iroha/`. Read it, diff it, review it like any other source. The libSQL index under `.git/iroha/` is just a disposable cache.
+
+**Rebuild the index?** `iroha sync --rebuild`. On a fresh clone, run `iroha init` first.
+
+**What's with the name?** *iroha* (いろは) is the opening of a classic Japanese poem that uses each kana exactly once — it's come to mean "the ABCs," the fundamentals. Your engineering memory, from first principles.
+
+## Contributing
+
+Contributions are very welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the development setup and workflow. The full product specification lives in [docs/product/](./docs/product/).
+
+## Security
+
+Hook enforcement is a guardrail, not a complete security boundary — hard enforcement belongs in CI. Found a vulnerability? Please open a [security advisory](https://github.com/iroha924/iroha/security/advisories/new) rather than a public issue.
+
+## License
+
+[Apache-2.0](./LICENSE) © iroha labs
