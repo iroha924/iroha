@@ -139,6 +139,46 @@ describe("parseCodexEvent — apply_patch and Bash targets", () => {
     expect(targetValues.some((v) => v.includes("sk-live-123"))).toBe(false);
   });
 
+  it("extracts targets from a CRLF apply_patch (a trailing \\r must not defeat the header/move match)", () => {
+    // Regression guard: a Codex apply_patch can arrive with CRLF endings (Windows).
+    // `command.split("\n")` then leaves a trailing `\r` on each line. `.` does not
+    // match `\r` and a `$` anchor rejects a position before it, so an anchored
+    // header regex would match NOTHING, extract no file target, and fall back to
+    // `kind: "other"` — which the Guardrail never path-matches, letting a write to
+    // a protected path slip through. The un-anchored `.+` + `.trimEnd()` must see
+    // both the header and the move under CRLF.
+    const { ctx } = makeFakeCtx();
+    const patch = [
+      "*** Begin Patch",
+      "*** Update File: src/a.ts",
+      "+evil",
+      "*** Move to: src/b.ts",
+      "*** End Patch",
+    ].join("\r\n");
+    const event = unwrap(
+      parseCodexEvent(
+        {
+          ...common,
+          hook_event_name: "PreToolUse",
+          turn_id: "t-crlf",
+          tool_name: "apply_patch",
+          tool_input: { command: patch },
+        },
+        ctx,
+      ),
+    );
+    expect(event).toMatchObject({
+      kind: "TOOL_STARTED",
+      payload: {
+        toolName: "apply_patch",
+        targets: [
+          { kind: "file", value: "src/a.ts", operation: "delete" },
+          { kind: "file", value: "src/b.ts", operation: "write" },
+        ],
+      },
+    });
+  });
+
   it("extracts a `Move to:` rename as a delete of the source and a write to the destination", () => {
     const { ctx } = makeFakeCtx();
     // A move INTO a protected path — the destination write must be surfaced so

@@ -3,6 +3,7 @@ import {
   redactAbsolutePathsInText,
   redactUrlLikeCredentials,
   redactUrlLikeCredentialsInText,
+  schemeStartIndices,
 } from "./credential-redaction.js";
 
 describe("redactUrlLikeCredentials", () => {
@@ -128,6 +129,49 @@ describe("redactUrlLikeCredentialsInText", () => {
 
     expect(redactUrlLikeCredentialsInText(text)).toBe("https://example.com/repo.git");
   });
+
+  it("stays linear-time on a long adversarial no-scheme run (ReDoS guard)", () => {
+    // Scheme starts are found by a linear scan, not a backtracking regex, so a
+    // long run of scheme-class characters that never forms a `://` stays O(n).
+    // The unbounded regex form took ~700ms at 40k characters and grew
+    // quadratically; this must finish well under the ceiling. Reachable: Git
+    // stderr can echo a caller-supplied argument verbatim.
+    const adversarial = "a".repeat(100_000);
+    const start = performance.now();
+    const out = redactUrlLikeCredentialsInText(adversarial);
+    expect(performance.now() - start).toBeLessThan(1000);
+    expect(out).toBe(adversarial); // no scheme present → returned unchanged
+  });
+
+  it("redacts a credential after a long scheme (the scan has no length bound)", () => {
+    // A URI scheme's length is not bounded by RFC 3986 or by Git, so a fixed
+    // `{0,N}` bound on the scheme body would be a credential-redaction false
+    // negative: here the 64 characters before `://` are digits, so a bounded or
+    // letter-anchored scan finds no scheme start and passes the credential
+    // through. The linear scan walks the whole scheme-char run.
+    const scheme = `a${"0".repeat(200)}`;
+    const out = redactUrlLikeCredentialsInText(`${scheme}://token:secret@example.invalid/repo`);
+    expect(out).not.toContain("token");
+    expect(out).not.toContain("secret");
+    expect(out).toContain("example.invalid");
+  });
+
+  it("schemeStartIndices equals the unbounded reference regex on every short string (parity guard)", () => {
+    // This refactor's safety rests entirely on schemeStartIndices producing the
+    // exact index set of the ORIGINAL unbounded regex — a divergence is a
+    // credential-redaction false negative. Enumerate every string up to length 5
+    // over a representative alphabet (letter, upper, digit, scheme punctuation,
+    // the `:`/`/` delimiters, and `@`) and assert the two agree exactly.
+    const reference = (s: string): number[] =>
+      [...s.matchAll(/[a-zA-Z][a-zA-Z0-9+.-]*:\/\//g)].map((m) => m.index ?? 0);
+    const alphabet = ["a", "A", "0", "+", ".", "-", ":", "/", "@"];
+    const walk = (prefix: string, depth: number): void => {
+      expect(schemeStartIndices(prefix)).toEqual(reference(prefix));
+      if (depth === 0) return;
+      for (const c of alphabet) walk(prefix + c, depth - 1);
+    };
+    walk("", 5);
+  }, 20_000);
 
   it("redacts a credentialed URL whose password itself contains a comma", () => {
     // A comma/semicolon is a legal unencoded userinfo character (RFC 3986
