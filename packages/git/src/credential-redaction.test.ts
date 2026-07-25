@@ -160,21 +160,33 @@ describe("redactUrlLikeCredentialsInText", () => {
   it("schemeStartIndices equals the unbounded reference regex (fast-check parity property)", () => {
     // This refactor's safety rests entirely on schemeStartIndices producing the
     // exact index set of the ORIGINAL unbounded regex — a divergence is a
-    // credential-redaction false negative. fast-check generates strings over the
-    // structurally-relevant alphabet (letter, upper, digit, scheme punctuation,
-    // the `:`/`/` delimiters, and `@`), at lengths a hand-written enumeration
-    // could not reach, and asserts the two agree — shrinking any divergence to a
-    // minimal reproducer.
+    // credential-redaction false negative. The generator is biased so most inputs
+    // actually contain a `scheme://` (a uniform char array almost never produces
+    // the 3-char `://` run, so it would exercise the interesting logic only rarely):
+    // it interleaves scheme-char runs, literal `://`, and stray delimiters, and is
+    // `fc.oneof`-mixed with fully-raw strings to keep the adversarial edge cases.
+    // `seed` is pinned so a failure reproduces deterministically.
     const reference = (s: string): number[] =>
       [...s.matchAll(/[a-zA-Z][a-zA-Z0-9+.-]*:\/\//g)].map((m) => m.index ?? 0);
-    const schemeIsh = fc
+    const run = fc.array(fc.constantFrom("a", "A", "z", "0", "9", "+", ".", "-"), { maxLength: 6 });
+    const schemeShaped = fc
+      .array(
+        fc.oneof(
+          { weight: 3, arbitrary: run.map((c) => c.join("")) },
+          { weight: 3, arbitrary: fc.constant("://") },
+          { weight: 1, arbitrary: fc.constantFrom(":", "/", "@", " ") },
+        ),
+        { maxLength: 14 },
+      )
+      .map((tokens) => tokens.join(""));
+    const rawString = fc
       .array(fc.constantFrom("a", "A", "0", "+", ".", "-", ":", "/", "@"), { maxLength: 48 })
       .map((chars) => chars.join(""));
     fc.assert(
-      fc.property(schemeIsh, (s) => {
+      fc.property(fc.oneof(schemeShaped, rawString), (s) => {
         expect(schemeStartIndices(s)).toEqual(reference(s));
       }),
-      { numRuns: 10_000 },
+      { numRuns: 10_000, seed: 0x1204 },
     );
   });
 
