@@ -68,6 +68,7 @@ catalog:
   size-limit: 13.0.1
   tailwindcss: 4.3.3
   taze: 19.16.0
+  ts-pattern: 5.9.0
   tsdown: 0.22.9
   typescript: 7.0.2
   unist-util-visit: 5.1.0

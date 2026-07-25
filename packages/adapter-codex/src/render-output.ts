@@ -1,4 +1,5 @@
 import type { HookOutput, NormalizedEvent } from "@iroha/platform";
+import { match } from "ts-pattern";
 
 /**
  * The Codex hook event name to stamp into `hookSpecificOutput` for a context
@@ -23,27 +24,32 @@ function contextEventName(kind: NormalizedEvent["kind"]): string | undefined {
  * (never plain text). Shapes are verbatim from the official Codex hooks docs.
  */
 export function renderCodexOutput(output: HookOutput, event: NormalizedEvent): string | undefined {
-  switch (output.kind) {
-    case "none":
-      return undefined;
-    case "context": {
-      const hookEventName = contextEventName(event.kind);
-      if (hookEventName === undefined) {
-        return undefined;
-      }
-      return JSON.stringify({
-        hookSpecificOutput: { hookEventName, additionalContext: output.additionalContext },
-      });
-    }
-    case "deny":
-      return JSON.stringify({
-        hookSpecificOutput: {
-          hookEventName: "PreToolUse",
-          permissionDecision: "deny",
-          permissionDecisionReason: `Blocked by iroha rule ${output.ruleId}: ${output.reason}`,
-        },
-      });
-    case "continuation":
-      return JSON.stringify({ decision: "block", reason: output.reason });
-  }
+  return (
+    match(output)
+      .with({ kind: "none" }, () => undefined)
+      .with({ kind: "context" }, (o) => {
+        const hookEventName = contextEventName(event.kind);
+        if (hookEventName === undefined) {
+          return undefined;
+        }
+        return JSON.stringify({
+          hookSpecificOutput: { hookEventName, additionalContext: o.additionalContext },
+        });
+      })
+      .with({ kind: "deny" }, (o) =>
+        JSON.stringify({
+          hookSpecificOutput: {
+            hookEventName: "PreToolUse",
+            permissionDecision: "deny",
+            permissionDecisionReason: `Blocked by iroha rule ${o.ruleId}: ${o.reason}`,
+          },
+        }),
+      )
+      .with({ kind: "continuation" }, (o) =>
+        JSON.stringify({ decision: "block", reason: o.reason }),
+      )
+      // `.exhaustive()`: a new HookOutput kind becomes a compile error here, not a
+      // silent `undefined` fall-through (the switch had no default).
+      .exhaustive()
+  );
 }
