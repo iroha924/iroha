@@ -34,6 +34,11 @@ describe("buildMatchQuery", () => {
     expect(buildMatchQuery("パターン2")).toBe('"パターン" OR "2"');
   });
 
+  it("splits before a Latin run after a prolonged sound mark (U+30FC is Script=Common)", () => {
+    expect(buildMatchQuery("ユーザーID")).toBe('"ユーザー" OR "ID"');
+    expect(buildMatchQuery("サーバーURL 設定")).toBe('"サーバー" OR "URL" OR "設定"');
+  });
+
   it("routes a mixed-script query to OR even when a Latin token looks like an identifier", () => {
     // `libSQL` is camelCase (an exact-token marker), but the query also has kana
     // runs that only ever match as whole-run tokens; AND would require those to

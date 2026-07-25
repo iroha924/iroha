@@ -53,8 +53,13 @@ function hasExactTokenMarker(tokens: readonly string[]): boolean {
  * at the script boundary lets the Latin term match unicode61 and the CJK run
  * match trigram independently, so the FTS-only default recovers mixed-script
  * recall without an embedding provider.
+ *
+ * `Script_Extensions` (not `Script`) is required so the prolonged sound mark
+ * `ー` (U+30FC) and other shared kana marks — whose primary `Script` is Common —
+ * still count as CJK; otherwise `ユーザーID` would not split before `ID`.
  */
-const CJK_SCRIPTS = "\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}\\p{Script=Hangul}";
+const CJK_SCRIPTS =
+  "\\p{Script_Extensions=Han}\\p{Script_Extensions=Hiragana}\\p{Script_Extensions=Katakana}\\p{Script_Extensions=Hangul}";
 const SCRIPT_BOUNDARY = new RegExp(
   `(?<=[${CJK_SCRIPTS}])(?=[A-Za-z0-9])|(?<=[A-Za-z0-9])(?=[${CJK_SCRIPTS}])`,
   "gu",
