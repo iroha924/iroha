@@ -22,6 +22,8 @@
     "test:package": "turbo run test:package",
     "check:package": "pnpm build && pnpm --filter @iroha/plugin build:release && pnpm run check:package:validate",
     "check:package:validate": "publint packages/plugin/release && attw --pack packages/plugin/release",
+    "release:smoke": "zx scripts/release-smoke.mjs",
+    "ci:local": "act",
     "size": "pnpm --filter @iroha/dashboard build && size-limit",
     "format": "biome format --write .",
     "changeset": "changeset",
@@ -47,6 +49,8 @@
     "sherif": "catalog:",
     "size-limit": "catalog:",
     "taze": "catalog:",
-    "turbo": "2.10.5"
+    "turbo": "2.10.5",
+    "verdaccio": "catalog:",
+    "zx": "catalog:"
   }
 }
