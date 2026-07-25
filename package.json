@@ -10,6 +10,7 @@
     "prepare": "lefthook install",
     "build": "turbo run build",
     "lint": "turbo run lint",
+    "lint:md": "markdownlint-cli2",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:contracts": "turbo run test:contracts",
@@ -29,6 +30,7 @@
     "@commitlint/cli": "catalog:",
     "@commitlint/config-conventional": "catalog:",
     "lefthook": "catalog:",
+    "markdownlint-cli2": "catalog:",
     "turbo": "2.10.5"
   }
 }

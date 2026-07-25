@@ -8,6 +8,13 @@ pre-commit:
       run: pnpm exec biome check --write --staged --no-errors-on-unmatched
       stage_fixed: true
 
+    - name: markdownlint
+      glob: "*.md"
+      # Identical to CI's docs-lint markdownlint step (checks the whole doc set,
+      # honoring .markdownlint-cli2.jsonc), so local == CI. A violation blocks
+      # the commit; fix it with `pnpm exec markdownlint-cli2 --fix`.
+      run: pnpm run lint:md
+
     - name: typecheck
       run: pnpm typecheck
 

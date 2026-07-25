@@ -64,7 +64,7 @@ jobs:
 
       - name: Generate SHA-256 checksums
         working-directory: packages/plugin/release
-        run: sha256sum *.tgz > checksums.txt
+        run: sha256sum ./*.tgz > checksums.txt
 
       # SBOM via npm's built-in generator — no third-party action runs with this
       # job's elevated (id-token/contents) permissions (ai-agent-security).

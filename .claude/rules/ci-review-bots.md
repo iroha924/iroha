@@ -29,6 +29,7 @@ gh api repos/<owner>/<repo>/issues/<PR>/reactions \
 gh api repos/<owner>/<repo>/pulls/<PR>/reviews \
   --jq '.[] | select(.user.login=="chatgpt-codex-connector[bot]") | {state, submitted_at}'
 ```
+
 - **Rate limits**: Codex code review is metered in a separate "Code Reviews / 5h" bucket; exact per-plan counts are unpublished. **When exhausted it stops responding** (in this repo Codex is often unavailable due to hitting the limit).
 - **Review-guidance entry point**: the repo-root `AGENTS.md` §"Reviewing a diff (PR review in CI)" is Codex's review guidance and points it at `.claude/agents/{security,spec-compliance,adversarial}-reviewer.md`.
 
@@ -37,12 +38,14 @@ gh api repos/<owner>/<repo>/pulls/<PR>/reviews \
 Codex spends its 5h bucket on every re-review, and firing it mechanically on every push **drains the limit before it matters**. So decide whether *this* push warrants a Codex re-review yourself — do not ask the user each time, and do not request one on every push.
 
 **Request a re-review** when the diff since Codex's last review contains any of:
+
 - New non-trivial logic in security-sensitive areas (credential/secret handling, path/symlink validation, subprocess execution, external boundaries) → scope it with **`@codex review for security regressions`**.
 - A new external boundary, parser, string-built query, auth path, or redaction path.
 - A change to the threat surface or a security-relevant invariant.
 - Substantial new behavior a fresh reviewer has not seen.
 
 **Do not request** (default; preserve the limit) when the push is:
+
 - The exact fix another reviewer already requested (no new surface).
 - Formatting / lint / comment / rename only.
 - Tests only or docs only.
