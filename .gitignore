@@ -12,6 +12,3 @@ playwright-report/
 # Claude Code session-local runtime state (not team config)
 .claude/scheduled_tasks.lock
 .claude/settings.local.json
-
-# Personal, non-distributable dev reference (Japanese; kept out of the repo)
-dev_architecture.md
