@@ -17,15 +17,26 @@ It returns aggregates for the period, the same numbers for the previous period, 
 
 ## 2. Write the issue
 
-Call **`save_digest_prose`** with:
+Call **`save_digest_prose`**. The arguments are exactly:
 
-- **periodUnit** and **periodKey** — copied from the `period` in the `get_digest_data` response you
-  just read. These are required, and they are how the issue is filed. Do not guess them and do not
-  carry them over from an earlier call: if they name a different period than the one you read, the
-  narrative lands on the wrong issue with that period's numbers substituted into it.
-- **headline** — the issue's one-line lede.
-- **standfirst** — one sentence framing the period.
-- **sections** — one to four, each with a fixed `slot` (`stumbles`, `codebase`, `wins`, `teaching`), a `heading`, and a `body`.
+```jsonc
+{
+  "sessionToken": "ist_…",        // from your session context
+  "periodUnit": "week",           // copied from get_digest_data's `period`
+  "periodKey": "2026-07-20",      // copied from get_digest_data's `period`
+  "prose": {                      // the composition is nested here, not top-level
+    "headline": "…",              // the issue's one-line lede
+    "standfirst": "…",            // one sentence framing the period
+    "sections": [                 // one to four, one per slot
+      { "slot": "stumbles", "heading": "…", "body": "…" }
+    ]
+  }
+}
+```
+
+`slot` is one of `stumbles`, `codebase`, `wins`, `teaching`, and **each may appear once**.
+
+`periodUnit`/`periodKey` are how the issue is filed. Do not guess them and do not carry them over from an earlier call: if they name a different period than the one you read, the narrative lands on the wrong issue with that period's numbers substituted into it.
 
 ## The one rule about numbers
 
@@ -40,6 +51,8 @@ Referencing an id this period did not issue is rejected. The response does not l
 A cluster is referenced by the area it covers, not by its position in the list — `{{local.correlations.packages/git.count}}`, never `{{local.correlations.0.count}}`. The ranking moves as denials land; the area does not.
 
 One section per slot. Two sections claiming the same slot is rejected.
+
+**Do not type a number as digits anywhere.** `There were 999 denials` is rejected outright — not because the figure is wrong, but because a typed figure bypasses the mechanism that guarantees the page only shows iroha's own values. Write `{{local.denials.total}}` and let the renderer supply it. Digits inside an identifier, a version, or a date (`ADR-016`, `2026-07-20`, `v2`) are fine.
 
 ## What makes a good issue
 

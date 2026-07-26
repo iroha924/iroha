@@ -53,7 +53,9 @@ describe("Digest", () => {
     renderWithProviders(<Digest />);
 
     expect(await screen.findByText("The iroha Digest")).toBeDefined();
-    expect(screen.getByText("Week of 2026-07-20")).toBeDefined();
+    // The basis is stated with the label: the window is UTC, so a JST reader must
+    // not take "week of" as their local week.
+    expect(screen.getByText("Week of 2026-07-20 · UTC")).toBeDefined();
   });
 
   it("renders templated copy — never a blank page — when no prose has been composed", async () => {
@@ -169,6 +171,29 @@ describe("Digest", () => {
     expect(await screen.findByText("Where denials clustered")).toBeDefined();
     // The badge names the cluster, which is also what its fact id is built from.
     expect(screen.getByText("packages/git")).toBeDefined();
+  });
+
+  it("shows the uncapped total for a truncated list, not just the items", async () => {
+    mockApi({
+      "GET /api/v1/digest": digest({
+        team: {
+          knowledge: { value: 0, priorValue: 0, byType: EMPTY_BY_TYPE },
+          guardrailsChanged: {
+            items: [{ id: "rul_1", title: "One", summary: null }],
+            total: 25,
+            truncated: true,
+          },
+          reviewLearnings: EMPTY_LIST,
+          rulesetAdequacy: { enforceable: 0, not_hook_enforceable: 0, invalid: 0 },
+        },
+      }),
+    });
+    renderWithProviders(<Digest />);
+
+    // 25 is issued as a fact, so prose may cite it — a fact with no visible source
+    // on the page is a claim the reader cannot check.
+    expect(await screen.findByText("25")).toBeDefined();
+    expect(screen.getByText("Showing 1 of 25.")).toBeDefined();
   });
 
   it("states that advisory rules are not measured instead of implying a score", async () => {

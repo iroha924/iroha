@@ -15,10 +15,14 @@
 -- are recomputed on every read and a period with no prose renders from templated
 -- copy. Regenerate an issue by running the `/iroha:digest` skill again.
 --
--- No `period_start`/`period_end` columns. `(period_unit, period_key)` already
--- identifies the period, and storing the resolved instants would only record
--- which timezone composed it — provenance nothing reads, since rendering
--- recomputes the window from the current host anyway.
+-- `period_end` is stored even though `(period_unit, period_key)` already
+-- identifies the period, because retention prunes on it. Pruning by
+-- `composed_at` does not work: prose written today for a ten-week-old back issue
+-- is recent, so it survives a 30-day window while the sessions it narrates are
+-- deleted — leaving an unreviewed claim rendering against zeroed facts. The
+-- period's own end is the timestamp that has to age out. It is stable to store
+-- because period boundaries are UTC, so the value does not depend on which host
+-- wrote it.
 
 PRAGMA foreign_keys = ON;
 
@@ -28,6 +32,7 @@ CREATE TABLE digest_issues (
   repository_id TEXT NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
   period_unit TEXT NOT NULL CHECK (period_unit IN ('week', 'month')),
   period_key TEXT NOT NULL,
+  period_end TEXT NOT NULL,
   prose_json TEXT NOT NULL CHECK (json_valid(prose_json)),
   composed_at TEXT NOT NULL,
   PRIMARY KEY (repository_id, period_unit, period_key)

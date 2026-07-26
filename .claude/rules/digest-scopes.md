@@ -36,9 +36,15 @@ query. Denials exist only in each developer's local index; a shared tally needs 
 which is the forbidden daemon or telemetry upload. "Where the agent stumbles across the team" is
 answerable only through the systemic lens: review recurrence and ruleset adequacy.
 
-The per-developer window preference (`local_settings` → `digest.period`) does **not** violate the
-team property — that property is about the facts for a *given* window, not about everyone picking
-the same window.
+**Period boundaries are UTC, and that is load-bearing rather than cosmetic.** The team property is
+only true if the *window* is identical too: with local-midnight boundaries, two teammates in
+different zones resolve the same key to different intervals, and an approval near the boundary lands
+inside one period and outside the other. Do not "fix" the UTC anchoring to be friendlier to the
+host's calendar without also giving team facts a separately defined shared window.
+
+The per-developer *unit* preference (`local_settings` → `digest.period`) does **not** violate the
+team property — that property is about the facts for a given window, not about everyone picking the
+same window size.
 
 ## 2. The hook may not write a diagnostics row — ever
 
@@ -58,6 +64,17 @@ the hook already inserts, not a new insert.
 reference a fact as `{{factId}}`; it has **no field to write a number into**, and the renderer
 substitutes iroha's value. This is what makes a fabricated figure inexpressible rather than merely
 discouraged.
+
+Two gates make this hold, and it takes both. Rejecting an unissued `{{factId}}` stops an agent
+claiming authority iroha never granted; **rejecting a number written as digits** stops it bypassing
+the mechanism entirely. Without the second, "There were 999 denials" cites nothing, validates
+trivially, and renders as page copy — so the claim that a fabricated figure is inexpressible would
+simply be false. Do not relax either one.
+
+Match references by looking the captured id up in the issued set, never by an allowed character
+class: a fact id can embed a repository path, and a path may hold a space or non-ASCII text. A
+charset then fails to match iroha's own issued id, the save passes having found no reference at all,
+and the page renders the literal `{{…}}`.
 
 When you add a rendered number, add a fact for it in the same change. The invariant runs both ways:
 

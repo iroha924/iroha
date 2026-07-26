@@ -21,8 +21,10 @@ import {
   type DigestSelection,
   redactProse,
   resolveDigestPeriodByKey,
-  validateFactReferences,
+  resolveRequestedPeriod,
+  validateProse,
 } from "../dashboard/index.js";
+import { withRepositoryWriteLock } from "../write-mutex.js";
 import type { FieldRedaction } from "./redact.js";
 import { verifySessionToken } from "./verify-session-token.js";
 import { withMcpRepository } from "./with-repository.js";
@@ -51,7 +53,10 @@ export async function mcpGetDigestData(
 ): Promise<Result<DigestData, IrohaError>> {
   return withMcpRepository(
     { cwd: input.cwd, clock: input.clock, random: input.random, tool: "get_digest_data" },
-    (ctx) => computeDigest(ctx, input),
+    async (ctx) => {
+      const period = await resolveRequestedPeriod(ctx, input);
+      return period.ok ? computeDigest(ctx, period.value) : period;
+    },
   );
 }
 
@@ -68,7 +73,7 @@ export interface McpSaveDigestProseInput {
    * from its own optional `offset`, an agent that read a back issue and then
    * omitted the argument published last week's narrative as the current issue —
    * a success return, no warning, the wrong week's numbers substituted into it,
-   * and the issue it was written for still blank. `validateFactReferences` cannot
+   * and the issue it was written for still blank. `validateProse` cannot
    * catch that, because the period-independent ids exist in both fact tables.
    */
   periodUnit: DigestPeriodUnit;
@@ -137,11 +142,11 @@ export async function mcpSaveDigestProse(
           ),
         );
       }
-      const digest = await computeDigest(ctx, { unit: period.unit, offset: period.offset });
+      const digest = await computeDigest(ctx, period);
       if (!digest.ok) {
         return digest;
       }
-      const references = validateFactReferences(input.prose, digest.value.facts);
+      const references = validateProse(input.prose, digest.value.facts);
       if (!references.ok) {
         return references;
       }
@@ -150,13 +155,20 @@ export async function mcpSaveDigestProse(
         return redacted;
       }
       const composedAt = ctx.clock.now().toISOString();
-      const stored = await upsertDigestIssue(ctx.db, {
-        repositoryId: ctx.repo.repositoryId,
-        periodUnit: period.unit,
-        periodKey: period.key,
-        proseJson: JSON.stringify(redacted.value.prose),
-        composedAt,
-      });
+      // §9 requires a local write tool to hold the repository write mutex, as the
+      // sibling mutations do through `runIdempotentWrite`. Without it two
+      // overlapping MCP writes contend in libSQL and surface `DB_BUSY` instead of
+      // being serialized.
+      const stored = await withRepositoryWriteLock(ctx.repo.repositoryId, () =>
+        upsertDigestIssue(ctx.db, {
+          repositoryId: ctx.repo.repositoryId,
+          periodUnit: period.unit,
+          periodKey: period.key,
+          periodEnd: period.end,
+          proseJson: JSON.stringify(redacted.value.prose),
+          composedAt,
+        }),
+      );
       if (!stored.ok) {
         return stored;
       }

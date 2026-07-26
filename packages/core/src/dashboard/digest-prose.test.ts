@@ -7,7 +7,7 @@ import {
   redactProse,
   referencedFactIds,
   renderProse,
-  validateFactReferences,
+  validateProse,
 } from "./digest-prose.js";
 
 /**
@@ -138,6 +138,25 @@ describe("renderProse", () => {
     expect(rendered.standfirst).toBe("against 2 new lessons");
   });
 
+  it("resolves a fact id containing a non-ASCII path", () => {
+    // A charset-based reference pattern failed to match iroha's own issued id here:
+    // the save passed having found no reference, and the page showed the literal
+    // braces. Matching up to `}}` and resolving against the issued set cannot drift.
+    const facts: DigestFact[] = [
+      { id: "local.correlations.packages/日本語.count", value: 4, label: "clustered" },
+    ];
+
+    const rendered = renderProse(
+      prose({ headline: "{{local.correlations.packages/日本語.count}} denials" }),
+      facts,
+    );
+
+    expect(rendered.headline).toBe("4 denials");
+    expect(
+      referencedFactIds(prose({ headline: "{{local.correlations.packages/日本語.count}}" })),
+    ).toEqual(["local.correlations.packages/日本語.count"]);
+  });
+
   it("renders an em dash for a fact that no longer exists", () => {
     // Validation at save time cannot prevent this: a Rule deleted afterwards
     // takes its `byRule` fact with it.
@@ -168,21 +187,15 @@ describe("renderProse", () => {
   });
 });
 
-describe("validateFactReferences", () => {
+describe("validateProse", () => {
   it("accepts prose that cites only issued facts", () => {
-    const result = validateFactReferences(
-      prose({ headline: "{{local.denials.total}} denials" }),
-      FACTS,
-    );
+    const result = validateProse(prose({ headline: "{{local.denials.total}} denials" }), FACTS);
 
     expect(result.ok).toBe(true);
   });
 
   it("rejects an invented fact id and names it", () => {
-    const result = validateFactReferences(
-      prose({ headline: "{{local.velocity.score}} points" }),
-      FACTS,
-    );
+    const result = validateProse(prose({ headline: "{{local.velocity.score}} points" }), FACTS);
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -191,7 +204,47 @@ describe("validateFactReferences", () => {
   });
 
   it("accepts prose citing nothing at all", () => {
-    expect(validateFactReferences(prose(), FACTS).ok).toBe(true);
+    expect(validateProse(prose(), FACTS).ok).toBe(true);
+  });
+
+  it("rejects a figure written as digits instead of referenced", () => {
+    // Without this the seam's central claim is false: the text cites nothing, so
+    // reference validation passes and the agent's own number renders as page copy.
+    const result = validateProse(prose({ headline: "There were 999 denials" }), FACTS);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe("INVALID_INPUT");
+    expect(result.error.details).toEqual({ fields: ["headline"] });
+  });
+
+  it("rejects a typed figure in any field, and names them", () => {
+    const result = validateProse(
+      prose({
+        standfirst: "Up by 4 this week.",
+        sections: [{ slot: "wins", heading: "h", body: "and 12 more elsewhere" }],
+      }),
+      FACTS,
+    );
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.details).toEqual({
+      fields: ["standfirst", "sections[0].body"],
+    });
+  });
+
+  it("leaves digits inside identifiers, versions, and dates writable", () => {
+    for (const text of [
+      "ADR-016 settled this",
+      "the week of 2026-07-20",
+      "see §16 for the contract",
+      "running on Node 24.x",
+      "under packages/git",
+      "{{local.denials.total}} denials",
+    ]) {
+      expect(validateProse(prose({ headline: text }), FACTS).ok, text).toBe(true);
+    }
   });
 });
 

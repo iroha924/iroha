@@ -6,19 +6,20 @@
  * with its numbers a month later. A rolling "last 7 days" has no such identity:
  * every page load would silently be a different period.
  *
- * Boundaries are calendar boundaries **in the host's local timezone**, then
- * converted to UTC instants for querying — the same split
- * contracts/dashboard-api.md §8 makes everywhere else (values UTC, display
- * local). A developer's "this week" starts at local midnight Monday, not at
- * whatever local time UTC midnight happens to be.
+ * Boundaries are **UTC** calendar boundaries, not the host's local ones. That is
+ * load-bearing rather than a convenience: a team fact is only "identical for
+ * every teammate at the same Git HEAD" if the *window* is identical too, and a
+ * local-midnight boundary makes it not. Two developers in Tokyo and New York
+ * resolve the same week key to intervals eight hours apart, so an approval on
+ * Sunday evening UTC falls inside one teammate's `2026-07-20` and outside the
+ * other's — and the knowledge totals the Digest presents as shared diverge.
  *
- * All arithmetic goes through `Date`'s local-time setters, which is what makes
- * the period a calendar period rather than a fixed number of milliseconds: a
- * week spanning a DST transition is correctly 167 or 169 hours, and adding a
- * month to January 31 lands on March 1 only if that is what the calendar says.
- * The period *key* is likewise built from local date parts — `toISOString()`
- * would shift the date across the UTC boundary and label a Monday-start week
- * with the preceding Sunday in any timezone east of UTC.
+ * The cost is that a JST developer's "this week" begins Monday 09:00 local. The
+ * page states the basis (`UTC`) so the number is never read as a local week.
+ *
+ * Choosing UTC also removes DST from the arithmetic entirely: UTC has no
+ * transitions, so a week is always 168 hours and adjacent windows cannot overlap
+ * the way a local-midnight transition made them.
  */
 import type { Clock } from "@iroha/domain";
 
@@ -43,34 +44,34 @@ function pad2(value: number): string {
   return String(value).padStart(2, "0");
 }
 
-/** Local midnight of `instant`'s calendar day, as a new Date. */
-function startOfLocalDay(instant: Date): Date {
+/** UTC midnight of `instant`'s calendar day, as a new Date. */
+function startOfUtcDay(instant: Date): Date {
   const day = new Date(instant.getTime());
-  day.setHours(0, 0, 0, 0);
+  day.setUTCHours(0, 0, 0, 0);
   return day;
 }
 
 /**
- * Local midnight of the Monday that starts `instant`'s week, `offset` weeks
- * back. `getDay()` is 0 for Sunday, so `(day + 6) % 7` is the number of days
- * since Monday — which makes Sunday the last day of its week (ISO-8601), not the
- * first day of the next.
+ * UTC midnight of the Monday that starts `instant`'s week, `offset` weeks back.
+ * `getUTCDay()` is 0 for Sunday, so `(day + 6) % 7` is the number of days since
+ * Monday — which makes Sunday the last day of its week (ISO-8601), not the first
+ * day of the next.
  */
 function weekStart(instant: Date, offset: number): Date {
-  const start = startOfLocalDay(instant);
-  start.setDate(start.getDate() - ((start.getDay() + 6) % 7) - offset * 7);
+  const start = startOfUtcDay(instant);
+  start.setUTCDate(start.getUTCDate() - ((start.getUTCDay() + 6) % 7) - offset * 7);
   return start;
 }
 
 /**
- * Local midnight of the first day of `instant`'s month, `offset` months back.
- * The day is pinned to 1 *before* the month is shifted: shifting first would
- * overflow (setting January 31 back one month lands in March).
+ * UTC midnight of the first day of `instant`'s month, `offset` months back. The
+ * day is pinned to 1 *before* the month is shifted: shifting first would overflow
+ * (setting January 31 back one month lands in March).
  */
 function monthStart(instant: Date, offset: number): Date {
-  const start = startOfLocalDay(instant);
-  start.setDate(1);
-  start.setMonth(start.getMonth() - offset);
+  const start = startOfUtcDay(instant);
+  start.setUTCDate(1);
+  start.setUTCMonth(start.getUTCMonth() - offset);
   return start;
 }
 
@@ -79,9 +80,10 @@ function periodStart(unit: DigestPeriodUnit, instant: Date, offset: number): Dat
   return unit === "week" ? weekStart(instant, offset) : monthStart(instant, offset);
 }
 
+/** The key is the start's UTC date parts, so it names the same instants everywhere. */
 function periodKey(unit: DigestPeriodUnit, start: Date): string {
-  const yearMonth = `${start.getFullYear()}-${pad2(start.getMonth() + 1)}`;
-  return unit === "week" ? `${yearMonth}-${pad2(start.getDate())}` : yearMonth;
+  const yearMonth = `${start.getUTCFullYear()}-${pad2(start.getUTCMonth() + 1)}`;
+  return unit === "week" ? `${yearMonth}-${pad2(start.getUTCDate())}` : yearMonth;
 }
 
 /**
@@ -91,14 +93,11 @@ function periodKey(unit: DigestPeriodUnit, start: Date): string {
  * events yet for the days that have not happened.
  *
  * The end is the *next* period's start, anchored the same way, never this start
- * plus one unit. Those differ: `setHours(0,0,0,0)` cannot produce a local midnight
- * that does not exist, so on a day whose DST transition is at midnight it resolves
- * an hour off — and advancing from that shifted start carries the shift into the
- * end, while the next period recomputes midnight cleanly. Adjacent windows would
- * then overlap by an hour and count one event in both (reproduced for
- * `America/Asuncion` 2023-11-01 and `Asia/Tehran` 2021-03-22). Deriving the end
- * from the same anchor makes the boundary shared by construction, so no overlap
- * or gap is representable.
+ * plus one unit. Deriving it from the same anchor makes the boundary shared by
+ * construction, so no overlap or gap between adjacent windows is representable —
+ * a property worth keeping structural even though UTC's lack of DST transitions
+ * already removes the case that first exposed it (adjacent local-midnight windows
+ * overlapping by an hour, reproduced for `America/Asuncion` and `Asia/Tehran`).
  */
 export function resolveDigestPeriod(
   unit: DigestPeriodUnit,

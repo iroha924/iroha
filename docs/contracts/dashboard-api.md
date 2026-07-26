@@ -132,9 +132,12 @@ The API is built with `@hono/zod-openapi`: each route validates its request body
 
 `GET /api/v1/digest` query parameters: `unit` (`week`|`month`, default this developer's stored
 `digest.period`) and `offset` (integer 0–520; 0 is the current period, higher values are back
-issues). Both are lenient in the same way the Session filters are — an unknown unit or an
-out-of-range offset is ignored rather than rejected. Read-only; prose is written through MCP
-(`save_digest_prose`), not through this API.
+issues). Neither is rejected: an unknown `unit` is ignored and falls back to the stored preference,
+while an out-of-range `offset` is **clamped** to `0..520` rather than ignored — ignoring it would
+answer a request for 520+ periods ago with the *current* period. The response carries the resolved
+`period.offset`, which is what a client must read to know which issue it was served. Period
+boundaries are UTC calendar boundaries, so the same key names the same window for every teammate.
+Read-only; prose is written through MCP (`save_digest_prose`), not through this API.
 
 Session filters: platform, actor, status, label, Issue/PR ref, date range, unresolved-only.
 

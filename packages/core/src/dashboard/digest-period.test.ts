@@ -11,9 +11,8 @@ function clockAt(iso: string): Clock {
 }
 
 /**
- * Every assertion here is written against a fixed `TZ`. Calendar boundaries are
- * local by design, so a test that did not pin the zone would assert the machine's
- * configuration rather than the arithmetic.
+ * Boundaries are UTC, so every assertion below must hold in *any* zone. `withTz`
+ * exists to prove that — not to make the assertions work.
  */
 const ORIGINAL_TZ = process.env.TZ;
 
@@ -51,22 +50,37 @@ describe("resolveDigestPeriod — week", () => {
     });
   });
 
-  it("derives boundaries from the local calendar, not the UTC one", () => {
-    // 2026-07-20T01:00Z is 2026-07-20 10:00 in Tokyo (Monday) but still
-    // 2026-07-19 21:00 in New York (Sunday) — so the two zones are in different
-    // ISO weeks at the same instant.
+  it("resolves the same key to the same instants in every timezone", () => {
+    // The team scope's whole claim is that a given period means the same window
+    // for every teammate. With local-midnight boundaries it did not: at this
+    // instant Tokyo is already Monday while New York is still Sunday, so the two
+    // resolved the same key to intervals eight hours apart and the "shared"
+    // knowledge totals diverged.
     const instant = "2026-07-20T01:00:00.000Z";
+    const zones = ["UTC", "Asia/Tokyo", "America/New_York", "Asia/Kathmandu", "Pacific/Apia"];
 
-    const tokyo = withTz("Asia/Tokyo", () => resolveDigestPeriod("week", 0, clockAt(instant)));
-    const newYork = withTz("America/New_York", () =>
-      resolveDigestPeriod("week", 0, clockAt(instant)),
+    const resolved = zones.map((tz) =>
+      withTz(tz, () => resolveDigestPeriod("week", 0, clockAt(instant))),
     );
 
-    expect(tokyo.key).toBe("2026-07-20");
-    expect(newYork.key).toBe("2026-07-13");
-    // Tokyo's local midnight is the previous UTC day — the key must come from
-    // local date parts, which `toISOString()` would have shifted back to 07-19.
-    expect(tokyo.start).toBe("2026-07-19T15:00:00.000Z");
+    for (const period of resolved) {
+      expect(period).toEqual(resolved[0]);
+    }
+    expect(resolved[0]?.key).toBe("2026-07-20");
+    expect(resolved[0]?.start).toBe("2026-07-20T00:00:00.000Z");
+  });
+
+  it("keeps a whole year of week boundaries identical across zones", () => {
+    const clock = clockAt("2026-07-23T12:00:00.000Z");
+    for (let offset = 0; offset < 52; offset++) {
+      const utc = withTz("UTC", () => resolveDigestPeriod("week", offset, clock));
+      for (const tz of ["Asia/Tokyo", "America/New_York", "Asia/Kathmandu"]) {
+        expect(
+          withTz(tz, () => resolveDigestPeriod("week", offset, clock)),
+          `${tz} @${offset}`,
+        ).toEqual(utc);
+      }
+    }
   });
 
   it("walks back whole weeks for a back issue", () => {
@@ -89,14 +103,15 @@ describe("resolveDigestPeriod — week", () => {
     });
   });
 
-  it("keeps calendar boundaries across a DST transition rather than a fixed 168 hours", () => {
+  it("is always 168 hours, because UTC has no DST transitions", () => {
+    // A local-calendar week spanning a DST change is 167 or 169 hours. Anchoring
+    // in UTC removes the case, and with it the boundary overlap it produced.
     withTz("America/New_York", () => {
-      // US DST began 2026-03-08, inside the week starting Monday 2026-03-02.
       const period = resolveDigestPeriod("week", 0, clockAt("2026-03-05T12:00:00.000Z"));
 
       expect(period.key).toBe("2026-03-02");
       const hours = (new Date(period.end).getTime() - new Date(period.start).getTime()) / 3_600_000;
-      expect(hours).toBe(167);
+      expect(hours).toBe(168);
     });
   });
 });
@@ -135,11 +150,13 @@ describe("resolveDigestPeriod — month", () => {
 
 describe("adjacent periods share their boundary exactly", () => {
   /**
-   * Both zones move their clock at local midnight, so `setHours(0,0,0,0)` on the
-   * transition day resolves an hour off. Deriving a period's end by advancing from
-   * its own (shifted) start carried that shift into the end while the next period
-   * recomputed midnight cleanly — leaving a one-hour overlap in which a single
-   * event counted toward both `value` and `priorValue`.
+   * Both zones move their clock at local midnight, which is what first exposed
+   * this: deriving a period's end by advancing from its own (shifted) start
+   * carried the shift into the end while the next period recomputed midnight
+   * cleanly, leaving a one-hour overlap in which one event counted toward both
+   * `value` and `priorValue`. UTC anchoring removes the shift, and deriving the
+   * end from the same anchor keeps the property structural rather than incidental
+   * — these zones stay in the suite as the regression that proved it.
    */
   const OVERLAP_CASES = [
     { tz: "America/Asuncion", unit: "month" as const, now: "2023-11-15T12:00:00.000Z" },
@@ -161,7 +178,7 @@ describe("adjacent periods share their boundary exactly", () => {
     });
   }
 
-  it("keeps every boundary shared across a year of weeks in a half-hour-offset zone", () => {
+  it("keeps every boundary shared across a year of weeks under a half-hour-offset host zone", () => {
     withTz("Asia/Kathmandu", () => {
       const clock = clockAt("2026-07-23T12:00:00.000Z");
       for (let offset = 0; offset < 52; offset++) {

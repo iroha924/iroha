@@ -1,4 +1,4 @@
-import type { DigestData, DigestKnowledgeRef, DigestPeriod } from "@iroha/api";
+import type { DigestData, DigestKnowledgeRef, DigestList, DigestPeriod } from "@iroha/api";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import { useState } from "react";
@@ -84,23 +84,29 @@ function CountRow({ label, count }: { label: string; count: number }) {
   );
 }
 
+/**
+ * A capped list, with its **uncapped** count always visible. The count is issued as
+ * a fact, so prose may cite it — and a fact with no visible source on the page is a
+ * claim the reader cannot check.
+ */
 function KnowledgeRefList({
-  items,
-  truncated,
+  list,
   empty,
 }: {
-  items: DigestKnowledgeRef[];
-  truncated: boolean;
+  list: DigestList<DigestKnowledgeRef>;
   empty: string;
 }) {
   const { t } = useI18n();
-  if (items.length === 0) {
+  if (list.total === 0) {
     return <p className="text-sm text-ink-faint">{empty}</p>;
   }
   return (
     <>
+      <div className="mb-3 font-display text-2xl font-semibold tabular-nums text-ink">
+        {list.total}
+      </div>
       <ul className="space-y-2.5">
-        {items.map((item) => (
+        {list.items.map((item) => (
           <li key={item.id}>
             <div className="text-sm text-ink">{item.title}</div>
             {item.summary !== null && (
@@ -109,13 +115,21 @@ function KnowledgeRefList({
           </li>
         ))}
       </ul>
-      {truncated && <p className="mt-3 text-xs text-ink-faint">{t("digest.truncated")}</p>}
+      {list.truncated && (
+        <p className="mt-3 text-xs text-ink-faint">
+          {t("digest.listTruncated")
+            .replace("{shown}", String(list.items.length))
+            .replace("{total}", String(list.total))}
+        </p>
+      )}
     </>
   );
 }
 
 function periodLabel(period: DigestPeriod, t: (key: string) => string): string {
-  return period.unit === "week" ? t("digest.periodWeek").replace("{date}", period.key) : period.key;
+  const label =
+    period.unit === "week" ? t("digest.periodWeek").replace("{date}", period.key) : period.key;
+  return `${label} · ${t("digest.utcBasis")}`;
 }
 
 /** The masthead: the composed headline and deck, or templated copy when there is none. */
@@ -335,8 +349,7 @@ export function Digest() {
             </CardHeader>
             <CardContent>
               <KnowledgeRefList
-                items={d.team.guardrailsChanged.items}
-                truncated={d.team.guardrailsChanged.truncated}
+                list={d.team.guardrailsChanged}
                 empty={t("digest.noTeamActivity")}
               />
             </CardContent>
@@ -346,11 +359,7 @@ export function Digest() {
               <CardTitle>{t("digest.reviewLearnings")}</CardTitle>
             </CardHeader>
             <CardContent>
-              <KnowledgeRefList
-                items={d.team.reviewLearnings.items}
-                truncated={d.team.reviewLearnings.truncated}
-                empty={t("digest.noTeamActivity")}
-              />
+              <KnowledgeRefList list={d.team.reviewLearnings} empty={t("digest.noTeamActivity")} />
             </CardContent>
           </Card>
         </div>

@@ -183,6 +183,8 @@ const ja: Dict = {
   "digest.outcome.no_change": "変更なし",
   "digest.asOfNow": "現時点の値（期間集計ではありません）",
   "digest.clustersTruncated": "上位のみ表示（全 {total} 箇所）。",
+  "digest.listTruncated": "{total} 件のうち {shown} 件を表示。",
+  "digest.utcBasis": "UTC 基準",
   "settings.digestPeriod": "ダイジェストの期間",
   "settings.digestPeriodHint":
     "front page が集計する暦の単位。あなたのローカル限定で、チームには共有されません。同じ期間ならチーム集計の数値は全員一致します。",
@@ -370,6 +372,8 @@ const en: Dict = {
   "digest.outcome.no_change": "No change",
   "digest.asOfNow": "As of now, not a period total",
   "digest.clustersTruncated": "Showing the strongest; {total} areas in all.",
+  "digest.listTruncated": "Showing {shown} of {total}.",
+  "digest.utcBasis": "UTC",
   "settings.digestPeriod": "Digest period",
   "settings.digestPeriodHint":
     "The calendar unit the front page aggregates over. Local to you, not shared with your team; the team figures still match for everyone reading the same period.",

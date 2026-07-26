@@ -19,7 +19,10 @@ export const saveDigestProseTool = defineTool({
   name: "save_digest_prose",
   description:
     "Store the composed prose for one Digest period. Pass back the `periodUnit` and `periodKey` from the get_digest_data response this was composed against. Write only sentences: state a number by referencing an id from get_digest_data as {{factId}} and iroha substitutes its own value — there is no field to put a number in. Referencing an id the period did not issue is rejected. Overwrites any previous composition for the same period. The result is local and never committed to Git.",
-  annotations: { idempotentHint: true },
+  // Deliberately not `idempotentHint`: a retry overwrites `composed_at` with a new
+  // clock value and returns a different result, so a client that retried *because*
+  // the call was advertised idempotent would silently change stored state.
+  annotations: {},
   inputSchema: saveDigestProseInputSchema,
   handler: (input, ctx) =>
     mcpSaveDigestProse({

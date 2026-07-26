@@ -160,20 +160,22 @@ describe("applyRetention", () => {
   it("prunes a composed digest issue older than the window", async () => {
     const db = await seededDb();
     await storeSetting(db, JSON.stringify({ days: 30 }));
-    for (const [key, composedAt] of [
-      ["2026-01-05", OLD],
-      ["2026-06-29", "2026-06-30T00:00:00.000Z"],
+    // Both are composed *now*; only the narrated period differs. Ageing on
+    // `composed_at` would keep both, which is the bug this guards.
+    for (const [key, periodEnd] of [
+      ["2026-01-05", "2026-01-12T00:00:00.000Z"],
+      ["2026-06-29", "2026-07-06T00:00:00.000Z"],
     ] as const) {
       await db.execute({
-        sql: "INSERT INTO digest_issues (repository_id, period_unit, period_key, prose_json, composed_at) VALUES (?, 'week', ?, '{}', ?)",
-        args: [REPO, key, composedAt],
+        sql: "INSERT INTO digest_issues (repository_id, period_unit, period_key, period_end, prose_json, composed_at) VALUES (?, 'week', ?, ?, '{}', ?)",
+        args: [REPO, key, periodEnd, NOW.toISOString()],
       });
     }
 
     const outcome = await applyRetention(db, REPO, CLOCK);
 
-    // The aged issue goes; the recent one stays. Prose that outlived the sessions
-    // it narrates would render "0 denials" over a sentence about a spike.
+    // The issue narrating the old period goes; the recent one stays — even though
+    // both were composed at the same instant.
     expect(outcome.pruned?.digestIssues).toBe(1);
     const rows = await db.execute("SELECT period_key FROM digest_issues");
     expect(rows.rows.map((row) => String(row.period_key))).toEqual(["2026-06-29"]);

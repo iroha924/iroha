@@ -389,26 +389,39 @@ export interface DigestComputeContext {
   clock: Clock;
 }
 
+/** The period a request asks for: the caller's overrides over the stored preference. */
+export async function resolveRequestedPeriod(
+  ctx: DigestComputeContext,
+  selection: DigestSelection,
+): Promise<Result<DigestPeriod, IrohaError>> {
+  const stored = await readDigestPeriodSetting(ctx.db, ctx.repo.repositoryId);
+  if (!stored.ok) {
+    return stored;
+  }
+  return ok(
+    resolveDigestPeriod(selection.unit ?? stored.value.unit, selection.offset ?? 0, ctx.clock),
+  );
+}
+
 /**
  * Compute one issue against an open connection: the numbers, the fact table, and
  * the stored prose rendered against them.
  *
- * Shared by the read path and the compose path so both work from the *same* fact
- * table. If composing validated against its own computation, prose could be
+ * Takes an **already-resolved** period rather than a selection. A selection is
+ * relative to "now", so re-resolving it here would read the clock a second time —
+ * and a save that crosses a period boundary between naming its period and
+ * computing the facts would then validate references against the *next* period's
+ * facts while storing under the named key.
+ *
+ * Shared by the read path and the compose path so both work from the same fact
+ * table: if composing validated against its own computation, prose could be
  * accepted citing a fact the page never renders.
  */
 export async function computeDigest(
   ctx: DigestComputeContext,
-  selection: DigestSelection,
+  period: DigestPeriod,
 ): Promise<Result<DigestData, IrohaError>> {
   const repositoryId = ctx.repo.repositoryId;
-  const stored = await readDigestPeriodSetting(ctx.db, repositoryId);
-  if (!stored.ok) {
-    return stored;
-  }
-  const unit = selection.unit ?? stored.value.unit;
-  const offset = selection.offset ?? 0;
-  const period = resolveDigestPeriod(unit, offset, ctx.clock);
   const prior = priorDigestPeriod(period, ctx.clock);
 
   const [currentFacts, priorFacts, pendingLearnings, adequacy, issue] = await Promise.all([
@@ -488,6 +501,9 @@ export async function computeDigest(
 export async function getDigest(input: GetDigestInput): Promise<Result<DigestData, IrohaError>> {
   return withDashboardRepository(
     { cwd: input.cwd, clock: input.clock, random: input.random },
-    (ctx) => computeDigest(ctx, input),
+    async (ctx) => {
+      const period = await resolveRequestedPeriod(ctx, input);
+      return period.ok ? computeDigest(ctx, period.value) : period;
+    },
   );
 }

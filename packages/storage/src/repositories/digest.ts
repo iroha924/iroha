@@ -313,6 +313,8 @@ export interface UpsertDigestIssueInput {
   repositoryId: TypedId<"repo">;
   periodUnit: string;
   periodKey: string;
+  /** The narrated period's exclusive end — what retention ages the issue out on. */
+  periodEnd: string;
   proseJson: string;
   composedAt: string;
 }
@@ -366,14 +368,17 @@ export async function upsertDigestIssue(
 ): Promise<Result<void, IrohaError>> {
   try {
     await db.execute({
-      sql: `INSERT INTO digest_issues (repository_id, period_unit, period_key, prose_json, composed_at)
-            VALUES (?, ?, ?, ?, ?)
+      sql: `INSERT INTO digest_issues (repository_id, period_unit, period_key, period_end, prose_json, composed_at)
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT (repository_id, period_unit, period_key)
-            DO UPDATE SET prose_json = excluded.prose_json, composed_at = excluded.composed_at`,
+            DO UPDATE SET period_end = excluded.period_end,
+                          prose_json = excluded.prose_json,
+                          composed_at = excluded.composed_at`,
       args: [
         input.repositoryId,
         input.periodUnit,
         input.periodKey,
+        input.periodEnd,
         input.proseJson,
         input.composedAt,
       ],
@@ -393,6 +398,11 @@ export async function upsertDigestIssue(
  * renders "0 denials, all in packages/git" — an unreviewed claim about evidence
  * that is gone. Pruning the issue with the window it describes keeps the two in
  * step, and costs nothing: prose is regenerable with `/iroha:digest`.
+ *
+ * Aged on `period_end`, not `composed_at`. A composition written *today* for a
+ * ten-week-old back issue has a recent `composed_at`, so it would survive a
+ * 30-day window by weeks while its own period's data was already deleted — which
+ * is exactly the state this prune exists to prevent.
  */
 export async function pruneDigestIssues(
   db: Executor,
@@ -401,7 +411,7 @@ export async function pruneDigestIssues(
 ): Promise<Result<number, IrohaError>> {
   try {
     const result = await db.execute({
-      sql: "DELETE FROM digest_issues WHERE repository_id = ? AND composed_at < ?",
+      sql: "DELETE FROM digest_issues WHERE repository_id = ? AND period_end < ?",
       args: [repositoryId, cutoff],
     });
     return ok(Number(result.rowsAffected ?? 0));

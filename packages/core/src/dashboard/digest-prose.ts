@@ -70,17 +70,39 @@ export interface DigestProseIssue {
 }
 
 /**
- * A `{{factId}}` reference. The character class matches the id vocabulary
- * `buildFacts` produces and nothing else, and there is no nested quantifier, so
- * matching is linear over an already length-bounded string.
+ * A `{{factId}}` reference. The capture is "anything up to the closing braces",
+ * deliberately *not* an alphabet of allowed characters: a fact id can embed a
+ * repository path (`local.correlations.packages/git.count`), and a path may hold
+ * a space or non-ASCII text. A charset would then fail to match its own issued
+ * id — the save would pass validation, having found no reference at all, and the
+ * page would render the literal `{{…}}`. Matching broadly and resolving against
+ * the issued set makes the id vocabulary impossible to drift from.
  *
- * `/` is in the class because a denial cluster is addressed by the path prefix it
- * covers (`local.correlations.packages/git.count`) — the cluster's identity, which
- * is what keeps a citation pointing at the same cluster after the ranking moves.
- * A captured id is only ever a Map key, never a filesystem path, so the slash
- * carries no traversal meaning.
+ * `[^{}]` excludes braces, so the match cannot span two references, and there is
+ * no nested quantifier, so matching stays linear over an already length-bounded
+ * string. A captured id is only ever a Map key, never a filesystem path.
  */
-const FACT_REFERENCE = /\{\{([A-Za-z0-9._\-/]+)\}\}/g;
+const FACT_REFERENCE = /\{\{([^{}]+)\}\}/g;
+
+/**
+ * A number written as digits rather than referenced as a fact.
+ *
+ * The seam's claim is that a fabricated figure is inexpressible, and a reference
+ * placeholder alone does not deliver that: "There were 999 denials" cites nothing,
+ * passes reference validation trivially, and renders the agent's own number as
+ * page copy. So a bare integer is rejected outright.
+ *
+ * Digits *inside* a token are left alone — `ADR-016`, `2026-07-20`, `§16`, `v2`,
+ * `Node 24.x`, `packages/git` — by requiring that neither side touches a character
+ * that would make the run part of an identifier, version, or date. That keeps
+ * those writable while closing the "type the figure" path. The check runs after
+ * `{{…}}` references are stripped, so a reference's own id may contain digits.
+ */
+const BARE_FIGURE = /(?<![\w\-./§#])\d+(?![\w\-/])(?!\.\w)/;
+
+export function containsBareFigure(text: string): boolean {
+  return BARE_FIGURE.test(text.replace(FACT_REFERENCE, ""));
+}
 
 /** What an unresolvable reference renders as — an em dash, never a guessed number. */
 const MISSING_VALUE = "—";
@@ -91,15 +113,7 @@ function factReferences(text: string): string[] {
 
 /** Every distinct fact id the prose references, across all of its fields. */
 export function referencedFactIds(prose: DigestProse): string[] {
-  const ids = [
-    ...factReferences(prose.headline),
-    ...factReferences(prose.standfirst),
-    ...prose.sections.flatMap((section) => [
-      ...factReferences(section.heading),
-      ...factReferences(section.body),
-    ]),
-  ];
-  return [...new Set(ids)];
+  return [...new Set(proseFields(prose).flatMap(({ text }) => factReferences(text)))];
 }
 
 /**
@@ -125,15 +139,30 @@ export function renderProse(prose: DigestProse, facts: readonly DigestFact[]): D
   };
 }
 
+/** Every free-text field, paired with the path a caller would use to name it. */
+function proseFields(prose: DigestProse): { field: string; text: string }[] {
+  return [
+    { field: "headline", text: prose.headline },
+    { field: "standfirst", text: prose.standfirst },
+    ...prose.sections.flatMap((section, index) => [
+      { field: `sections[${index}].heading`, text: section.heading },
+      { field: `sections[${index}].body`, text: section.body },
+    ]),
+  ];
+}
+
 /**
- * Reject prose that cites a fact this period does not have.
+ * Reject prose that states a number the period did not issue — in either of the
+ * two ways it can.
  *
- * This is the half of the seam that keeps narration tied to evidence: an agent
- * cannot invent `{{local.denials.total}}`-shaped authority for a number iroha
- * never issued. Reported with the offending ids so the composing agent can fix
- * its own output.
+ * This is the half of the seam that ties narration to evidence, and it takes both
+ * checks to hold. Rejecting an unissued `{{factId}}` stops an agent from claiming
+ * authority iroha never granted; rejecting a bare figure stops it from bypassing
+ * the mechanism entirely by typing the digits. With only the first, "There were
+ * 999 denials" cites nothing, validates trivially, and renders as page copy — so
+ * the claim that a fabricated figure is inexpressible would be false.
  */
-export function validateFactReferences(
+export function validateProse(
   prose: DigestProse,
   facts: readonly DigestFact[],
 ): Result<void, IrohaError> {
@@ -144,6 +173,16 @@ export function validateFactReferences(
       new IrohaErrorClass("INVALID_INPUT", "Digest prose references facts that were not issued", {
         details: { unknownFactIds: unknown },
       }),
+    );
+  }
+  const typed = proseFields(prose).filter(({ text }) => containsBareFigure(text));
+  if (typed.length > 0) {
+    return err(
+      new IrohaErrorClass(
+        "INVALID_INPUT",
+        "Digest prose writes a number as digits; reference the fact instead so iroha supplies the value",
+        { details: { fields: typed.map(({ field }) => field) } },
+      ),
     );
   }
   return ok(undefined);

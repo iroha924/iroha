@@ -21,6 +21,7 @@ export type {
   DigestData,
   DigestFact,
   DigestKnowledgeRef,
+  DigestList,
   DigestLocalScope,
   DigestPeriod,
   DigestPeriodUnit,

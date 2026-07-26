@@ -498,9 +498,16 @@ reference the page will not render.
 
 The composing agent may reference a fact as `{{factId}}` and **has no field to write a number
 into**; the renderer substitutes iroha's value. A fabricated figure is therefore not expressible.
-Referencing an id the period did not issue is rejected with the offending ids named. An id that
-later disappears — a Rule deleted after composition takes its `byRule` fact with it — renders as
-an em dash, never a stale number.
+Referencing an id the period did not issue is rejected; the offending ids are **not** returned,
+because §4 of `mcp.md` strips `details` from every failure envelope and echoing agent-supplied text
+into a message would put possibly-secret-shaped input into an error. The agent already holds the
+issued list and re-checks against it. An id that later disappears — a Rule deleted after
+composition takes its `byRule` fact with it — renders as an em dash, never a stale number.
+
+Writing a number as **digits** is rejected too. A reference gate alone does not deliver "a
+fabricated figure is inexpressible": "There were 999 denials" cites nothing, passes reference
+validation trivially, and renders as page copy. Digits inside an identifier, version, or date are
+left writable.
 
 What the seam does not prevent is prose that *contradicts* a correct number ("a quiet week" over
 a denial spike). That is inherent to narration, so numbers render as authoritative and prose
