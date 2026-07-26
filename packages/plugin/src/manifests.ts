@@ -65,12 +65,17 @@ function claudeHookHandler(timeoutSeconds: number): CommandHook {
   };
 }
 
-export function buildClaudeHooks(): HookEventMap {
-  const hooks: Record<string, readonly HookGroup[]> = {};
+/**
+ * Claude Code requires the event map nested under a top-level `hooks` key; with
+ * the events at the top level it rejects the whole file on a schema error and
+ * loads *no* hook at all, so the capture path silently does not exist.
+ */
+export function buildClaudeHooks(): { hooks: HookEventMap } {
+  const events: Record<string, readonly HookGroup[]> = {};
   for (const { event, timeoutSeconds } of HOOK_EVENTS) {
-    hooks[event] = [{ hooks: [claudeHookHandler(timeoutSeconds)] }];
+    events[event] = [{ hooks: [claudeHookHandler(timeoutSeconds)] }];
   }
-  return hooks;
+  return { hooks: events };
 }
 
 export function buildClaudeMcpConfig(): unknown {
@@ -208,8 +213,10 @@ const codexHookHandlerSchema = z.strictObject({
 const hookGroupSchema = <T extends z.ZodTypeAny>(handler: T) =>
   z.array(z.strictObject({ hooks: z.array(handler).min(1) })).min(1);
 
-/** Claude hook config: an event-keyed map of matcher groups. */
-export const claudeHooksSchema = z.record(z.string(), hookGroupSchema(claudeHookHandlerSchema));
+/** Claude hook config: `{ hooks: { <event>: group[] } }`, same nesting as Codex. */
+export const claudeHooksSchema = z.strictObject({
+  hooks: z.record(z.string(), hookGroupSchema(claudeHookHandlerSchema)),
+});
 
 /** Codex hook config: `{ description?, hooks: { <event>: group[] } }`. */
 export const codexHooksSchema = z.strictObject({
