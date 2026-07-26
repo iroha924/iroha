@@ -2,15 +2,18 @@ import { type RunInitResult, runInit } from "@iroha/core";
 import { define } from "gunshi";
 import { MIGRATIONS_DIR } from "../context.js";
 import { printError, printSuccess } from "../output.js";
-import { definition, labelColumn, muted, statusGlyph, title } from "../render.js";
+import { definition, labelColumn, muted, sanitize, statusGlyph, title } from "../render.js";
 
 function formatInit(data: RunInitResult): string {
   const { init, sync } = data;
+  // Separators are plain, not `muted(" · ")`: these strings are wrapped by
+  // `definition`, and `wrapCell` splits on raw space indices, so a break inside a
+  // dim span would leave the style open across the wrap.
   const facts: [string, string][] = [
     ["repository", init.repositoryId],
     [
       "docs scanned",
-      `${init.docsScanned.join(", ") || "none"}${muted(" · ")}${init.candidatesCreated} new candidate(s)`,
+      `${init.docsScanned.map(sanitize).join(", ") || "none"} · ${init.candidatesCreated} new candidate(s)`,
     ],
     [
       "canonical sync",
@@ -19,7 +22,7 @@ function formatInit(data: RunInitResult): string {
         `${sync.changed} changed`,
         `${sync.unchanged} unchanged`,
         `${sync.deleted} deleted`,
-      ].join(muted(" · ")),
+      ].join(" · "),
     ],
   ];
   const width = labelColumn(facts.map(([term]) => term));

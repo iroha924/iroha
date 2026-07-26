@@ -8,6 +8,7 @@ import {
   labelColumn,
   muted,
   row,
+  sanitize,
   sectionLabel,
   spread,
   statusGlyph,
@@ -18,7 +19,7 @@ import {
  * Which section each check belongs to. The report carries no grouping, so the
  * presentation owns it — and an unmapped name must still be shown (`OTHER`),
  * because a check silently missing from `doctor` is worse than one filed oddly.
- * `doctor-sections.test.ts` asserts every name the report can emit is mapped.
+ * `doctor.test.ts` asserts every name the report can emit is mapped.
  */
 const SECTIONS: readonly { label: string; checks: readonly string[] }[] = [
   { label: "Environment", checks: ["node", "git", "claude", "codex"] },
@@ -62,13 +63,20 @@ function verdict(report: DoctorReport): string {
   return has("warning") ? caution("warnings only") : accent("all clear");
 }
 
-/** `ok 12 · warning 1`, label-first so there is no plural to get wrong. */
+/**
+ * `ok 12 · warning 1`, label-first so there is no plural to get wrong, and in a
+ * fixed severity order — counting into an insertion-ordered Map put `warning 1` first
+ * whenever the report happened to open with a warning.
+ */
+const TALLY_ORDER: readonly string[] = ["ok", "warning", "error", "blocked"];
+
 function tally(report: DoctorReport): string {
   const counts = new Map<string, number>();
   for (const check of report.checks) {
     counts.set(check.status, (counts.get(check.status) ?? 0) + 1);
   }
-  return [...counts].map(([status, count]) => `${status} ${count}`).join(muted(" · "));
+  const ranked = [...counts].sort(([a], [b]) => TALLY_ORDER.indexOf(a) - TALLY_ORDER.indexOf(b));
+  return ranked.map(([status, count]) => `${status} ${count}`).join(muted(" · "));
 }
 
 export function formatDoctor(data: { doctor: DoctorReport }): string {
@@ -78,7 +86,7 @@ export function formatDoctor(data: { doctor: DoctorReport }): string {
     [
       sectionLabel(section.label),
       ...section.checks.map((check) =>
-        row(statusGlyph(check.status), check.name, check.message, width),
+        row(statusGlyph(check.status), check.name, sanitize(check.message), width),
       ),
     ].join("\n"),
   );

@@ -2,34 +2,50 @@
  * Terminal rendering — the dashboard's editorial identity, in a surface that does
  * not own its own background.
  *
- * Only accents carry a hex value; body text stays unstyled and de-emphasis uses
- * ANSI `dim`. The brand's ink (`#2E2A22`) is near-black and would vanish on a dark
- * theme, and ink-muted loses contrast on one of the two — the accents are mid-tone,
- * so they read against either. Below truecolor, ansis falls a hex back to the
- * nearest colour the terminal has.
+ * Only accents carry colour; body text stays unstyled and de-emphasis uses ANSI
+ * `dim`. The brand's ink (`#2E2A22`) is near-black and would vanish on a dark
+ * theme, and ink-muted loses contrast on one of the two.
  */
 import { Ansis } from "ansis";
 import stringWidth from "string-width";
 
 /**
+ * Which colour level to render at, given an environment and whether stdout is a
+ * terminal. Pure so the branches can actually be tested — the module-level
+ * instance below is captured once at load and cannot be re-exercised in-process.
+ *
  * ansis reads `COLORTERM` as an outright capability declaration, ahead of both
  * `stdout.isTTY` and `TERM=dumb`. Measured with ansis 4.3.1: with
  * `COLORTERM=truecolor` set — which ghostty, iTerm2, kitty, WezTerm and VS Code all
- * do — `iroha doctor` piped to a file still emitted escapes, and so did
- * `TERM=dumb`. Left to that detection, `iroha search | grep …` would fail to match
- * across a styled span and a redirected report would be full of escapes.
- *
- * So the gate is explicit, and follows the conventional contract: `FORCE_COLOR` is
+ * do — output piped to a file still carried escapes, and so did `TERM=dumb`. Left
+ * to that detection, `iroha search | grep …` would fail to match across a styled
+ * span. So the gate is explicit: `NO_COLOR` wins outright, `FORCE_COLOR` is
  * honoured either way (a demo can force colour through a pipe), and otherwise
- * colour needs a TTY that is not `dumb`. `NO_COLOR` needs no branch — ansis's own
- * detection already answers 0 for it, verified in both directions.
+ * colour needs a TTY that is not `dumb`.
+ *
+ * `undefined` means "let ansis detect", which is what `FORCE_COLOR` needs so its
+ * 0/1/2/3 values keep their meaning.
  */
-function terminalStyles(): Ansis {
-  if (process.env.FORCE_COLOR !== undefined) {
-    return new Ansis();
+export function colorLevel(
+  env: {
+    NO_COLOR?: string | undefined;
+    FORCE_COLOR?: string | undefined;
+    TERM?: string | undefined;
+  },
+  isTTY: boolean,
+): 0 | undefined {
+  if (env.NO_COLOR !== undefined && env.NO_COLOR !== "") {
+    return 0;
   }
-  const usable = process.stdout.isTTY === true && process.env.TERM !== "dumb";
-  return usable ? new Ansis() : new Ansis(0);
+  if (env.FORCE_COLOR !== undefined) {
+    return undefined;
+  }
+  return isTTY && env.TERM !== "dumb" ? undefined : 0;
+}
+
+function terminalStyles(): Ansis {
+  const level = colorLevel(process.env, process.stdout.isTTY === true);
+  return level === undefined ? new Ansis() : new Ansis(level);
 }
 
 const styles = terminalStyles();
@@ -39,19 +55,69 @@ const CLAY = "#BC9870";
 const PERSIMMON = "#C26A3C";
 const AMBER = "#A8823F";
 
-export const accent = styles.hex(MATCHA);
-export const danger = styles.hex(PERSIMMON);
-export const caution = styles.hex(AMBER);
+/**
+ * At 16 colours the brand hexes cannot be preserved, and quantizing them is worse
+ * than replacing them: ansis maps matcha to SGR 30 — ANSI black — so every ok
+ * glyph would disappear on a dark background, the exact failure the palette exists
+ * to avoid, and amber and clay both collapse onto SGR 33, merging warning with
+ * decoration. At this depth the roles matter and the hues cannot, so each role
+ * takes a distinct named colour. Level 1 is not exotic: it is what ansis selects
+ * for a TTY with `TERM=xterm` or `TERM=screen` and no `COLORTERM` (the default
+ * inside plain screen and tmux), and for `FORCE_COLOR=1`.
+ */
+const SIXTEEN_COLOUR = styles.level === 1;
+
+export const accent = SIXTEEN_COLOUR ? styles.green : styles.hex(MATCHA);
+export const danger = SIXTEEN_COLOUR ? styles.red : styles.hex(PERSIMMON);
+export const caution = SIXTEEN_COLOUR ? styles.yellow : styles.hex(AMBER);
 export const muted = styles.dim;
 
-const decoration = styles.hex(CLAY);
+const decoration = SIXTEEN_COLOUR ? styles.magenta : styles.hex(CLAY);
 const strong = styles.bold;
 
-/** Width of the rule under a title, and the column the right-aligned tail sits at. */
-const RULE_WIDTH = 62;
+/**
+ * Strip control characters from a value that came from outside this process.
+ *
+ * Canonical titles, doctor messages and scanned filenames all reach the terminal
+ * verbatim, and `.iroha/` is git-tracked — so an approved document is a write
+ * primitive for whatever its title contains. An escape sequence there can move the
+ * cursor over output this CLI already wrote, turn a line into an OSC 8 hyperlink,
+ * or drive an OSC 52 clipboard write on terminals that honour it. Since this module
+ * now emits legitimate escapes of its own, an injected one is otherwise
+ * indistinguishable from the tool's.
+ *
+ * C0, DEL and C1 all go: none of them has a meaning inside a single cell, and C1
+ * matters because a lone 0x9B is an equivalent CSI introducer on some terminals.
+ *
+ * Written with `\\u` escapes rather than literal bytes: a literal control character
+ * in the source makes the file itself scan as binary to grep. The lint rule that
+ * bans control characters in a regex is inverted here — matching them is the point.
+ */
+// biome-ignore lint/suspicious/noControlCharactersInRegex: this pattern exists to strip them.
+const CONTROL_CHARS = /[\u0000-\u001F\u007F-\u009F]/g;
+
+export function sanitize(text: string): string {
+  return text.replace(CONTROL_CHARS, "");
+}
 
 /**
- * The three-circle mark, recurring from the dashboard's loader, empty state, and
+ * Wrapping width. A non-TTY (piped output, CI) has no columns, so it gets a stable
+ * 80 rather than a value that varies by environment. Capped so a very wide terminal
+ * does not produce unreadably long measures — the same reason the dashboard caps
+ * its content width.
+ */
+export function terminalWidth(): number {
+  const columns = process.stdout.columns;
+  return columns !== undefined && columns > 0 ? Math.min(columns, 100) : 80;
+}
+
+/** Content width inside the two-space page indent, shared by the rule and rows. */
+function contentWidth(): number {
+  return terminalWidth() - 2;
+}
+
+/**
+ * The three-circle mark, recurring from the dashboard's loader, empty state and
  * active nav — the one brand signature the terminal can carry verbatim.
  */
 function mark(): string {
@@ -59,8 +125,8 @@ function mark(): string {
 }
 
 /** The rule beneath a title. One weight, never stacked (depth comes from tone). */
-function rule(width = RULE_WIDTH): string {
-  return muted("━".repeat(width));
+function rule(): string {
+  return muted("━".repeat(contentWidth()));
 }
 
 export function title(text: string): string {
@@ -73,8 +139,8 @@ export function sectionLabel(text: string): string {
 }
 
 /**
- * Pad to a width measured in terminal cells rather than code units. A CJK glyph
- * is one `.length` but two cells, so `String.padEnd` misaligns every column in a
+ * Pad to a width measured in terminal cells rather than code units. A CJK glyph is
+ * one `.length` but two cells, so `String.padEnd` misaligns every column in a
  * repository whose canonical titles are Japanese. `stringWidth` also strips ANSI,
  * so an already-styled cell pads to its visible width.
  */
@@ -83,11 +149,14 @@ export function padCell(text: string, width: number): string {
   return gap > 0 ? `${text}${" ".repeat(gap)}` : text;
 }
 
-/** Right-align `tail` against the rule, leaving at least one space before it. */
+/** Right-align `tail` against the content edge, leaving at least one space. */
 export function spread(head: string, tail: string): string {
-  const gap = RULE_WIDTH - stringWidth(head) - stringWidth(tail);
+  const gap = contentWidth() - stringWidth(head) - stringWidth(tail);
   return `  ${head}${" ".repeat(Math.max(gap, 1))}${tail}`;
 }
+
+/** The four statuses this module draws. Kept local so `render` owns no domain type. */
+export type GlyphStatus = "ok" | "warning" | "error" | "blocked";
 
 interface StatusStyle {
   glyph: string;
@@ -95,37 +164,32 @@ interface StatusStyle {
 }
 
 /**
- * Glyphs map from the reported status and nothing else. Inferring a fourth,
- * "nothing configured" presentation from message text would be guessing at a
- * distinction the report does not carry.
+ * A `Map`, not an object literal: an object lookup resolves through
+ * `Object.prototype`, so a status of `"toString"` or `"constructor"` returns a
+ * truthy method, walks past an `undefined` guard, and throws on `style.paint`. A
+ * `Map` has no such chain, which is what makes the fallback below reachable for
+ * every value rather than only for own-property misses.
  */
-const STATUS_STYLES: Record<string, StatusStyle> = {
-  ok: { glyph: "✓", paint: accent },
-  warning: { glyph: "○", paint: caution },
-  error: { glyph: "✗", paint: danger },
-  blocked: { glyph: "✗", paint: danger },
-};
+const STATUS_STYLES = new Map<GlyphStatus, StatusStyle>([
+  ["ok", { glyph: "✓", paint: accent }],
+  ["warning", { glyph: "○", paint: caution }],
+  ["error", { glyph: "✗", paint: danger }],
+  ["blocked", { glyph: "✗", paint: danger }],
+]);
 
-export function statusGlyph(status: string): string {
-  const style = STATUS_STYLES[status];
+export function statusGlyph(status: GlyphStatus): string {
+  const style = STATUS_STYLES.get(status);
   return style === undefined ? muted("·") : style.paint(style.glyph);
 }
 
 /**
- * Wrapping width. A non-TTY (piped output, CI) has no columns, so it gets a
- * stable 80 rather than a value that varies by environment. Capped so a very wide
- * terminal does not produce unreadably long measures — the same reason the
- * dashboard caps its content width.
- */
-export function terminalWidth(): number {
-  const columns = process.stdout.columns;
-  return columns !== undefined && columns > 0 ? Math.min(columns, 100) : 80;
-}
-
-/**
  * Break `text` to `width` cells. Splits on spaces and hard-breaks a token wider
- * than the column — which is also what makes this work for Japanese, where there
- * is no space to split on.
+ * than the column — which is also what makes this work for Japanese, where there is
+ * no space to split on.
+ *
+ * Callers must pass unstyled text: the split lands on raw space indices, so a break
+ * inside an SGR span would leave the style open across the wrap. Style the result,
+ * not the input.
  */
 export function wrapCell(text: string, width: number): string[] {
   if (width < 1) {
@@ -147,10 +211,13 @@ export function wrapCell(text: string, width: number): string[] {
     while (stringWidth(rest) > width) {
       let cut = "";
       for (const char of rest) {
-        if (stringWidth(cut + char) > width) {
+        if (cut !== "" && stringWidth(cut + char) > width) {
           break;
         }
         cut += char;
+        if (stringWidth(cut) >= width) {
+          break;
+        }
       }
       lines.push(cut);
       rest = rest.slice(cut.length);
@@ -175,8 +242,15 @@ function hanging(head: string, column: number, value: string): string {
   return lines.map((line, index) => (index === 0 ? head + line : hang + line)).join("\n");
 }
 
-/** `glyph  label  value`, with the value wrapped under a hanging indent. */
+/**
+ * `glyph  label  value`, with the value wrapped under a hanging indent. With no
+ * label the second gap is dropped too, so a glyph-only line sits two spaces from
+ * its text rather than four.
+ */
 export function row(glyph: string, label: string, value: string, labelWidth: number): string {
+  if (labelWidth === 0 && label === "") {
+    return hanging(`    ${glyph}  `, 7, value);
+  }
   return hanging(`    ${glyph}  ${padCell(label, labelWidth)}  `, VALUE_GUTTER + labelWidth, value);
 }
 

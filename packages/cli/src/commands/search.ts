@@ -1,7 +1,7 @@
 import { ENTITY_TYPES, runSearch } from "@iroha/core";
 import { define } from "gunshi";
 import { printError, printSuccess } from "../output.js";
-import { labelColumn, muted, padCell, sectionLabel, spread, title } from "../render.js";
+import { definition, labelColumn, muted, sanitize, sectionLabel, title } from "../render.js";
 
 const SEARCH_MODES = ["hybrid", "lexical", "vector", "graph"] as const;
 
@@ -14,31 +14,29 @@ interface DisplayHit {
 }
 
 /**
- * Titles come from approved canonical documents, which in a repository with
- * `default_language: ja` are Japanese — so the type column is padded by terminal
- * cells. Padding by `.length` would leave every row after a CJK title misaligned.
+ * Titles come from approved canonical documents, so they are both untrusted and
+ * frequently CJK: sanitized because `.iroha/` is git-tracked and an escape sequence
+ * in a title would otherwise run in the reader's terminal, and rendered through
+ * `definition` so the column is measured in cells and a long title wraps under its
+ * own indent instead of breaking the alignment.
  */
 function formatSearch(data: { effectiveMode: string; hits: DisplayHit[] }): string {
   const heading = title("iroha search");
+  const mode = `  ${muted(`mode ${data.effectiveMode}`)}`;
   if (data.hits.length === 0) {
-    return [heading, "", spread(muted(`mode ${data.effectiveMode}`), muted("no results"))].join(
-      "\n",
-    );
+    return [heading, "", `  ${muted("No results.")}`, "", mode].join("\n");
   }
-  const typeWidth = labelColumn(data.hits.map((hit) => hit.type));
-  const rows = data.hits.map(
-    (hit) =>
-      `    ${muted(padCell(`[${hit.type}]`, typeWidth + 2))}  ${hit.title}\n` +
-      `    ${" ".repeat(typeWidth + 2)}  ${muted(`${hit.id} · authority ${hit.authority} · score ${hit.score.toFixed(3)}`)}`,
-  );
-  return [
-    heading,
-    "",
-    sectionLabel(`${data.hits.length} result(s)`),
-    ...rows,
-    "",
-    spread(muted(`mode ${data.effectiveMode}`), ""),
-  ].join("\n");
+  const terms = data.hits.map((hit) => `[${hit.type}]`);
+  const width = labelColumn(terms);
+  // The metadata line is styled as a whole and never wraps, so it is placed at the
+  // detail column directly rather than passed through `definition` — `wrapCell`
+  // splits on raw space indices and would break inside the dim span.
+  const detailIndent = " ".repeat(width + 6);
+  const rows = data.hits.flatMap((hit, index) => [
+    definition(muted(terms[index] as string), sanitize(hit.title), width),
+    `${detailIndent}${muted(`${hit.id} · authority ${hit.authority} · score ${hit.score.toFixed(3)}`)}`,
+  ]);
+  return [heading, "", sectionLabel(`${data.hits.length} result(s)`), ...rows, "", mode].join("\n");
 }
 
 export const searchCommand = define({

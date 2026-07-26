@@ -2,11 +2,15 @@ import { type RunSyncResult, runSync } from "@iroha/core";
 import { define } from "gunshi";
 import { MIGRATIONS_DIR } from "../context.js";
 import { printError, printSuccess } from "../output.js";
-import { muted, statusGlyph, title } from "../render.js";
+import { type GlyphStatus, row, statusGlyph, title } from "../render.js";
 
-/** A glyph-led line: the outcome first, the sentence after. */
-function note(status: string, text: string): string {
-  return `    ${statusGlyph(status)}  ${text}`;
+/**
+ * A glyph-led line: the outcome first, the sentence after, wrapped under the
+ * sentence's own indent. Hand-assembling it left `Rebuilt the local database
+ * (backup at <absolute path>)` as a single 165-column line.
+ */
+function note(status: GlyphStatus, text: string): string {
+  return row(statusGlyph(status), "", text, 0);
 }
 
 function formatSyncCounts(sync: {
@@ -25,7 +29,7 @@ function formatSyncCounts(sync: {
         `${sync.changed} changed`,
         `${sync.unchanged} unchanged`,
         `${sync.deleted} deleted`,
-      ].join(muted(" · ")),
+      ].join(" · "),
     ),
   ];
   if (sync.scanErrors > 0) {
@@ -52,7 +56,7 @@ function formatSync(data: RunSyncResult): string {
         "ok",
         backupPath === null
           ? "Built the local database from canonical data (no previous database to back up)."
-          : `Rebuilt the local database ${muted(`(backup at ${backupPath})`)}`,
+          : `Rebuilt the local database (backup at ${backupPath})`,
       ),
       ...formatSyncCounts(data.rebuild.sync),
     ].join("\n");
@@ -61,9 +65,14 @@ function formatSync(data: RunSyncResult): string {
   const lines = formatSyncCounts(data.sync);
   const embedding = data.embedding;
   if (embedding.skipped === null && embedding.processed + embedding.failed + embedding.dead > 0) {
+    // A dead-lettered job is non-retryable or out of retry budget and writes a
+    // dirty marker, so the line must not claim success just because some jobs
+    // embedded. `failed` is still in flight, which is a warning, not an error.
+    const status: GlyphStatus =
+      embedding.dead > 0 ? "error" : embedding.failed > 0 ? "warning" : "ok";
     lines.push(
       note(
-        "ok",
+        status,
         `Embeddings: ${embedding.processed} embedded, ${embedding.failed} retrying, ${embedding.dead} dead-lettered.`,
       ),
     );

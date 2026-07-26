@@ -15,6 +15,11 @@ function plain(text: string): string {
   return text.replace(SGR, "");
 }
 
+/** Collapse the hanging indent so an assertion survives a wrapped line. */
+function flat(text: string): string {
+  return plain(text).replace(/\s+/g, " ");
+}
+
 const main = define({
   name: "iroha",
   description: "Local-first Engineering Memory Graph",
@@ -33,6 +38,13 @@ const search = define({
   description: "Search approved knowledge",
   args: {
     json: { type: "boolean", description: "Output JSON" },
+    mode: {
+      type: "enum",
+      choices: ["hybrid", "lexical", "vector", "graph"],
+      default: "hybrid",
+      description: "Retrieval mode",
+    },
+    limit: { type: "number", description: "Maximum number of results" },
     query: { type: "positional", description: "Search query" },
   },
   run: () => {},
@@ -112,9 +124,9 @@ describe("renderUsage — subcommand", () => {
 });
 
 describe("renderValidationErrors", () => {
-  it("lists every inner message and points at the right --help", async () => {
+  async function errorsFor(argv: string[]): Promise<string> {
     let captured = "";
-    await cli(["search", "--nope"], main, {
+    await cli(argv, main, {
       name: "iroha",
       version: "9.9.9",
       subCommands: { doctor, search },
@@ -126,9 +138,63 @@ describe("renderValidationErrors", () => {
     }).catch(() => {
       // gunshi rejects after rendering; `runCli` is what turns that into exit 1.
     });
+    return captured;
+  }
 
-    expect(captured).toContain("Invalid argument");
-    expect(captured).toContain("iroha search --help");
-    expect(EMOJI.test(captured)).toBe(false);
+  // The input matters: gunshi does not reject an unknown option at all (`--nope`
+  // is simply ignored, and consumes the next token as its value), so driving it
+  // with one rendered only the unrelated missing-positional error and never
+  // exercised the path the test appeared to cover.
+  it("names the single failing argument", async () => {
+    const text = await errorsFor(["search", "--mode=nope", "q"]);
+
+    expect(text).toContain("Invalid argument");
+    expect(text).not.toContain("Invalid arguments");
+    expect(text).toContain("--mode");
+    expect(text).toContain("iroha search --help");
+  });
+
+  it("switches to the plural heading and lists every message", async () => {
+    const text = await errorsFor(["search", "--mode=nope", "--limit=x", "q"]);
+
+    expect(text).toContain("Invalid arguments");
+    expect(text).toContain("--mode");
+    expect(text).toContain("--limit");
+  });
+
+  it("uses no emoji", async () => {
+    expect(EMOJI.test(await errorsFor(["search", "--mode=nope", "q"]))).toBe(false);
+  });
+});
+
+describe("renderUsage — restored gunshi metadata", () => {
+  // Replacing gunshi's renderer silently dropped four things its default derived
+  // from the arg schema. Each is asserted here because the description alone
+  // carries none of them, and `renderValidationErrors` points the user at this
+  // very screen for the values gunshi's error message does list.
+  it("lists an enum's choices", async () => {
+    // Asserted against the unwrapped text: the sixteen real `--type` choices are
+    // wider than any terminal, so this annotation is meant to wrap.
+    expect(flat(await usageFor(["search", "--help"]))).toContain(
+      "choices: hybrid | lexical | vector | graph",
+    );
+  });
+
+  it("marks a valued option with a placeholder, and a boolean without one", async () => {
+    const text = await usageFor(["search", "--help"]);
+
+    expect(flat(text)).toContain("--mode <mode>");
+    expect(flat(text)).toContain("--json Output JSON");
+  });
+
+  it("shows a default value", async () => {
+    expect(flat(await usageFor(["search", "--help"]))).toContain("default: hybrid");
+  });
+
+  it("describes the positional in its own block", async () => {
+    const text = await usageFor(["search", "--help"]);
+
+    expect(text).toContain("ARGUMENTS");
+    expect(flat(text)).toContain("query Search query");
   });
 });

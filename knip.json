@@ -29,11 +29,11 @@
         "ansis",
         "gunshi",
         "hono",
-        "string-width",
         "mdast-util-from-markdown",
         "mdast-util-to-string",
         "picomatch",
         "secretlint",
+        "string-width",
         "unist-util-visit"
       ]
     }

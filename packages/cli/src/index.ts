@@ -10,7 +10,7 @@ import { initCommand } from "./commands/init.js";
 import { searchCommand } from "./commands/search.js";
 import { syncCommand } from "./commands/sync.js";
 import { muted, title } from "./render.js";
-import { renderUsage, renderValidationErrors } from "./usage.js";
+import { renderUsage, renderValidationErrors, validationErrorsRendered } from "./usage.js";
 
 export const CLI_VERSION = "0.3.1";
 
@@ -42,13 +42,13 @@ export async function runCli(argv: readonly string[]): Promise<void> {
       renderValidationErrors,
     });
   } catch (error) {
-    // gunshi builds an `AggregateError` only for argument validation, and by the
-    // time it rejects, `renderValidationErrors` has already printed every inner
-    // message. Rethrowing makes a mistyped flag surface as a crash: the published
-    // binary's loader reports `iroha failed to start:` with nothing after it,
-    // because `AggregateError` carries no message of its own. Exit 1 quietly
-    // instead. Any other rejection is a real fault and still propagates.
-    if (!(error instanceof AggregateError)) {
+    // Swallowed only when this process actually rendered the validation errors —
+    // `instanceof AggregateError` alone would also silence one thrown from a
+    // command body, exiting 1 with nothing on any stream. The narrow case is real:
+    // gunshi rejects with a message-less `AggregateError` after showing the errors,
+    // so rethrowing makes a mistyped flag surface as `iroha failed to start:` with
+    // nothing after it. Anything else is a genuine fault and still propagates.
+    if (!(error instanceof AggregateError) || !validationErrorsRendered()) {
       throw error;
     }
     process.exitCode = 1;

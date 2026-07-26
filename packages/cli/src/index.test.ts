@@ -228,11 +228,25 @@ describe("runCli", () => {
   // reports it as `iroha failed to start:` with nothing after it — an
   // `AggregateError` has no message of its own — so a mistyped flag reads as a
   // crash.
-  it("exits 1 without throwing when an argument is invalid", async () => {
+  it("exits 1 without throwing when an argument is invalid, and says why", async () => {
     repoDir = await createTempGitRepo();
     process.chdir(repoDir);
+    // gunshi writes the rendered errors through `console.log`, not
+    // `process.stdout.write` — measured — so the stdout helper above sees nothing here.
+    const logged: string[] = [];
+    const log = vi.spyOn(console, "log").mockImplementation((...parts: unknown[]) => {
+      logged.push(parts.map(String).join(" "));
+    });
 
     await expect(runCli(["search", "--mode=nonsense", "q"])).resolves.toBeUndefined();
+    log.mockRestore();
+    const text = logged.join("\n");
+
     expect(process.exitCode).toBe(1);
+    // The load-bearing property is that the user was told something: asserting only
+    // the exit code stays green if the renderer regresses to an empty string, which
+    // is the silent-crash failure the catch exists to prevent.
+    expect(text).toContain("Invalid argument");
+    expect(text).toContain("--mode");
   });
 });

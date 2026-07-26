@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  colorLevel,
   definition,
+  type GlyphStatus,
   labelColumn,
   padCell,
   row,
+  sanitize,
   spread,
   statusGlyph,
   terminalWidth,
@@ -17,7 +20,6 @@ import {
  */
 const EMOJI = /\p{Emoji_Presentation}|️/u;
 
-/** Styles are only applied when the terminal supports them; strip for exact assertions. */
 /**
  * Strip SGR sequences for exact assertions. Built from a string rather than a
  * regex literal, because a literal ESC inside one is a lint error
@@ -82,6 +84,17 @@ describe("wrapCell", () => {
   it("returns a single empty line for empty text", () => {
     expect(wrapCell("", 20)).toEqual([""]);
   });
+
+  // The guard only rejected width < 1, so at width 1 a leading double-width glyph
+  // produced an empty cut: `rest` never shrank and the loop never ended. A
+  // synchronous loop cannot be interrupted by a per-test timeout, so the failure
+  // mode was a wedged run rather than a red assertion — hence the explicit bound.
+  it("makes progress at width 1 even when a glyph is wider than the column", {
+    timeout: 2000,
+  }, () => {
+    expect(wrapCell("日本語", 1)).toEqual(["日", "本", "語"]);
+    expect(wrapCell("日a語", 1)).toEqual(["日", "a", "語"]);
+  });
 });
 
 describe("labelColumn", () => {
@@ -103,12 +116,19 @@ describe("statusGlyph", () => {
     expect(plain(statusGlyph("blocked"))).toBe("✗");
   });
 
-  it("falls back rather than throwing on a status it does not know", () => {
-    expect(plain(statusGlyph("something-new"))).toBe("·");
+  // With an object literal the lookup resolves through Object.prototype, so
+  // `statusGlyph("toString")` found the prototype's method, walked past the
+  // `undefined` guard and threw on `style.paint`. The earlier test for the fallback
+  // only ever passed an own-property miss, so it certified a guarantee the code did
+  // not have. These are the keys that broke it.
+  it("falls back for an inherited Object.prototype key, not just an own-property miss", () => {
+    for (const key of ["toString", "constructor", "valueOf", "hasOwnProperty"]) {
+      expect(plain(statusGlyph(key as GlyphStatus)), key).toBe("·");
+    }
   });
 
   it("uses no emoji", () => {
-    for (const status of ["ok", "warning", "error", "blocked", "unknown"]) {
+    for (const status of ["ok", "warning", "error", "blocked"] as const) {
       expect(EMOJI.test(statusGlyph(status)), status).toBe(false);
     }
   });
@@ -147,6 +167,57 @@ describe("spread", () => {
 
   it("still separates when head and tail exceed the rule", () => {
     expect(plain(spread("x".repeat(60), "y".repeat(20)))).toContain("x y");
+  });
+});
+
+// The gate exists because ansis reads COLORTERM ahead of both isTTY and TERM=dumb,
+// so its own detection leaves escapes in `iroha search | grep …` and in redirected
+// output. The module-level instance is captured once at load and cannot be
+// re-exercised in-process, which is why the decision is a pure function.
+describe("colorLevel", () => {
+  it("disables colour when stdout is not a terminal", () => {
+    expect(colorLevel({ TERM: "xterm-ghostty" }, false)).toBe(0);
+  });
+
+  it("disables colour for a dumb terminal even on a TTY", () => {
+    expect(colorLevel({ TERM: "dumb" }, true)).toBe(0);
+  });
+
+  it("lets ansis detect on a normal TTY", () => {
+    expect(colorLevel({ TERM: "xterm-256color" }, true)).toBeUndefined();
+  });
+
+  it("honours NO_COLOR ahead of everything else", () => {
+    expect(colorLevel({ NO_COLOR: "1", FORCE_COLOR: "3", TERM: "xterm" }, true)).toBe(0);
+  });
+
+  it("treats an empty NO_COLOR as unset, per the convention", () => {
+    expect(colorLevel({ NO_COLOR: "", TERM: "xterm" }, true)).toBeUndefined();
+  });
+
+  it("lets FORCE_COLOR through a pipe so a demo can force colour", () => {
+    expect(colorLevel({ FORCE_COLOR: "3" }, false)).toBeUndefined();
+    expect(colorLevel({ FORCE_COLOR: "0" }, false)).toBeUndefined();
+  });
+});
+
+describe("sanitize", () => {
+  it("strips the escape sequences a canonical title can carry", () => {
+    const ESC = String.fromCharCode(27);
+    const hostile = `libSQL${ESC}[1A${ESC}[2K${ESC}[G  ${ESC}]8;;https://attacker.example${String.fromCharCode(7)}`;
+
+    const clean = sanitize(hostile);
+
+    expect(clean).not.toContain(ESC);
+    expect(clean).toBe("libSQL[1A[2K[G  ]8;;https://attacker.example");
+  });
+
+  it("strips DEL and the C1 range, where a lone 0x9B is also a CSI introducer", () => {
+    expect(sanitize(`a${String.fromCharCode(0x7f)}b${String.fromCharCode(0x9b)}c`)).toBe("abc");
+  });
+
+  it("leaves ordinary text, including CJK, untouched", () => {
+    expect(sanitize("日本語のタイトル — ok")).toBe("日本語のタイトル — ok");
   });
 });
 
