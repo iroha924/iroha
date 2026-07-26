@@ -15,7 +15,18 @@
       "homepage": "https://github.com/iroha924/iroha",
       "repository": "https://github.com/iroha924/iroha",
       "license": "Apache-2.0",
-      "keywords": ["memory", "knowledge-graph", "engineering", "claude-code", "codex"]
+      "keywords": [
+        "memory",
+        "knowledge-graph",
+        "engineering",
+        "claude-code",
+        "codex",
+        "mcp",
+        "mcp-server",
+        "local-first",
+        "ai-agent",
+        "adr"
+      ]
     }
   ]
 }
