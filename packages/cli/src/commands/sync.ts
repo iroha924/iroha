@@ -42,6 +42,20 @@ function formatSync(data: RunSyncResult): string {
       );
     }
   }
+  // Retention is non-fatal for the same reason forge is. "disabled" (the default)
+  // and a run that pruned nothing both print nothing; a deletion is always
+  // reported, since this is the only place a user sees local history removed.
+  const retention = data.retention;
+  if (retention.status === "failed") {
+    lines.push(`Retention: pruning failed (${retention.errorCode}) — will retry on the next sync.`);
+  } else if (retention.pruned !== undefined) {
+    const { sessions, checkpoints, eventLogRows } = retention.pruned;
+    if (sessions + checkpoints + eventLogRows > 0) {
+      lines.push(
+        `Retention: pruned ${sessions} session(s), ${checkpoints} checkpoint(s), and ${eventLogRows} diagnostics row(s) older than ${retention.days} days.`,
+      );
+    }
+  }
   return lines.join("\n");
 }
 
