@@ -108,8 +108,15 @@ export function sanitize(text: string): string {
  */
 export function terminalWidth(): number {
   const columns = process.stdout.columns;
-  return columns !== undefined && columns > 0 ? Math.min(columns, 100) : 80;
+  const reported = columns !== undefined && columns > 0 ? Math.min(columns, 100) : 80;
+  // Floored, not just bounded above: a TTY can report a single column during a
+  // resize or in a tiny PTY, and `rule()` would then ask `String.repeat` for -1
+  // and throw a RangeError before `--help` or any command could render.
+  return Math.max(reported, MIN_WIDTH);
 }
+
+/** Narrowest layout worth drawing; also the floor `hanging` wraps to. */
+const MIN_WIDTH = 20;
 
 /** Content width inside the two-space page indent, shared by the rule and rows. */
 function contentWidth(): number {

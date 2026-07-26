@@ -10,6 +10,7 @@ import {
   spread,
   statusGlyph,
   terminalWidth,
+  title,
   wrapCell,
 } from "./render.js";
 
@@ -222,6 +223,25 @@ describe("sanitize", () => {
 });
 
 describe("terminalWidth", () => {
+  // A TTY can report a single column during a resize or in a tiny PTY. Without a
+  // floor, `contentWidth()` went negative and `rule()` handed `String.repeat` a -1,
+  // throwing a RangeError before `--help` or any command could render.
+  it("floors a one-column terminal so the rule can still be built", () => {
+    const columns = Object.getOwnPropertyDescriptor(process.stdout, "columns");
+    Object.defineProperty(process.stdout, "columns", { value: 1, configurable: true });
+    try {
+      expect(terminalWidth()).toBeGreaterThanOrEqual(20);
+      expect(() => title("iroha doctor")).not.toThrow();
+    } finally {
+      if (columns) {
+        Object.defineProperty(process.stdout, "columns", columns);
+      } else {
+        // biome-ignore lint/performance/noDelete: restoring an absent own property.
+        delete (process.stdout as { columns?: number }).columns;
+      }
+    }
+  });
+
   it("is a usable width even with no TTY", () => {
     // vitest captures stdout, so `columns` is undefined here — the point is that
     // the fallback is a fixed 80 rather than something environment-dependent.
