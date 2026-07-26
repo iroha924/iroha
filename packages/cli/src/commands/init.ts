@@ -2,14 +2,33 @@ import { type RunInitResult, runInit } from "@iroha/core";
 import { define } from "gunshi";
 import { MIGRATIONS_DIR } from "../context.js";
 import { printError, printSuccess } from "../output.js";
+import { definition, labelColumn, muted, statusGlyph, title } from "../render.js";
 
 function formatInit(data: RunInitResult): string {
+  const { init, sync } = data;
+  const facts: [string, string][] = [
+    ["repository", init.repositoryId],
+    [
+      "docs scanned",
+      `${init.docsScanned.join(", ") || "none"}${muted(" · ")}${init.candidatesCreated} new candidate(s)`,
+    ],
+    [
+      "canonical sync",
+      [
+        `+${sync.added} added`,
+        `${sync.changed} changed`,
+        `${sync.unchanged} unchanged`,
+        `${sync.deleted} deleted`,
+      ].join(muted(" · ")),
+    ],
+  ];
+  const width = labelColumn(facts.map(([term]) => term));
   return [
-    data.init.freshInit
-      ? `Initialized a new repository (${data.init.repositoryId}).`
-      : `Repository already initialized (${data.init.repositoryId}).`,
-    `Docs scanned: ${data.init.docsScanned.join(", ") || "none"} (${data.init.candidatesCreated} new candidate(s)).`,
-    `Canonical sync: +${data.sync.added} added, ${data.sync.changed} changed, ${data.sync.unchanged} unchanged, ${data.sync.deleted} deleted.`,
+    title("iroha init"),
+    "",
+    `    ${statusGlyph("ok")}  ${init.freshInit ? "Initialized this repository" : "Already initialized"}`,
+    "",
+    ...facts.map(([term, detail]) => definition(muted(term), detail, width)),
   ].join("\n");
 }
 

@@ -1,6 +1,7 @@
 import { ENTITY_TYPES, runSearch } from "@iroha/core";
 import { define } from "gunshi";
 import { printError, printSuccess } from "../output.js";
+import { labelColumn, muted, padCell, sectionLabel, spread, title } from "../render.js";
 
 const SEARCH_MODES = ["hybrid", "lexical", "vector", "graph"] as const;
 
@@ -12,15 +13,32 @@ interface DisplayHit {
   score: number;
 }
 
+/**
+ * Titles come from approved canonical documents, which in a repository with
+ * `default_language: ja` are Japanese — so the type column is padded by terminal
+ * cells. Padding by `.length` would leave every row after a CJK title misaligned.
+ */
 function formatSearch(data: { effectiveMode: string; hits: DisplayHit[] }): string {
+  const heading = title("iroha search");
   if (data.hits.length === 0) {
-    return `No results (mode: ${data.effectiveMode}).`;
+    return [heading, "", spread(muted(`mode ${data.effectiveMode}`), muted("no results"))].join(
+      "\n",
+    );
   }
+  const typeWidth = labelColumn(data.hits.map((hit) => hit.type));
   const rows = data.hits.map(
     (hit) =>
-      `${hit.id}  [${hit.type}]  ${hit.title}  (authority ${hit.authority}, score ${hit.score.toFixed(3)})`,
+      `    ${muted(padCell(`[${hit.type}]`, typeWidth + 2))}  ${hit.title}\n` +
+      `    ${" ".repeat(typeWidth + 2)}  ${muted(`${hit.id} · authority ${hit.authority} · score ${hit.score.toFixed(3)}`)}`,
   );
-  return [`Mode: ${data.effectiveMode}`, ...rows].join("\n");
+  return [
+    heading,
+    "",
+    sectionLabel(`${data.hits.length} result(s)`),
+    ...rows,
+    "",
+    spread(muted(`mode ${data.effectiveMode}`), ""),
+  ].join("\n");
 }
 
 export const searchCommand = define({

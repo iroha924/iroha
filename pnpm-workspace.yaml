@@ -10,6 +10,10 @@ saveWorkspaceProtocol: rolling
 catalog:
   ajv: 8.20.0
   ajv-formats: 3.0.1
+  # @iroha/cli terminal rendering: ansis for truecolor (the brand palette is hex,
+  # which 16-colour libraries cannot express); string-width because a CJK glyph is
+  # one `.length` but two terminal cells, so column alignment needs real widths.
+  ansis: 4.3.1
   "@arethetypeswrong/cli": 0.18.5
   "@biomejs/biome": 2.5.4
   "@changesets/cli": 2.31.1
@@ -70,6 +74,7 @@ catalog:
   secretlint: 13.0.2
   sherif: 1.13.0
   size-limit: 13.0.1
+  string-width: 8.2.2
   tailwindcss: 4.3.3
   taze: 19.16.0
   ts-pattern: 5.9.0
