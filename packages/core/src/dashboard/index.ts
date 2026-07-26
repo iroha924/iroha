@@ -13,6 +13,7 @@ export * from "./candidate-review.js";
 export * from "./candidates-read.js";
 export * from "./cursor.js";
 export * from "./doctor.js";
+export * from "./events-read.js";
 export * from "./graph-read.js";
 export * from "./knowledge-read.js";
 export * from "./overview.js";

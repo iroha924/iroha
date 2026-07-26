@@ -32,6 +32,7 @@ import {
   upsertSyncCursor,
   withTransaction,
 } from "@iroha/storage";
+import { recordEvent } from "./event-log.js";
 
 /**
  * database-schema.md §6: approved canonical = 100 is the only documented tier. A
@@ -311,6 +312,37 @@ export async function syncCanonicalToDatabase(
   clock: Clock,
   random: RandomSource,
   reprojectAll = false,
+): Promise<Result<SyncCanonicalResult, IrohaError>> {
+  const startedAt = performance.now();
+  const result = await runCanonicalSync(
+    db,
+    repositoryId,
+    irohaCanonicalDir,
+    clock,
+    random,
+    reprojectAll,
+  );
+  await recordEvent(
+    db,
+    repositoryId,
+    { clock, random },
+    {
+      eventType: "sync.canonical",
+      outcome: result.ok ? "success" : "failure",
+      durationMs: Math.round(performance.now() - startedAt),
+      ...(result.ok ? {} : { errorCode: result.error.code }),
+    },
+  );
+  return result;
+}
+
+async function runCanonicalSync(
+  db: Database,
+  repositoryId: TypedId<"repo">,
+  irohaCanonicalDir: string,
+  clock: Clock,
+  random: RandomSource,
+  reprojectAll: boolean,
 ): Promise<Result<SyncCanonicalResult, IrohaError>> {
   const now = clock.now().toISOString();
 

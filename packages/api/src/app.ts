@@ -21,10 +21,12 @@ import {
   graphQuery,
   listCandidateQueue,
   listDashboardSessions,
+  listDiagnosticsEvents,
   listKnowledge,
   mcpSearch,
   proposalSchema,
   type RandomSource,
+  recordEventForRepository,
   rejectCandidate,
   repositoryConfigSchema,
   runDashboardSync,
@@ -53,6 +55,8 @@ export interface AppConfig {
 
 interface Variables {
   requestId: string;
+  /** Set by whichever branch answers with a failure envelope; read by the diagnostics middleware. */
+  errorCode?: string;
 }
 
 interface Vars {
@@ -166,6 +170,7 @@ const knowledgeQuery = z.object({
   cursor: queryParam("Opaque pagination cursor"),
 });
 const relationsQuery = z.object({ limit: queryParam("Max relations to return") });
+const eventsQuery = z.object({ limit: queryParam("Max events to return (1-200, default 50)") });
 
 // The anti-CSRF marker every state-changing request must carry (dashboard-api.md
 // §3). Documented on each mutation so a client generated from `/api/doc` sends it
@@ -248,6 +253,7 @@ export function createApp(config: AppConfig) {
     // with per-field errors, matching the pre-migration `readJson` behavior.
     defaultHook: (result, c) => {
       if (!result.success) {
+        c.set("errorCode", "INVALID_INPUT");
         return c.json(
           failureBody(
             c.get("requestId"),
@@ -266,6 +272,29 @@ export function createApp(config: AppConfig) {
     await next();
   });
 
+  // One `event_log` row per API request, for the Doctor page's diagnostics list.
+  // Scoped to `/api/*` so serving the SPA's static assets does not log. The
+  // adapter is the matched route pattern (`/api/v1/candidates/{id}`), never the
+  // concrete URL, so no id, query value, or path from the request is recorded.
+  // 4xx is a `warning` — a rejected request is the client's problem, not a
+  // malfunction; only 5xx is a `failure`.
+  app.use("/api/*", async (c, next) => {
+    const startedAt = performance.now();
+    await next();
+    const status = c.res.status;
+    const errorCode = c.get("errorCode");
+    await recordEventForRepository({
+      cwd,
+      clock,
+      random,
+      eventType: "api.request",
+      adapter: `${c.req.method} ${c.req.routePath}`,
+      outcome: status >= 500 ? "failure" : status >= 400 ? "warning" : "success",
+      durationMs: Math.round(performance.now() - startedAt),
+      ...(errorCode === undefined ? {} : { errorCode }),
+    });
+  });
+
   // Anti-CSRF for every state-changing request (dashboard-api.md §3): exact
   // same-origin, JSON content type, and the custom `X-Iroha-Request` header a
   // cross-site form or `<img>`/`<script>` load can never set.
@@ -278,6 +307,7 @@ export function createApp(config: AppConfig) {
       const jsonType = (c.req.header("Content-Type") ?? "").includes("application/json");
       const marker = c.req.header("X-Iroha-Request") === "1";
       if (!sameOrigin || !jsonType || !marker) {
+        c.set("errorCode", "INVALID_INPUT");
         return c.json(
           failureBody(c.get("requestId"), {
             code: "INVALID_INPUT",
@@ -294,6 +324,7 @@ export function createApp(config: AppConfig) {
 
   const requireCookie: MiddlewareHandler<Vars> = async (c, next) => {
     if (!auth.verify(getCookie(c, SESSION_COOKIE))) {
+      c.set("errorCode", "INVALID_SESSION_TOKEN");
       return c.json(
         failureBody(c.get("requestId"), {
           code: "INVALID_SESSION_TOKEN",
@@ -316,6 +347,7 @@ export function createApp(config: AppConfig) {
   app.onError((err, c) => {
     const requestId = c.get("requestId") ?? "req_unknown";
     if (err instanceof HTTPException) {
+      c.set("errorCode", "INVALID_INPUT");
       return c.json(
         failureBody(requestId, {
           code: "INVALID_INPUT",
@@ -325,6 +357,7 @@ export function createApp(config: AppConfig) {
         400,
       );
     }
+    c.set("errorCode", "INTERNAL_ERROR");
     return c.json(
       failureBody(requestId, {
         code: "INTERNAL_ERROR",
@@ -866,6 +899,27 @@ export function createApp(config: AppConfig) {
 
   app.openapi(
     createRoute({
+      method: "get",
+      path: "/api/v1/events",
+      tags: ["doctor"],
+      summary: "List recent local diagnostics events",
+      request: { query: eventsQuery },
+      responses: RESPONSES,
+    }),
+    (c) => {
+      const query = c.req.valid("query");
+      return respond(
+        c,
+        listDiagnosticsEvents({
+          ...useCaseCtx,
+          ...numOpt("limit", firstOf(query.limit)),
+        }),
+      );
+    },
+  );
+
+  app.openapi(
+    createRoute({
       method: "post",
       path: "/api/v1/doctor/repair",
       tags: ["doctor"],
@@ -921,6 +975,7 @@ async function respond<T>(
   const requestId = c.get("requestId");
   const result = await resultPromise;
   if (!result.ok) {
+    c.set("errorCode", result.error.code);
     return c.json(
       failureBody(requestId, result.error),
       httpStatusForCode(result.error.code) as ContentfulStatusCode,
@@ -941,6 +996,7 @@ function fail(
   status: ContentfulStatusCode,
   fieldErrors?: Record<string, string>,
 ): never {
+  c.set("errorCode", error.code);
   return c.json(failureBody(c.get("requestId"), error, fieldErrors), status) as never;
 }
 

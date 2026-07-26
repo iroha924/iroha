@@ -71,7 +71,7 @@ export async function mcpGetSessionState(
   input: McpGetSessionStateInput,
 ): Promise<Result<McpSessionState, IrohaError>> {
   return withMcpRepository(
-    { cwd: input.cwd, clock: input.clock, random: input.random },
+    { cwd: input.cwd, clock: input.clock, random: input.random, tool: "get_session_state" },
     async (ctx) => {
       const verified = await verifySessionToken({
         db: ctx.db,

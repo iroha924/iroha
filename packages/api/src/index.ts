@@ -15,6 +15,8 @@ export type {
   CandidateStatusChangeData,
   CandidateValidation,
   CheckpointDetailData,
+  DiagnosticsEvent,
+  DiagnosticsEventsData,
   DoctorRepairData,
   DoctorReport,
   EditCandidateData,

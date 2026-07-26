@@ -80,7 +80,7 @@ export async function mcpGetContext(
   input: McpGetContextInput,
 ): Promise<Result<McpContextData, IrohaError>> {
   return withMcpRepository(
-    { cwd: input.cwd, clock: input.clock, random: input.random },
+    { cwd: input.cwd, clock: input.clock, random: input.random, tool: "get_context" },
     async (ctx) => {
       const verified = await verifySessionToken({
         db: ctx.db,

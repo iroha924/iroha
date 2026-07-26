@@ -198,6 +198,9 @@ Search request mirrors MCP `search` without session token. Pending Candidate sea
 | `PATCH` | `/api/v1/settings/local` | update Git-internal local settings |
 | `GET` | `/api/v1/doctor` | capability diagnostics |
 | `POST` | `/api/v1/doctor/repair` | explicitly selected safe repair |
+| `GET` | `/api/v1/events` | recent local diagnostics events (`event_log`) |
+
+`GET /api/v1/events` returns the `event_log` rows newest first (`?limit=`, 1-200, default 50): event kind, source, duration, outcome, and stable error code only — the columns §10 of `hooks-contract.md` permits. `event_log.adapter` carries the source identifier for every producer, not just the Hook platform: `claude_code`/`codex` for a Hook, the tool name for MCP, and the matched route pattern (`GET /api/v1/knowledge/:id` — the router's own parameter form, not OpenAPI's `{id}`) for an API request. The concrete URL, its query string, and its path parameter values are never recorded.
 
 Repair operations are allowlisted. The browser cannot run arbitrary shell commands.
 

@@ -246,7 +246,7 @@ export async function mcpCreateCheckpoint(
 ): Promise<Result<McpCreateCheckpointData, IrohaError>> {
   const { input } = args;
   return withMcpRepository(
-    { cwd: args.cwd, clock: args.clock, random: args.random },
+    { cwd: args.cwd, clock: args.clock, random: args.random, tool: "create_checkpoint" },
     async (ctx) => {
       const verified = await verifySessionToken({
         db: ctx.db,

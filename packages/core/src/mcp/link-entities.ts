@@ -46,7 +46,7 @@ export async function mcpLinkEntities(
   input: McpLinkEntitiesInput,
 ): Promise<Result<McpLinkEntitiesData, IrohaError>> {
   return withMcpRepository(
-    { cwd: input.cwd, clock: input.clock, random: input.random },
+    { cwd: input.cwd, clock: input.clock, random: input.random, tool: "link_entities" },
     async (ctx) => {
       const verified = await verifySessionToken({
         db: ctx.db,

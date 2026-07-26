@@ -46,6 +46,18 @@ async function irohaFiles(canonicalDir: string): Promise<{ path: string; content
   return out;
 }
 
+/** Rows of one table, as `{ column: value }` objects. */
+async function tableRows(dbPath: string, table: string): Promise<Record<string, unknown>[]> {
+  const opened = await openDatabase(dbPath);
+  if (!opened.ok) throw new Error(`db open failed: ${opened.error.code}`);
+  try {
+    const result = await opened.value.execute(`SELECT * FROM "${table}"`);
+    return result.rows as unknown as Record<string, unknown>[];
+  } finally {
+    await closeDatabase(opened.value);
+  }
+}
+
 /** Every string cell across every real table (schema-driven, so no column is missed). */
 async function allDbTextCells(dbPath: string): Promise<string[]> {
   const opened = await openDatabase(dbPath);
@@ -212,6 +224,55 @@ describe("Cross-artifact privacy scan (vertical-slice.md §6)", () => {
     expect(joined).not.toContain(SECRET_NEEDLE);
     // Tokens are stored only as `hmac-sha256:` digests, never as `ist_` plaintext.
     expect(SESSION_TOKEN_RE.test(joined)).toBe(false);
+  });
+
+  it("writes diagnostics rows carrying only the whitelisted columns", async () => {
+    // The DB-wide scan above covers `event_log` only if rows exist — without this
+    // the hooks/MCP calls in `beforeAll` could stop logging and the scan would
+    // still pass, vacuously. Assert the rows are there, and that each one holds
+    // only the fields hooks-contract.md §10 permits.
+    const rows = await tableRows(repo.resolved.dbPath, "event_log");
+    expect(rows.length).toBeGreaterThan(0);
+
+    const allowed = new Set([
+      "id",
+      "repository_id",
+      "session_id",
+      "turn_id",
+      "event_type",
+      "adapter",
+      "duration_ms",
+      "outcome",
+      "error_code",
+      "occurred_at",
+    ]);
+    for (const row of rows) {
+      expect(Object.keys(row).filter((key) => !allowed.has(key))).toEqual([]);
+    }
+
+    // Both producers driven in `beforeAll` are represented, and every `adapter` is
+    // an identifier fixed in this repository — never a value from the request.
+    const eventTypes = new Set(rows.map((row) => String(row.event_type)));
+    expect(eventTypes.has("hook.session_started")).toBe(true);
+    expect(eventTypes.has("mcp.tool_call")).toBe(true);
+    const fixedAdapters = new Set([
+      "claude_code",
+      "codex",
+      "github",
+      "create_checkpoint",
+      "get_active_rules",
+      "get_context",
+      "get_relations",
+      "get_session_state",
+      "link_entities",
+      "propose_knowledge",
+      "search",
+    ]);
+    for (const row of rows) {
+      if (row.adapter !== null) {
+        expect(fixedAdapters.has(String(row.adapter))).toBe(true);
+      }
+    }
   });
 
   it("keeps the raw prompt/patch and the redacted secret out of MCP responses", async () => {

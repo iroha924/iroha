@@ -76,7 +76,12 @@ const MAX_LIMIT = 50;
  */
 export async function mcpSearch(input: McpSearchInput): Promise<Result<McpSearchData, IrohaError>> {
   return withMcpRepository(
-    { cwd: input.repositoryPath ?? input.cwd, clock: input.clock, random: input.random },
+    {
+      cwd: input.repositoryPath ?? input.cwd,
+      clock: input.clock,
+      random: input.random,
+      tool: "search",
+    },
     async (ctx) => {
       // Clamp both bounds: the MCP/API transports reject `limit < 1` at their Zod
       // boundary, but `runSearch` (the CLI) forwards the raw value, and a negative

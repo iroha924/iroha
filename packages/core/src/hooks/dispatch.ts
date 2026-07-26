@@ -14,6 +14,7 @@ import {
   closeSessionRun,
   closeTurn,
   type Database,
+  type EventLogOutcome,
   getActiveSessionRunForSession,
   getAgentSessionByPlatformIdentity,
   getLatestTurnForRun,
@@ -30,6 +31,7 @@ import {
   updateTurnCheckpointState,
   withTransaction,
 } from "@iroha/storage";
+import { type EventLogEventType, recordEvent } from "../event-log.js";
 import type { ResolvedRepository } from "../resolve-repository.js";
 import {
   type ApprovedKnowledgeItem,
@@ -567,13 +569,7 @@ async function handleSessionEnd(
   return noOutput;
 }
 
-/**
- * Run the use case for one normalized event and return what, if anything, the
- * hook should emit. Events with no v0.1 use case (compaction, and any P1/P2
- * kind an adapter still produced) are recorded implicitly by their upstream
- * lifecycle and need no output.
- */
-export async function dispatchHookEvent(
+async function runHookUseCase(
   event: NormalizedEvent,
   ctx: HookDispatchContext,
 ): Promise<HookOutput> {
@@ -592,5 +588,60 @@ export async function dispatchHookEvent(
       return handleSessionEnd(event, ctx);
     default:
       return noOutput;
+  }
+}
+
+/** Only the kinds with a v0.1 use case are worth a diagnostics row. */
+const EVENT_LOG_TYPES: Partial<Record<NormalizedEvent["kind"], EventLogEventType>> = {
+  SESSION_STARTED: "hook.session_started",
+  PROMPT_SUBMITTED: "hook.prompt_submitted",
+  TOOL_STARTED: "hook.tool_started",
+  TOOL_COMPLETED: "hook.tool_completed",
+  TURN_STOPPED: "hook.turn_stopped",
+  SESSION_ENDED: "hook.session_ended",
+};
+
+/**
+ * Run the use case for one normalized event and return what, if anything, the
+ * hook should emit. Events with no v0.1 use case (compaction, and any P1/P2
+ * kind an adapter still produced) are recorded implicitly by their upstream
+ * lifecycle and need no output.
+ *
+ * Each handled event also appends an `event_log` row. A denial appends a second,
+ * rule-attributed row: the deny is the outcome the diagnostics view is most
+ * asked about ("which rule stopped me"), and `HookOutput` already carries the
+ * rule id, so it needs no extra query. Elapsed time is measured with
+ * `performance.now()` rather than `ctx.clock`, which a test fixes — a duration
+ * is a monotonic interval, not a wall-clock instant.
+ */
+export async function dispatchHookEvent(
+  event: NormalizedEvent,
+  ctx: HookDispatchContext,
+): Promise<HookOutput> {
+  const eventType = EVENT_LOG_TYPES[event.kind];
+  const startedAt = performance.now();
+  const log = (type: EventLogEventType, outcome: EventLogOutcome, errorCode?: string) =>
+    recordEvent(ctx.db, ctx.repo.repositoryId, ctx, {
+      eventType: type,
+      adapter: event.platform,
+      outcome,
+      durationMs: Math.round(performance.now() - startedAt),
+      ...(errorCode === undefined ? {} : { errorCode }),
+    });
+
+  try {
+    const output = await runHookUseCase(event, ctx);
+    if (eventType !== undefined) {
+      await log(eventType, "success");
+    }
+    if (output.kind === "deny") {
+      await log("guardrail.denied", "denied", output.ruleId);
+    }
+    return output;
+  } catch (cause) {
+    if (eventType !== undefined) {
+      await log(eventType, "failure");
+    }
+    throw cause;
   }
 }

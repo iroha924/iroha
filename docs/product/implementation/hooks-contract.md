@@ -320,6 +320,8 @@ Never persist or log:
 
 Local structured logs include event kind, adapter, duration, outcome, IDs, and stable error code. Debug mode may show sanitized field names and sizes, never values from blocked fields.
 
+These logs are the `event_log` table, written by every producer, not only the Hook path: MCP tool calls, dashboard API requests, and canonical/Forge sync also append a row. `adapter` therefore holds the source identifier of whichever producer wrote the row — the platform (`claude_code`/`codex`) for a Hook, the tool name for MCP, the matched route pattern for an API request — always a value fixed in this repository, never one derived from a prompt, a tool input, or a request path.
+
 ## 11. Contract fixtures
 
 For each P0 event and platform, keep:

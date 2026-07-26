@@ -159,7 +159,7 @@ export async function mcpProposeKnowledge(
   input: McpProposeKnowledgeInput,
 ): Promise<Result<McpProposeKnowledgeData, IrohaError>> {
   return withMcpRepository(
-    { cwd: input.cwd, clock: input.clock, random: input.random },
+    { cwd: input.cwd, clock: input.clock, random: input.random, tool: "propose_knowledge" },
     async (ctx) => {
       const verified = await verifySessionToken({
         db: ctx.db,

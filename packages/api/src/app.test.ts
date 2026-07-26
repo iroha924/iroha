@@ -557,4 +557,54 @@ describe("dashboard API", () => {
     expect(doc.paths["/api/v1/sessions"]?.get).toBeDefined();
     expect(doc.paths["/api/doc"]).toBeUndefined();
   });
+
+  it("logs each API request as a diagnostics event with the route pattern", async () => {
+    const repo = await setupApiRepo();
+    dir = repo.dir;
+    const { app } = makeApp(repo.dir);
+    const cookie = await exchange(app);
+
+    await get(app, "/api/v1/overview", cookie);
+    const res = await get(app, "/api/v1/events", cookie);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      data: {
+        events: {
+          eventType: string;
+          adapter: string | null;
+          outcome: string;
+          durationMs: number | null;
+          errorCode: string | null;
+        }[];
+      };
+    };
+    const overview = body.data.events.find((e) => e.adapter === "GET /api/v1/overview");
+    expect(overview).toBeDefined();
+    expect(overview?.eventType).toBe("api.request");
+    expect(overview?.outcome).toBe("success");
+    expect(overview?.durationMs).not.toBeNull();
+    // The concrete URL never reaches the row — only the matched route pattern.
+    expect(body.data.events.every((e) => e.adapter === null || !e.adapter.includes("?"))).toBe(
+      true,
+    );
+  });
+
+  it("records a failed request as a warning carrying its stable error code", async () => {
+    const repo = await setupApiRepo();
+    dir = repo.dir;
+    const { app } = makeApp(repo.dir);
+    const cookie = await exchange(app);
+
+    const missing = await get(app, "/api/v1/knowledge/kno_01JQZ0000000000000000000", cookie);
+    expect(missing.status).toBe(404);
+
+    const res = await get(app, "/api/v1/events", cookie);
+    const body = (await res.json()) as {
+      data: { events: { adapter: string | null; outcome: string; errorCode: string | null }[] };
+    };
+    // Hono reports the route pattern in its own `:param` form, not OpenAPI's `{param}`.
+    const failed = body.data.events.find((e) => e.adapter === "GET /api/v1/knowledge/:id");
+    expect(failed?.outcome).toBe("warning");
+    expect(failed?.errorCode).toBe("NOT_FOUND");
+  });
 });

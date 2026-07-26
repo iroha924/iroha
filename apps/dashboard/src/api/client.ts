@@ -5,6 +5,7 @@ import type {
   CandidateQueuePage,
   CandidateStatusChangeData,
   CheckpointDetailData,
+  DiagnosticsEventsData,
   DoctorRepairData,
   DoctorReport,
   EditCandidateData,
@@ -188,6 +189,7 @@ export const api = {
   doctor: () => request<DoctorReport>("GET", "/v1/doctor"),
   doctorRepair: (operation: string) =>
     request<DoctorRepairData>("POST", "/v1/doctor/repair", { operation }),
+  events: () => request<DiagnosticsEventsData>("GET", "/v1/events"),
 
   syncStatus: () => request<SyncStatusData>("GET", "/v1/sync/status"),
   sync: () => request<SyncCanonicalResult>("POST", "/v1/sync"),

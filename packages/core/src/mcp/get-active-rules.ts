@@ -76,7 +76,12 @@ export async function mcpGetActiveRules(
   input: McpGetActiveRulesInput,
 ): Promise<Result<McpActiveRulesData, IrohaError>> {
   return withMcpRepository(
-    { cwd: input.repositoryPath ?? input.cwd, clock: input.clock, random: input.random },
+    {
+      cwd: input.repositoryPath ?? input.cwd,
+      clock: input.clock,
+      random: input.random,
+      tool: "get_active_rules",
+    },
     async (ctx) => {
       const listed = await listApprovedRulesForRepository(ctx.db, ctx.repo.repositoryId);
       if (!listed.ok) {
