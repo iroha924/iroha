@@ -129,7 +129,7 @@ minimumReleaseAgeExclude:
 #     latest, 0.23.1, pins it); 5.2.2 is the patch. Scoped to 5.2.1 so the
 #     unrelated 3.x/4.x js-yaml still in the tree keep their own major.
 overrides:
-  fast-uri: 3.1.4
+  fast-uri: 4.1.1
   "@hono/node-server": 2.0.10
   brace-expansion: 5.0.8
   "js-yaml@5.2.1": 5.2.2
