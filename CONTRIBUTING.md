@@ -2,6 +2,8 @@
 
 Thanks for your interest in improving iroha. This guide covers the local development setup. The confirmed product specification lives in [docs/](./docs/), and the implementation entry points are [CLAUDE.md](./CLAUDE.md) (Claude Code) and [AGENTS.md](./AGENTS.md) (Codex and others).
 
+For *what* the toolchain is and why each piece was chosen — every linter, scanner, test layer, and release step, with the command that runs it — see [DEVELOPMENT.md](./DEVELOPMENT.md). It is written in Japanese, as maintainer-facing reference; this guide stays in English and covers the steps.
+
 ## Prerequisites
 
 - Node.js `>=24 <25`
