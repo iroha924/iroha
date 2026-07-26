@@ -305,3 +305,44 @@ Initial release thresholds:
 - approved applicable Rule Recall@10 = 1.00 for the Guardrail fixture set.
 
 Ranking changes require before/after metrics. Do not tune solely on anecdotal examples.
+
+## 15. Local event-data retention
+
+The local index otherwise grows without bound: `agent_sessions`, `session_runs`, `turns`,
+`tool_events`, and `event_log` are append-only. Retention (FR-111) bounds them.
+
+- **Configured per developer, not shared.** The window lives in `local_settings` under
+  `retention.local_events` as `{"days": <1-3650>}`, or `{"days": null}` to keep everything.
+  It is deliberately *not* in `.iroha/config.yaml`: that file is Git-tracked, and a retention
+  window there would impose one developer's disk and privacy preference on the whole team,
+  while the data being bounded is local-only and rebuildable.
+- **Off unless set.** An absent row and `{"days": null}` are the same state. An upgrade never
+  starts deleting history on its own.
+- **Runs during `iroha sync`**, after canonical and forge work, and is non-fatal — a pruning
+  failure reports an outcome rather than failing a sync that already succeeded. There is no
+  daemon and no scheduler.
+
+Pruning deletes an aged session through `entities` (the session row is the *child* of its
+entity, so deleting `agent_sessions` directly would orphan the entity), which cascades to its
+runs, turns, tool events, relations, and search documents. Its checkpoint entities are deleted
+first, for the same reason.
+
+A session is eligible only when all of the following hold. Each exclusion exists because the
+cascade would otherwise reach data this contract protects:
+
+1. `last_seen_at` is before the cutoff;
+2. neither the session nor any of its checkpoints has a `canonical_documents` row —
+   `canonical_documents.entity_id` cascades from `entities`, so pruning an approved session
+   would delete the index row for Git-tracked team knowledge;
+3. no `candidates` row with `status = 'pending'` references it — `source_session_id` is
+   `ON DELETE SET NULL`, so pruning would not delete the candidate, it would silently strip
+   its provenance.
+
+`event_log` is pruned by its own `occurred_at`, not with its session: `event_log.session_id`
+is `ON DELETE SET NULL`, so those rows survive a session delete and would otherwise be the
+one table retention never bounds.
+
+**Not yet in scope**: §7's "rejected candidates are retained locally for audit until retention
+cleanup" is not implemented here — `candidates` rows are never deleted by retention, only
+protected from provenance loss while pending. Pruning them needs its own eligibility rules
+(a rejection is an audit record) and is left to a future change.

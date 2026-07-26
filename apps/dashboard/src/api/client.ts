@@ -185,6 +185,9 @@ export const api = {
   settings: () => request<SettingsData>("GET", "/v1/settings"),
   updateSharedConfig: (config: RepositoryConfig) =>
     request<RepositoryConfig>("PATCH", "/v1/settings/shared", config),
+  /** One untracked local setting; `key` is validated per-key on the server. */
+  updateLocalSetting: (key: string, value: unknown) =>
+    request<{ key: string }>("PATCH", "/v1/settings/local", { key, value }),
 
   doctor: () => request<DoctorReport>("GET", "/v1/doctor"),
   doctorRepair: (operation: string) =>

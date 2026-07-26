@@ -109,6 +109,11 @@ const ja: Dict = {
   "settings.forge": "Forge を有効化",
   "settings.present": "設定済み",
   "settings.absent": "未設定",
+  "settings.retention": "ローカルのセッション履歴の保持期間",
+  "settings.retentionHint":
+    "次回の sync で、期間を過ぎたセッションと診断ログをこの端末の索引から削除します。承認済みの知識と、レビュー待ちのものは削除されません。この設定はあなたのローカル限定で、チームには共有されません。",
+  "settings.retentionForever": "無期限",
+  "settings.retentionDays": "{days} 日",
   "doctor.title": "診断",
   "doctor.rerun": "再実行",
   "doctor.resync": "DB を再同期",
@@ -242,6 +247,11 @@ const en: Dict = {
   "settings.forge": "Enable Forge",
   "settings.present": "Set",
   "settings.absent": "Not set",
+  "settings.retention": "Keep local session history",
+  "settings.retentionHint":
+    "Prunes aged sessions and diagnostics from this machine's index on the next sync. Approved knowledge and anything still awaiting review are never removed. This setting is local to you, not shared with your team.",
+  "settings.retentionForever": "Forever",
+  "settings.retentionDays": "{days} days",
   "doctor.title": "Doctor",
   "doctor.rerun": "Re-run",
   "doctor.resync": "Resync DB",

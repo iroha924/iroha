@@ -195,7 +195,7 @@ Search request mirrors MCP `search` without session token. Pending Candidate sea
 | `GET` | `/api/v1/sync/status` | cursors, dirty markers, last result |
 | `GET` | `/api/v1/settings` | shared config plus redacted local status |
 | `PATCH` | `/api/v1/settings/shared` | update `.iroha/config.yaml` safely |
-| `PATCH` | `/api/v1/settings/local` | update Git-internal local settings |
+| `PATCH` | `/api/v1/settings/local` | update Git-internal local settings (a known key is schema-validated: `retention.local_events` must be `{"days": 1-3650 or null}` — see `database.md` §15) |
 | `GET` | `/api/v1/doctor` | capability diagnostics |
 | `POST` | `/api/v1/doctor/repair` | explicitly selected safe repair |
 | `GET` | `/api/v1/events` | recent local diagnostics events (`event_log`) |
