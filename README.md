@@ -1,9 +1,11 @@
+<!-- Links and images here are absolute GitHub URLs on purpose: this file is published to npm as the package README, where a relative path has no repository to resolve against and the referenced file is not in the tarball. -->
+
 <p align="center">
-  <img src="apps/dashboard/public/iroha-lockup-horizontal.svg" alt="iroha" width="320">
+  <img src="https://raw.githubusercontent.com/iroha924/iroha/main/apps/dashboard/public/iroha-lockup-horizontal.svg" alt="iroha" width="320">
 </p>
 
 <p align="center">
-  English | <a href="./README.ja.md">日本語</a>
+  English | <a href="https://github.com/iroha924/iroha/blob/main/README.ja.md">日本語</a>
 </p>
 
 <p align="center">
@@ -70,7 +72,7 @@ codex plugin marketplace add iroha924/iroha
 
 Install the `iroha` plugin from that marketplace with your Codex version's plugin flow (`/plugins` in the Codex CLI). Codex won't trust plugin hooks until you say so — run `/hooks` and trust them. Until you do, the MCP server and CLI still work fine; Codex skills are invoked as `$init`, `$sync`, and so on.
 
-Full install, update, and uninstall details — including the Codex hook-trust flow — live in [docs/install.md](./docs/install.md).
+Full install, update, and uninstall details — including the Codex hook-trust flow — live in [docs/install.md](https://github.com/iroha924/iroha/blob/main/docs/install.md).
 
 ## Quick start
 
@@ -158,7 +160,7 @@ Two other settings worth knowing:
 
 ## Contributing
 
-Contributions are very welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the development setup and workflow. The full product specification lives in [docs/](./docs/).
+Contributions are very welcome. See [CONTRIBUTING.md](https://github.com/iroha924/iroha/blob/main/CONTRIBUTING.md) for the development setup and workflow. The architecture overview and the contracts it is built against live in [docs/](https://github.com/iroha924/iroha/tree/main/docs).
 
 ## Security
 
@@ -166,4 +168,4 @@ Hook enforcement is a guardrail, not a complete security boundary — hard enfor
 
 ## License
 
-[Apache-2.0](./LICENSE) © iroha labs
+[Apache-2.0](https://github.com/iroha924/iroha/blob/main/LICENSE) © iroha labs
