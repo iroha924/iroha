@@ -508,9 +508,11 @@ export async function runForgeSync(
     random,
     reviewLearningThreshold,
   );
-  // `disabled`/`skipped` are configuration states, not runs — only an attempt
-  // that actually reached the provider is worth a diagnostics row.
-  if (outcome.status !== "disabled" && outcome.status !== "skipped") {
+  // `disabled`/`skipped` are configuration states, not runs; a clean sync is
+  // already observable as `sync_cursors.last_success_at`. Only an attempt that
+  // reached the provider and then failed or truncated is worth a row.
+  const clean = outcome.status === "synced" && !outcome.truncated;
+  if (outcome.status !== "disabled" && outcome.status !== "skipped" && !clean) {
     await recordEvent(
       db,
       repositoryId,

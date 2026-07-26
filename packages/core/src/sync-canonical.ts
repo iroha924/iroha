@@ -322,6 +322,11 @@ export async function syncCanonicalToDatabase(
     random,
     reprojectAll,
   );
+  // Only a sync that failed or skipped a document is worth a row; a clean sync
+  // is already observable as `sync_cursors.last_success_at`.
+  if (result.ok && result.value.scanErrors === 0) {
+    return result;
+  }
   await recordEvent(
     db,
     repositoryId,

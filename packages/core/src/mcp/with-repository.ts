@@ -33,11 +33,14 @@ export interface WithMcpRepositoryInput {
  * missing or uninitialized repository returns `NOT_INITIALIZED` rather than
  * silently succeeding, and the server never migrates implicitly.
  *
- * Each call also appends an `event_log` row. This is the only seam that holds
- * both the tool name and an open connection — the transport dispatcher knows the
- * name but has no database, and recording there would cost a second repository
- * resolution and connection per tool call. A request that fails before the
- * database opens is necessarily unlogged.
+ * A **failed** call appends an `event_log` row; a successful one appends nothing.
+ * `search`/`get_active_rules`/`get_relations` need no session token, so recording
+ * every call would let a peer grow an append-only table with no retention
+ * (FR-111 is unimplemented — see issue #127) simply by polling a cheap read.
+ * Recording only failures also matches the API, so one list has one meaning.
+ * This is the only seam holding both the tool name and an open connection — the
+ * transport dispatcher knows the name but has no database — so a request that
+ * fails before the database opens is necessarily unlogged.
  */
 export async function withMcpRepository<T>(
   input: WithMcpRepositoryInput,
@@ -69,13 +72,13 @@ export async function withMcpRepository<T>(
       clock: input.clock,
       random: input.random,
     });
-    if (input.tool !== null) {
+    if (input.tool !== null && !result.ok) {
       await recordEvent(db, repo.repositoryId, input, {
         eventType: "mcp.tool_call",
         adapter: input.tool,
-        outcome: result.ok ? "success" : outcomeForErrorCode(result.error.code),
+        outcome: outcomeForErrorCode(result.error.code),
         durationMs: Math.round(performance.now() - startedAt),
-        ...(result.ok ? {} : { errorCode: result.error.code }),
+        errorCode: result.error.code,
       });
     }
     return result;
