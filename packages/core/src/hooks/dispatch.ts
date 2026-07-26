@@ -6,6 +6,7 @@ import {
   continuationOutput,
   denyOutput,
   type HookOutput,
+  isBuildTestOrMigrationCommand,
   type NormalizedEvent,
   noOutput,
   type ToolTarget,
@@ -453,10 +454,21 @@ async function handleToolStarted(
   return denial === null ? noOutput : denyOutput(denial.ruleId, denial.reason);
 }
 
-/** A tool use is "meaningful" (checkpoint-worthy) when it mutates files or runs a command. */
+/**
+ * Whether a tool use makes the Turn checkpoint-worthy, per `contracts/hooks.md`
+ * §6.6: a mutation succeeded, or a build/test/migration command ran.
+ *
+ * "or a command ran" is not the rule and was never meant to be. Treating every
+ * command as qualifying marked a Turn pending for `curl` and `git status`, so a
+ * turn that only polled a URL still had its stop blocked for a Checkpoint — the
+ * record then fills with near-empty entries, and the Digest counts them.
+ */
 function isMeaningfulMutation(targets: readonly ToolTarget[]): boolean {
   return targets.some(
-    (t) => t.operation === "write" || t.operation === "delete" || t.kind === "command",
+    (t) =>
+      t.operation === "write" ||
+      t.operation === "delete" ||
+      (t.kind === "command" && isBuildTestOrMigrationCommand(t.value)),
   );
 }
 

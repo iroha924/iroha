@@ -45,6 +45,50 @@ export function classifyCommandTarget(command: string): string {
 }
 
 /**
+ * The build/test/migration runners `contracts/hooks.md` §6.6 means when it says a
+ * Turn requires a Checkpoint because "a build/test/migration command ran".
+ *
+ * Matched against `classifyCommandTarget`'s output, which is the bare program name
+ * — arguments never leave the digest, so `pnpm test` and `pnpm install` are
+ * indistinguishable here and both count. That is the deliberate direction of error:
+ * treating every command as qualifying is what the code did before, and it marked a
+ * Turn checkpoint-worthy for `curl` and `git status`, so a polling turn that did no
+ * work still demanded a Checkpoint and filled the record with near-empty ones.
+ *
+ * A runner missing from this list costs a prompt that was not raised — recoverable,
+ * since a file mutation qualifies on its own and PreCompact still leaves a dirty
+ * marker. Add to it rather than widening it back to "any command".
+ */
+const BUILD_TEST_MIGRATION_RUNNERS: ReadonlySet<string> = new Set([
+  "bun",
+  "cargo",
+  "dotnet",
+  "go",
+  "gradle",
+  "gradlew",
+  "jest",
+  "just",
+  "make",
+  "mvn",
+  "npm",
+  "npx",
+  "playwright",
+  "pnpm",
+  "pytest",
+  "task",
+  "tox",
+  "tsc",
+  "turbo",
+  "vitest",
+  "yarn",
+]);
+
+/** Whether a classified command target is a build/test/migration run (§6.6). */
+export function isBuildTestOrMigrationCommand(classified: string): boolean {
+  return BUILD_TEST_MIGRATION_RUNNERS.has(classified);
+}
+
+/**
  * Everything an adapter needs to finalize a normalized event but cannot compute
  * itself: repository-keyed HMAC digesting (the salt lives in `@iroha/git`, which
  * adapters may not depend on), a fresh event id, and the event timestamp.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyCommandTarget } from "./normalization.js";
+import { classifyCommandTarget, isBuildTestOrMigrationCommand } from "./normalization.js";
 
 describe("classifyCommandTarget", () => {
   it("keeps a bare program name", () => {
@@ -24,5 +24,46 @@ describe("classifyCommandTarget", () => {
     expect(classifyCommandTarget("")).toBe("command");
     expect(classifyCommandTarget("   ")).toBe("command");
     expect(classifyCommandTarget("$(cat secret)")).toBe("command");
+  });
+});
+
+describe("isBuildTestOrMigrationCommand", () => {
+  // The rule contracts/hooks.md §6.6 actually states is "a build/test/migration
+  // command ran". The dispatcher used to treat *any* command as qualifying, so a
+  // turn that only polled a URL had its stop blocked for a Checkpoint and the
+  // record filled with near-empty entries.
+  it("does not treat a read-only command as build/test/migration", () => {
+    for (const command of ["curl", "git", "ls", "cat", "grep", "sed", "echo", "sqlite3"]) {
+      expect(isBuildTestOrMigrationCommand(command), command).toBe(false);
+    }
+  });
+
+  it("recognizes the runners a build, test or migration actually goes through", () => {
+    for (const command of [
+      "pnpm",
+      "npm",
+      "yarn",
+      "bun",
+      "npx",
+      "turbo",
+      "vitest",
+      "cargo",
+      "go",
+      "make",
+      "tsc",
+    ]) {
+      expect(isBuildTestOrMigrationCommand(command), command).toBe(true);
+    }
+  });
+
+  // `classifyCommandTarget` keeps only the program name — arguments live in the
+  // digest — so a runner qualifies whatever subcommand followed it.
+  it("matches the classified program name, which is all that survives", () => {
+    expect(isBuildTestOrMigrationCommand(classifyCommandTarget("pnpm test --run"))).toBe(true);
+    expect(
+      isBuildTestOrMigrationCommand(classifyCommandTarget("curl -s https://example.com")),
+    ).toBe(false);
+    // An env-assignment prefix collapses to the generic label, which must not match.
+    expect(isBuildTestOrMigrationCommand(classifyCommandTarget("CI=1 pnpm test"))).toBe(false);
   });
 });

@@ -146,8 +146,9 @@ export interface DigestLocalScope {
   checkpoints: DigestDelta & { byOutcome: DigestWindowFacts["checkpoints"]["byOutcome"] };
   sessions: DigestDelta;
   /**
-   * Pending `review_learning` Candidates — "you might be missing a Rule".
-   * Local, not team: it derives from Forge data synced per clone, so two
+   * Pending `review_learning` Candidates — "you might be missing a Rule". Both
+   * producers count: recurrences Forge detected, and lessons an agent proposed
+   * from a Checkpoint. Local, not team — either source is per clone, so two
    * teammates can legitimately see different numbers.
    */
   pendingReviewLearnings: number;
@@ -272,7 +273,7 @@ function buildFacts(local: DigestLocalScope, team: DigestTeamScope): DigestFact[
     {
       id: "local.pendingReviewLearnings",
       value: local.pendingReviewLearnings,
-      label: "Recurring review lessons awaiting approval",
+      label: "Review lessons awaiting approval",
     },
     { id: "team.knowledge.total", value: team.knowledge.value, label: "Knowledge approved" },
     {
