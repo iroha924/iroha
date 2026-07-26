@@ -147,6 +147,25 @@ async function pruneDistToRuntime(distDir: string, entry: string): Promise<void>
  * the runtime `dist/` (pruned to the `bin.mjs` closure), `LICENSE`, `README.md`,
  * and the generated `package.json`.
  */
+/**
+ * Rewrites the README's repo-relative links and images to absolute GitHub URLs.
+ *
+ * The repo copy keeps them relative so they follow whichever branch or fork is
+ * being viewed. The published copy cannot: none of the referenced files are in
+ * the tarball, and whether npm resolves a relative path against `repository` is
+ * its own undocumented behavior. Images go to `raw.` (the blob view serves a
+ * page, not the file); everything else to the blob view, which redirects to the
+ * tree view for a directory.
+ */
+export function absolutizeRepoLinks(markdown: string): string {
+  const blob = `${PLUGIN_REPOSITORY}/blob/main`;
+  const raw = `${PLUGIN_REPOSITORY.replace("https://github.com/", "https://raw.githubusercontent.com/")}/main`;
+  return markdown
+    .replace(/<img\s+src="(?!https?:)\.?\/?([^"]+)"/g, `<img src="${raw}/$1"`)
+    .replace(/href="(?!https?:|#)\.?\/?([^"]+)"/g, `href="${blob}/$1"`)
+    .replace(/\]\((?!https?:|#)\.?\/?([^)]+)\)/g, `](${blob}/$1)`);
+}
+
 export async function assembleRelease(destDir: string): Promise<void> {
   await assembleArchive(destDir); // manifests, hook/MCP config, skills (removes destDir first)
   await cp(join(PLUGIN_DIR, "dist"), join(destDir, "dist"), { recursive: true });
@@ -159,12 +178,10 @@ export async function assembleRelease(destDir: string): Promise<void> {
     recursive: true,
   });
   await cp(join(REPO_ROOT, "LICENSE"), join(destDir, "LICENSE"));
-  // npm renders this on the package page and warns when it is absent. The repo
-  // README is the right text — its four relative links (`./CONTRIBUTING.md`,
-  // `./docs/`, `./docs/install.md`, `./LICENSE`) resolve against the `repository`
-  // field on npmjs.com, and it embeds no images. Neither this nor LICENSE needs a
-  // `files` entry: npm always includes them.
-  await cp(join(REPO_ROOT, "README.md"), join(destDir, "README.md"));
+  // npm renders this on the package page and warns when it is absent. Neither it
+  // nor LICENSE needs a `files` entry: npm always includes them.
+  const readme = await readFile(join(REPO_ROOT, "README.md"), "utf8");
+  await writeFile(join(destDir, "README.md"), absolutizeRepoLinks(readme), "utf8");
 
   const manifest = await buildPublishManifest();
   await mkdir(dirname(join(destDir, "package.json")), { recursive: true });
