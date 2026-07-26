@@ -11,14 +11,39 @@ import { createTempDbPath, removeTempDir } from "./test-helpers/tmp-db.js";
 const REAL_MIGRATIONS_DIR = fileURLToPath(new URL("../../../migrations", import.meta.url));
 const CLOCK = new FixedClock(new Date("2026-01-01T00:00:00.000Z"));
 
-async function copyMigrationsDir(): Promise<string> {
+async function copyMigrationsDir(throughVersion = Number.POSITIVE_INFINITY): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "iroha-migrations-fixture-"));
   const entries = await readdir(REAL_MIGRATIONS_DIR);
   for (const entry of entries) {
+    if (Number.parseInt(entry, 10) > throughVersion) {
+      continue;
+    }
     const content = await readFile(join(REAL_MIGRATIONS_DIR, entry), "utf8");
     await writeFile(join(dir, entry), content, "utf8");
   }
   return dir;
+}
+
+/**
+ * The minimum `tool_events` ancestry the foreign keys demand, so an upgrade runs
+ * against a *populated* table rather than an empty one.
+ */
+async function seedDeniedToolEvent(db: Database): Promise<void> {
+  const at = "2026-07-20T00:00:00.000Z";
+  await db.executeMultiple(`
+    INSERT INTO repositories (id, vcs, root_fingerprint, created_at, updated_at)
+      VALUES ('repo_1', 'git', 'fp_1', '${at}', '${at}');
+    INSERT INTO entities (id, repository_id, entity_type, title, status, source_kind, created_at, updated_at)
+      VALUES ('ses_1', 'repo_1', 'session', 'a session', 'active', 'hook', '${at}', '${at}');
+    INSERT INTO agent_sessions (id, repository_id, platform, started_at, last_seen_at)
+      VALUES ('ses_1', 'repo_1', 'claude_code', '${at}', '${at}');
+    INSERT INTO session_runs (id, session_id, start_source, cwd_fingerprint, started_at, status)
+      VALUES ('run_1', 'ses_1', 'startup', 'fp_cwd', '${at}', 'active');
+    INSERT INTO turns (id, run_id, started_at, status)
+      VALUES ('trn_1', 'run_1', '${at}', 'active');
+    INSERT INTO tool_events (id, turn_id, tool_name, phase, status, occurred_at)
+      VALUES ('evt_1', 'trn_1', 'Edit', 'denied', 'denied', '${at}');
+  `);
 }
 
 describe("runMigrations", () => {
@@ -146,6 +171,65 @@ describe("runMigrations", () => {
       "SELECT version FROM schema_migrations ORDER BY version",
     );
     expect(migrations.rows.map((r) => r.version)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+  });
+
+  it("upgrades a populated database from the previous release's schema in place", async () => {
+    // What an existing install actually does on upgrade: the fresh-database test
+    // above applies every migration to an empty file, which exercises neither
+    // `ALTER TABLE` against existing rows nor the row-preservation the user cares
+    // about. Pinned to the last released schema version rather than
+    // `latest - 1`, so it keeps testing the real upgrade edge as more land.
+    const releasedDir = await copyMigrationsDir(4);
+    tempDirs.push(releasedDir);
+    const { dir, dbPath } = await createTempDbPath();
+    tempDirs.push(dir);
+    const opened = await openDatabase(dbPath);
+    if (!opened.ok) throw new Error("failed to open database");
+    dbs.push(opened.value);
+
+    const released = await runMigrations(opened.value, releasedDir, dbPath, CLOCK);
+    expect(released.ok).toBe(true);
+    const releasedVersion = await opened.value.execute("PRAGMA user_version");
+    expect(releasedVersion.rows[0]?.user_version).toBe(4);
+    await seedDeniedToolEvent(opened.value);
+
+    const upgraded = await runMigrations(opened.value, REAL_MIGRATIONS_DIR, dbPath, CLOCK);
+
+    expect(upgraded.ok).toBe(true);
+    if (upgraded.ok) {
+      expect(upgraded.value).toEqual([
+        { version: 5, name: "tool_events_denied_rule" },
+        { version: 6, name: "digest_issues" },
+      ]);
+    }
+    const userVersion = await opened.value.execute("PRAGMA user_version");
+    expect(userVersion.rows[0]?.user_version).toBe(6);
+
+    // The pre-existing row survives, and its new column defaults to unattributed
+    // rather than to a rule it was never denied by.
+    const event = await opened.value.execute(
+      "SELECT id, status, denied_by_rule_id FROM tool_events WHERE id = 'evt_1'",
+    );
+    expect(event.rows[0]?.status).toBe("denied");
+    expect(event.rows[0]?.denied_by_rule_id).toBe(null);
+
+    // The digest store is writable at its full shape, `period_end` included —
+    // pruning ages on that column, so a missing one silently keeps prose forever.
+    await opened.value.execute({
+      sql: `INSERT INTO digest_issues
+              (repository_id, period_unit, period_key, period_end, prose_json, composed_at)
+            VALUES (?, ?, ?, ?, ?, ?)`,
+      args: [
+        "repo_1",
+        "week",
+        "2026-W30",
+        "2026-07-27T00:00:00.000Z",
+        '{"headline":"h"}',
+        "2026-07-26T00:00:00.000Z",
+      ],
+    });
+    const issues = await opened.value.execute("SELECT period_key FROM digest_issues");
+    expect(issues.rows[0]?.period_key).toBe("2026-W30");
   });
 
   it("backs up the database file before applying a migration to an existing database", async () => {
