@@ -87,6 +87,9 @@ export function Doctor() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["doctor"] });
       void queryClient.invalidateQueries({ queryKey: ["overview"] });
+      // The resync appends a `sync.canonical` row; without this it stays
+      // invisible in the list below until the user clicks "Re-run".
+      void queryClient.invalidateQueries({ queryKey: ["events"] });
     },
   });
 

@@ -1,11 +1,8 @@
 import type { Clock, IrohaError, RandomSource, Result } from "@iroha/domain";
 import { ok } from "@iroha/domain";
 import { type EventLogOutcome, listEventLogByRepository } from "@iroha/storage";
+import { resolvePageSize } from "./cursor.js";
 import { withDashboardRepository } from "./with-repository.js";
-
-/** Matches the `LIMIT` the Doctor page's diagnostics list renders. */
-const DEFAULT_LIMIT = 50;
-const MAX_LIMIT = 200;
 
 export interface DiagnosticsEvent {
   id: string;
@@ -30,18 +27,23 @@ export interface ListDiagnosticsEventsInput {
 
 /**
  * Recent local diagnostics rows (`GET /api/v1/events`), newest first — which
- * hook, tool, endpoint, or sync ran, how long it took, and whether it succeeded,
- * warned, denied, or failed.
+ * tool, endpoint, or sync ran, how long it took, and whether it succeeded,
+ * warned, or failed.
  *
  * `event_log` holds no actor, path, or content column by construction
  * (hooks-contract.md §10), so this endpoint has nothing per-person to expose and
  * needs no filtering to stay within NFR-008. `session_id`/`turn_id` are not
  * projected: the page shows an operational timeline, not a session drill-down.
+ *
+ * `limit` goes through the shared `resolvePageSize`, so it obeys §4's "default
+ * 30, maximum 100" like every other list endpoint — and inherits its `Math.trunc`,
+ * without which a fractional value reaches SQL `LIMIT` and raises SQLITE_MISMATCH
+ * (a 500) instead of being ignored the way §4's lenient-query rule requires.
  */
 export async function listDiagnosticsEvents(
   input: ListDiagnosticsEventsInput,
 ): Promise<Result<DiagnosticsEventsData, IrohaError>> {
-  const limit = Math.min(Math.max(input.limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT);
+  const limit = resolvePageSize(input.limit);
   return withDashboardRepository(
     { cwd: input.cwd, clock: input.clock, random: input.random },
     async (ctx) => {

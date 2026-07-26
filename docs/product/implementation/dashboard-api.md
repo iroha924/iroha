@@ -200,7 +200,11 @@ Search request mirrors MCP `search` without session token. Pending Candidate sea
 | `POST` | `/api/v1/doctor/repair` | explicitly selected safe repair |
 | `GET` | `/api/v1/events` | recent local diagnostics events (`event_log`) |
 
-`GET /api/v1/events` returns the `event_log` rows newest first (`?limit=`, 1-200, default 50): event kind, source, duration, outcome, and stable error code only — the columns §10 of `hooks-contract.md` permits. `event_log.adapter` carries the source identifier for every producer, not just the Hook platform: `claude_code`/`codex` for a Hook, the tool name for MCP, and the matched route pattern (`GET /api/v1/knowledge/:id` — the router's own parameter form, not OpenAPI's `{id}`) for an API request. The concrete URL, its query string, and its path parameter values are never recorded.
+`GET /api/v1/events` returns the `event_log` rows newest first, under the §4 page-size rule (`?limit=`, default 30, maximum 100): event kind, source, duration, outcome, and stable error code only — the columns §10 of `hooks-contract.md` permits. `event_log.adapter` carries the source identifier of whichever producer wrote the row: the tool name for MCP, the provider for a Forge sync, and the matched route pattern (`POST /api/v1/candidates/:id/approve` — the router's own parameter form, not OpenAPI's `{id}`) for an API request. The concrete URL, its query string, and its path parameter values are never recorded.
+
+Two producers are deliberately absent. **Hooks write no row**: the INSERT waits on libSQL's `busy_timeout` whenever another process holds the write lock, which exceeds every §7 hook budget, so the row would cost the very outputs worth diagnosing (a Guardrail deny, a Stop continuation). **Successful API reads write no row**: the SPA polls several pages every 5 s (§7), which would fill the whole list with `GET /api/v1/overview` within minutes. What is recorded is mutations and failures — which is what a diagnostics list is read for, and is not periodic.
+
+`event_log` is disposable local index state: `sync --rebuild` builds a fresh database and therefore starts its history over, like every other non-canonical table except the deliberately-carried embeddings.
 
 Repair operations are allowlisted. The browser cannot run arbitrary shell commands.
 

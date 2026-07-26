@@ -349,7 +349,15 @@ export async function insertEventLog(
   }
 }
 
-/** Matches the `idx_event_log_repository_time` index. */
+/**
+ * Matches the `idx_event_log_repository_time` index. `id` breaks ties so the
+ * result is deterministic: rows sharing an `occurred_at` — a fixed test clock,
+ * or two writes inside one millisecond — would otherwise come back in arbitrary
+ * order, and a `LIMIT` would select an arbitrary subset rather than a stable
+ * page. The tie order is stable but is not creation order: `generateUlid` fills
+ * a ULID's randomness with random bytes, so ids minted in the same millisecond
+ * do not sort by when they were made.
+ */
 export async function listEventLogByRepository(
   db: Executor,
   repositoryId: TypedId<"repo">,
@@ -359,11 +367,11 @@ export async function listEventLogByRepository(
     const result = await db.execute(
       limit === undefined
         ? {
-            sql: "SELECT * FROM event_log WHERE repository_id = ? ORDER BY occurred_at DESC",
+            sql: "SELECT * FROM event_log WHERE repository_id = ? ORDER BY occurred_at DESC, id DESC",
             args: [repositoryId],
           }
         : {
-            sql: "SELECT * FROM event_log WHERE repository_id = ? ORDER BY occurred_at DESC LIMIT ?",
+            sql: "SELECT * FROM event_log WHERE repository_id = ? ORDER BY occurred_at DESC, id DESC LIMIT ?",
             args: [repositoryId, limit],
           },
     );

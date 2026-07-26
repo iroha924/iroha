@@ -13,18 +13,7 @@ import { resolveInitializedRepository } from "./resolve-repository.js";
  * as `string` so the whitelist is a compile error to escape, not a convention:
  * a caller cannot invent a kind that smuggles content into the column.
  */
-export type EventLogEventType =
-  | "hook.session_started"
-  | "hook.prompt_submitted"
-  | "hook.tool_started"
-  | "hook.tool_completed"
-  | "hook.turn_stopped"
-  | "hook.session_ended"
-  | "guardrail.denied"
-  | "mcp.tool_call"
-  | "api.request"
-  | "sync.canonical"
-  | "sync.forge";
+export type EventLogEventType = "mcp.tool_call" | "api.request" | "sync.canonical" | "sync.forge";
 
 /**
  * The MCP tools (mcp-contract.md §3), as they appear in `event_log.adapter`.
@@ -46,18 +35,16 @@ export interface RecordEventInput {
   outcome: EventLogOutcome;
   /**
    * Which source produced the event, as an identifier fixed at the call site:
-   * the platform for a Hook (`claude_code`/`codex`), the tool name for MCP, the
-   * route pattern for an API request. It widens `adapter` beyond the platform
-   * sense hooks-contract.md §10 gives it, which is what lets one column answer
-   * "which tool/endpoint" without a schema change. Never pass a value derived
-   * from a prompt, a tool input, a path, or any other request content.
+   * the tool name for MCP, the route pattern for an API request, the provider
+   * for a forge sync. It widens `adapter` beyond the platform sense
+   * hooks-contract.md §10 gives it, which is what lets one column answer "which
+   * tool/endpoint" without a schema change. Never pass a value derived from a
+   * prompt, a tool input, a path, or any other request content.
    */
   adapter?: string;
   durationMs?: number;
-  /** A stable error code or an iroha-issued id (a denying rule's id) — never a message. */
+  /** A stable error code — never a message. */
   errorCode?: string;
-  sessionId?: TypedId<"ses">;
-  turnId?: TypedId<"trn">;
 }
 
 export interface EventLogDeps {
@@ -66,9 +53,35 @@ export interface EventLogDeps {
 }
 
 /**
+ * Error codes that mean iroha itself malfunctioned, as opposed to the caller
+ * asking for something it could not have. Mirrors the 5xx set of the API's
+ * `httpStatusForCode`, which cannot simply be shared: that maps a code to an
+ * HTTP status, where 400/404/409 are meaningfully distinct, while this is a
+ * two-way severity split for the diagnostics badge.
+ */
+const MALFUNCTION_CODES: ReadonlySet<string> = new Set([
+  "DB_BUSY",
+  "DB_UNAVAILABLE",
+  "EMBEDDING_UNAVAILABLE",
+  "FORGE_UNAVAILABLE",
+  "INTERNAL_ERROR",
+]);
+
+/**
+ * Severity for a failed operation. Keeps the red `failure` badge for something
+ * actually broken, so an expired token or an unknown id reads as `warning` —
+ * the same split the API makes on 4xx vs 5xx, so the two producers agree in one
+ * list. `retryable` cannot serve here: it defaults to `false`, which `INTERNAL_ERROR`
+ * carries too.
+ */
+export function outcomeForErrorCode(code: string): EventLogOutcome {
+  return MALFUNCTION_CODES.has(code) ? "failure" : "warning";
+}
+
+/**
  * Append one local diagnostics row (`event_log`), the queryable record of which
- * hook/tool/endpoint ran, how long it took, and whether it succeeded, denied, or
- * failed.
+ * tool, endpoint, or sync ran, how long it took, and whether it succeeded,
+ * warned, or failed.
  *
  * Privacy is structural, not procedural: `RecordEventInput` admits only the
  * pre-approved fields of hooks-contract.md §10, so prompts, tool input/output,
@@ -76,9 +89,9 @@ export interface EventLogDeps {
  * inverse of a redact-after-logging denylist, which cannot strip what it does
  * not know about (`secure-subprocess-and-credentials.md`).
  *
- * Returns `void` and swallows every failure: diagnostics must never break or
- * slow the fail-open paths that call it. A write error is itself unloggable —
- * there is nowhere left to record it — so it is dropped rather than surfaced.
+ * Returns `void` and discards `insertEventLog`'s error: diagnostics must never
+ * break the paths that call it, and a write error is itself unloggable — there
+ * is nowhere left to record it.
  */
 export async function recordEvent(
   db: Database,
@@ -86,22 +99,16 @@ export async function recordEvent(
   deps: EventLogDeps,
   input: RecordEventInput,
 ): Promise<void> {
-  try {
-    await insertEventLog(db, {
-      id: makeTypedId("log", deps.clock, deps.random),
-      repositoryId,
-      eventType: input.eventType,
-      outcome: input.outcome,
-      occurredAt: deps.clock.now().toISOString(),
-      ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
-      ...(input.turnId === undefined ? {} : { turnId: input.turnId }),
-      ...(input.adapter === undefined ? {} : { adapter: input.adapter }),
-      ...(input.durationMs === undefined ? {} : { durationMs: input.durationMs }),
-      ...(input.errorCode === undefined ? {} : { errorCode: input.errorCode }),
-    });
-  } catch {
-    // Fail-open: an unwritable diagnostics row never propagates to the caller.
-  }
+  await insertEventLog(db, {
+    id: makeTypedId("log", deps.clock, deps.random),
+    repositoryId,
+    eventType: input.eventType,
+    outcome: input.outcome,
+    occurredAt: deps.clock.now().toISOString(),
+    ...(input.adapter === undefined ? {} : { adapter: input.adapter }),
+    ...(input.durationMs === undefined ? {} : { durationMs: input.durationMs }),
+    ...(input.errorCode === undefined ? {} : { errorCode: input.errorCode }),
+  });
 }
 
 export interface RecordEventForRepositoryInput extends RecordEventInput {
@@ -115,29 +122,25 @@ export interface RecordEventForRepositoryInput extends RecordEventInput {
  * repository and opens one of its own. The HTTP transport needs this — the route
  * pattern is known only in middleware, outside the use case that owns the
  * connection — and pays a second resolution per request for it, which a local
- * single-reviewer dashboard can afford. Fail-open throughout: outside an
- * initialized repository, or when the database will not open, nothing is
- * recorded and the caller is never told.
+ * single-reviewer dashboard can afford. Outside an initialized repository, or
+ * when the database will not open, nothing is recorded and the caller is never
+ * told.
  */
 export async function recordEventForRepository(
   input: RecordEventForRepositoryInput,
 ): Promise<void> {
   const { cwd, clock, random, ...event } = input;
+  const repo = await resolveInitializedRepository(cwd);
+  if (!repo.ok) {
+    return;
+  }
+  const opened = await openDatabase(repo.value.dbPath);
+  if (!opened.ok) {
+    return;
+  }
   try {
-    const repo = await resolveInitializedRepository(cwd);
-    if (!repo.ok) {
-      return;
-    }
-    const opened = await openDatabase(repo.value.dbPath);
-    if (!opened.ok) {
-      return;
-    }
-    try {
-      await recordEvent(opened.value, repo.value.repositoryId, { clock, random }, event);
-    } finally {
-      await closeDatabase(opened.value);
-    }
-  } catch {
-    // Fail-open, as above.
+    await recordEvent(opened.value, repo.value.repositoryId, { clock, random }, event);
+  } finally {
+    await closeDatabase(opened.value);
   }
 }

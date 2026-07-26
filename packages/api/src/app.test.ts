@@ -134,6 +134,17 @@ async function seedSession(
   return id;
 }
 
+async function eventLogCount(dbPath: string): Promise<number> {
+  const db = await openDatabase(dbPath);
+  if (!db.ok) throw new Error(db.error.code);
+  try {
+    const result = await db.value.execute("SELECT COUNT(*) AS n FROM event_log");
+    return Number(result.rows[0]?.n ?? 0);
+  } finally {
+    await closeDatabase(db.value);
+  }
+}
+
 function makeApp(cwd: string): { app: Hono; launchToken: string } {
   const auth = createAuth(random, LAUNCH_TOKEN);
   const app = createApp({ cwd, clock, random, auth }) as unknown as Hono;
@@ -558,16 +569,23 @@ describe("dashboard API", () => {
     expect(doc.paths["/api/doc"]).toBeUndefined();
   });
 
-  it("logs each API request as a diagnostics event with the route pattern", async () => {
+  it("records a mutation and a failure, but not a successful read", async () => {
     const repo = await setupApiRepo();
     dir = repo.dir;
     const { app } = makeApp(repo.dir);
     const cookie = await exchange(app);
+    const { candidateId, revisionToken } = await seedDecision(repo.dbPath, repo.repositoryId);
 
     await get(app, "/api/v1/overview", cookie);
-    const res = await get(app, "/api/v1/events", cookie);
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as {
+    const approved = await post(app, `/api/v1/candidates/${candidateId}/approve`, cookie, {
+      revisionToken,
+      actor: { provider: "git", displayName: "Example Reviewer" },
+    });
+    expect(approved.status).toBe(200);
+    const missing = await get(app, "/api/v1/knowledge/kno_01JQZ0000000000000000000", cookie);
+    expect(missing.status).toBe(404);
+
+    const body = (await (await get(app, "/api/v1/events", cookie)).json()) as {
       data: {
         events: {
           eventType: string;
@@ -578,33 +596,61 @@ describe("dashboard API", () => {
         }[];
       };
     };
-    const overview = body.data.events.find((e) => e.adapter === "GET /api/v1/overview");
-    expect(overview).toBeDefined();
-    expect(overview?.eventType).toBe("api.request");
-    expect(overview?.outcome).toBe("success");
-    expect(overview?.durationMs).not.toBeNull();
+    const adapters = body.data.events.map((e) => e.adapter);
+
+    // A successful read is not recorded: the SPA polls several pages every 5s,
+    // which would fill the whole list and hide the rows worth reading.
+    expect(adapters).not.toContain("GET /api/v1/overview");
+    expect(adapters).not.toContain("GET /api/v1/events");
+
+    // Hono reports the route pattern in its own `:param` form, not OpenAPI's `{param}`.
+    const mutation = body.data.events.find(
+      (e) => e.adapter === "POST /api/v1/candidates/:id/approve",
+    );
+    expect(mutation?.eventType).toBe("api.request");
+    expect(mutation?.outcome).toBe("success");
+    expect(mutation?.durationMs).not.toBeNull();
+
+    const failed = body.data.events.find((e) => e.adapter === "GET /api/v1/knowledge/:id");
+    expect(failed?.outcome).toBe("warning");
+    expect(failed?.errorCode).toBe("NOT_FOUND");
+
     // The concrete URL never reaches the row — only the matched route pattern.
     expect(body.data.events.every((e) => e.adapter === null || !e.adapter.includes("?"))).toBe(
       true,
     );
   });
 
-  it("records a failed request as a warning carrying its stable error code", async () => {
+  it("writes nothing for a request rejected before authentication", async () => {
+    const repo = await setupApiRepo();
+    dir = repo.dir;
+    const { app } = makeApp(repo.dir);
+
+    // A 401 must cost no repository resolution and no write: `event_log` has no
+    // pruning, so logging outside the guards would be an unauthenticated
+    // disk-write for anything that can reach the loopback port.
+    const before = await eventLogCount(repo.dbPath);
+    const unauth = await app.request("/api/v1/overview", { headers: { Host: HOST } });
+    expect(unauth.status).toBe(401);
+    const csrf = await app.request("/api/v1/sync", {
+      method: "POST",
+      headers: { Host: HOST, "Content-Type": "application/json" },
+      body: "{}",
+    });
+    expect(csrf.status).toBe(403);
+    expect(await eventLogCount(repo.dbPath)).toBe(before);
+  });
+
+  it("ignores a non-integer limit instead of failing the request", async () => {
     const repo = await setupApiRepo();
     dir = repo.dir;
     const { app } = makeApp(repo.dir);
     const cookie = await exchange(app);
 
-    const missing = await get(app, "/api/v1/knowledge/kno_01JQZ0000000000000000000", cookie);
-    expect(missing.status).toBe(404);
-
-    const res = await get(app, "/api/v1/events", cookie);
-    const body = (await res.json()) as {
-      data: { events: { adapter: string | null; outcome: string; errorCode: string | null }[] };
-    };
-    // Hono reports the route pattern in its own `:param` form, not OpenAPI's `{param}`.
-    const failed = body.data.events.find((e) => e.adapter === "GET /api/v1/knowledge/:id");
-    expect(failed?.outcome).toBe("warning");
-    expect(failed?.errorCode).toBe("NOT_FOUND");
+    // A fractional value reaches SQL `LIMIT` unless it is truncated, where it
+    // raises SQLITE_MISMATCH and becomes a 500 — the query rules require an
+    // invalid value to be ignored, not to fail the request.
+    const res = await get(app, "/api/v1/events?limit=10.5", cookie);
+    expect(res.status).toBe(200);
   });
 });

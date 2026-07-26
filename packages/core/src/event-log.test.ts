@@ -6,7 +6,7 @@ import {
   listEventLogByRepository,
 } from "@iroha/storage";
 import { afterEach, describe, expect, it } from "vitest";
-import { recordEvent, recordEventForRepository } from "./event-log.js";
+import { outcomeForErrorCode, recordEvent, recordEventForRepository } from "./event-log.js";
 import { openMigratedTestDb, removeTempDir } from "./test-helpers/tmp-db.js";
 
 const CLOCK = new FixedClock(new Date("2026-01-01T00:00:00.000Z"));
@@ -47,8 +47,8 @@ describe("recordEvent", () => {
       REPOSITORY_ID,
       { clock: CLOCK, random: RANDOM },
       {
-        eventType: "hook.tool_started",
-        adapter: "claude_code",
+        eventType: "mcp.tool_call",
+        adapter: "create_checkpoint",
         durationMs: 12,
         outcome: "success",
       },
@@ -59,8 +59,8 @@ describe("recordEvent", () => {
     if (!rows.ok) return;
     expect(rows.value).toHaveLength(1);
     expect(rows.value[0]).toMatchObject({
-      eventType: "hook.tool_started",
-      adapter: "claude_code",
+      eventType: "mcp.tool_call",
+      adapter: "create_checkpoint",
       durationMs: 12,
       outcome: "success",
       errorCode: null,
@@ -70,45 +70,58 @@ describe("recordEvent", () => {
     });
   });
 
-  it("records a denial with the denying rule id as the error code", async () => {
-    const db = await seededDb();
-
-    await recordEvent(
-      db,
-      REPOSITORY_ID,
-      { clock: CLOCK, random: RANDOM },
-      {
-        eventType: "guardrail.denied",
-        adapter: "codex",
-        outcome: "denied",
-        errorCode: "kno_01JQZ0000000000000000000",
-      },
-    );
-
-    const rows = await listEventLogByRepository(db, REPOSITORY_ID);
-    expect(rows.ok).toBe(true);
-    if (!rows.ok) return;
-    expect(rows.value[0]?.outcome).toBe("denied");
-    expect(rows.value[0]?.errorCode).toBe("kno_01JQZ0000000000000000000");
-  });
-
-  it("is fail-open when the write cannot happen", async () => {
+  it("discards a write error instead of surfacing it", async () => {
     const db = await seededDb();
     await closeDatabase(db);
 
-    // A closed connection is the cheapest reproduction of an unwritable row; the
-    // caller must not learn about it, since every call site is on a fail-open path.
+    // A closed connection is the cheapest unwritable row. `insertEventLog`
+    // returns an `err` rather than throwing, and `recordEvent` drops it — every
+    // call site is on a path that must not fail because diagnostics did.
     await expect(
       recordEvent(
         db,
         REPOSITORY_ID,
         { clock: CLOCK, random: RANDOM },
-        {
-          eventType: "sync.canonical",
-          outcome: "success",
-        },
+        { eventType: "sync.canonical", outcome: "success" },
       ),
     ).resolves.toBeUndefined();
+  });
+
+  it("pages deterministically when every row shares one timestamp", async () => {
+    const db = await seededDb();
+    const deps = { clock: CLOCK, random: RANDOM };
+
+    // A FixedClock gives every row one `occurred_at`, so without the `id`
+    // tiebreaker which rows a LIMIT selects is arbitrary and can differ between
+    // identical queries. The tie order is stable, not creation order — ULID
+    // randomness is random bytes, so same-millisecond ids do not sort by age.
+    for (const adapter of ["search", "get_context", "create_checkpoint"] as const) {
+      await recordEvent(db, REPOSITORY_ID, deps, {
+        eventType: "mcp.tool_call",
+        adapter,
+        outcome: "success",
+      });
+    }
+
+    const first = await listEventLogByRepository(db, REPOSITORY_ID, 2);
+    const second = await listEventLogByRepository(db, REPOSITORY_ID, 2);
+    expect(first.ok && second.ok).toBe(true);
+    if (!first.ok || !second.ok) return;
+    expect(first.value).toHaveLength(2);
+    expect(first.value.map((row) => row.id)).toEqual(second.value.map((row) => row.id));
+    const ids = first.value.map((row) => row.id);
+    expect(ids).toEqual([...ids].sort().reverse());
+  });
+});
+
+describe("outcomeForErrorCode", () => {
+  it("treats a caller's mistake as a warning and a broken dependency as a failure", () => {
+    expect(outcomeForErrorCode("NOT_FOUND")).toBe("warning");
+    expect(outcomeForErrorCode("INVALID_SESSION_TOKEN")).toBe("warning");
+    expect(outcomeForErrorCode("INVALID_INPUT")).toBe("warning");
+    expect(outcomeForErrorCode("DB_UNAVAILABLE")).toBe("failure");
+    expect(outcomeForErrorCode("INTERNAL_ERROR")).toBe("failure");
+    expect(outcomeForErrorCode("FORGE_UNAVAILABLE")).toBe("failure");
   });
 });
 

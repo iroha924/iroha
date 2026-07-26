@@ -320,7 +320,9 @@ Never persist or log:
 
 Local structured logs include event kind, adapter, duration, outcome, IDs, and stable error code. Debug mode may show sanitized field names and sizes, never values from blocked fields.
 
-These logs are the `event_log` table, written by every producer, not only the Hook path: MCP tool calls, dashboard API requests, and canonical/Forge sync also append a row. `adapter` therefore holds the source identifier of whichever producer wrote the row — the platform (`claude_code`/`codex`) for a Hook, the tool name for MCP, the matched route pattern for an API request — always a value fixed in this repository, never one derived from a prompt, a tool input, or a request path.
+These logs are the `event_log` table. **The Hook path deliberately writes no row to it.** The INSERT waits on libSQL's `busy_timeout` (2500 ms) whenever another process holds the write lock — measured at 2655 ms on a Stop against a concurrent writer, versus a §7 budget of 2.0 s, and 7932 ms on a PreToolUse denial against a budget of 0.5 s. The platform kills the hook at its deadline, so a diagnostics row would destroy exactly the outputs worth diagnosing: a Guardrail deny and a Stop continuation. Fail-open does not save it either, since a busy wait is latency rather than an error. Hook activity remains observable through the Turn/Run/Tool Event records the handlers already write, where a denial is `tool_events.phase = 'denied'`.
+
+`event_log` is written by the other producers — MCP tool calls, dashboard API mutations and failures, and canonical/Forge sync. `adapter` therefore holds the source identifier of whichever producer wrote the row (the tool name for MCP, the matched route pattern for an API request), always a value fixed in this repository, never one derived from a prompt, a tool input, or a request path.
 
 ## 11. Contract fixtures
 

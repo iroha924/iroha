@@ -170,7 +170,7 @@ const knowledgeQuery = z.object({
   cursor: queryParam("Opaque pagination cursor"),
 });
 const relationsQuery = z.object({ limit: queryParam("Max relations to return") });
-const eventsQuery = z.object({ limit: queryParam("Max events to return (1-200, default 50)") });
+const eventsQuery = z.object({ limit: queryParam("Max events to return (1-100, default 30)") });
 
 // The anti-CSRF marker every state-changing request must carry (dashboard-api.md
 // §3). Documented on each mutation so a client generated from `/api/doc` sends it
@@ -272,29 +272,6 @@ export function createApp(config: AppConfig) {
     await next();
   });
 
-  // One `event_log` row per API request, for the Doctor page's diagnostics list.
-  // Scoped to `/api/*` so serving the SPA's static assets does not log. The
-  // adapter is the matched route pattern (`/api/v1/candidates/{id}`), never the
-  // concrete URL, so no id, query value, or path from the request is recorded.
-  // 4xx is a `warning` — a rejected request is the client's problem, not a
-  // malfunction; only 5xx is a `failure`.
-  app.use("/api/*", async (c, next) => {
-    const startedAt = performance.now();
-    await next();
-    const status = c.res.status;
-    const errorCode = c.get("errorCode");
-    await recordEventForRepository({
-      cwd,
-      clock,
-      random,
-      eventType: "api.request",
-      adapter: `${c.req.method} ${c.req.routePath}`,
-      outcome: status >= 500 ? "failure" : status >= 400 ? "warning" : "success",
-      durationMs: Math.round(performance.now() - startedAt),
-      ...(errorCode === undefined ? {} : { errorCode }),
-    });
-  });
-
   // Anti-CSRF for every state-changing request (dashboard-api.md §3): exact
   // same-origin, JSON content type, and the custom `X-Iroha-Request` header a
   // cross-site form or `<img>`/`<script>` load can never set.
@@ -338,6 +315,42 @@ export function createApp(config: AppConfig) {
   };
   app.use("/api/v1/*", requireCookie);
   app.use("/api/auth/logout", requireCookie);
+
+  // One `event_log` row per API request, for the Doctor page's diagnostics list.
+  // Registered *after* the auth and anti-CSRF guards so a rejected request costs
+  // no repository resolution and no write: before this endpoint existed a 401 did
+  // zero I/O, and `event_log` has no pruning, so logging outside the guards would
+  // hand any caller that reaches the loopback port an unauthenticated disk-write.
+  //
+  // A successful read is not recorded. The SPA polls several pages every 5s
+  // (dashboard-api.md §7), which fills the whole list with `GET /api/v1/overview`
+  // within minutes and hides the rows worth reading — measured: 50 of 50 rows
+  // after ~4 minutes on one focused tab. Mutations and failures are what a
+  // diagnostics list is for, and they are not periodic.
+  //
+  // `adapter` is the matched route pattern in the router's own `:id` form, never
+  // the concrete URL, so no id, query value, or path from the request is recorded.
+  // 4xx is a `warning` — a rejected request is the client's problem, not a
+  // malfunction; only 5xx is a `failure`.
+  app.use("/api/*", async (c, next) => {
+    const startedAt = performance.now();
+    await next();
+    const status = c.res.status;
+    if (status < 400 && (c.req.method === "GET" || c.req.method === "HEAD")) {
+      return;
+    }
+    const errorCode = c.get("errorCode");
+    await recordEventForRepository({
+      cwd,
+      clock,
+      random,
+      eventType: "api.request",
+      adapter: `${c.req.method} ${c.req.routePath}`,
+      outcome: status >= 500 ? "failure" : status >= 400 ? "warning" : "success",
+      durationMs: Math.round(performance.now() - startedAt),
+      ...(errorCode === undefined ? {} : { errorCode }),
+    });
+  });
 
   // A thrown handler error (a use case should return a Result, not throw)
   // becomes a clean INTERNAL_ERROR envelope — never a stack trace (§4). The one

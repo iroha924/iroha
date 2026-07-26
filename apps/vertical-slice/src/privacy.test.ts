@@ -250,14 +250,15 @@ describe("Cross-artifact privacy scan (vertical-slice.md §6)", () => {
       expect(Object.keys(row).filter((key) => !allowed.has(key))).toEqual([]);
     }
 
-    // Both producers driven in `beforeAll` are represented, and every `adapter` is
-    // an identifier fixed in this repository — never a value from the request.
+    // The MCP producer driven in `beforeAll` is represented, and every `adapter`
+    // is an identifier fixed in this repository — never a value from the request.
+    // The hooks driven in `beforeAll` deliberately write nothing (hooks-contract.md
+    // §10): a diagnostics INSERT there can outlast the platform's hook deadline.
     const eventTypes = new Set(rows.map((row) => String(row.event_type)));
-    expect(eventTypes.has("hook.session_started")).toBe(true);
     expect(eventTypes.has("mcp.tool_call")).toBe(true);
+    expect([...eventTypes].some((type) => type.startsWith("hook."))).toBe(false);
+    expect(eventTypes.has("guardrail.denied")).toBe(false);
     const fixedAdapters = new Set([
-      "claude_code",
-      "codex",
       "github",
       "create_checkpoint",
       "get_active_rules",
