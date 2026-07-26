@@ -366,7 +366,7 @@ cascade would otherwise reach data this contract protects:
    `canonical_documents.entity_id` cascades from `entities`, so pruning an approved session
    would delete the index row for Git-tracked team knowledge;
 4. no other session names it in `parent_session_id` — that column is `ON DELETE SET NULL`, so
-   pruning a parent would leave its children alive but permanently unparented; the child ages
+   pruning a parent would leave its children alive but permanently parentless; the child ages
    out first and the parent becomes eligible on a later sweep;
 5. no `candidates` row with `status = 'pending'` reaches it by either route — directly through
    `source_session_id`, or through `source_checkpoint_id` pointing at one of its checkpoints

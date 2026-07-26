@@ -277,7 +277,7 @@ describe("retention pruning", () => {
     const { sessionId: parentId } = await seedSession(database, "parent", OLD);
     const { sessionId: childId } = await seedSession(database, "child", RECENT);
     // `agent_sessions.parent_session_id` is ON DELETE SET NULL, so pruning the
-    // parent would leave the child alive but permanently unparented.
+    // parent would leave the child alive but permanently parentless.
     await database.execute({
       sql: "UPDATE agent_sessions SET parent_session_id = ? WHERE id = ?",
       args: [parentId, childId],

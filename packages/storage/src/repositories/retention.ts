@@ -7,7 +7,7 @@
  * file is the single, explicit exception, reached only when a human has set a
  * retention window.
  *
- * Three invariants shape every query below.
+ * Four invariants shape every query below.
  *
  * 1. **Canonical is never touched.** `canonical_documents.entity_id` cascades
  *    from `entities`, so deleting a session entity that has an approved
@@ -22,7 +22,7 @@
  *    elsewhere.
  * 3. **A session that another session still points at is kept.**
  *    `agent_sessions.parent_session_id` is `ON DELETE SET NULL`, so pruning a
- *    parent leaves its children alive but permanently unparented. A session with
+ *    parent leaves its children alive but permanently parentless. A session with
  *    any child is excluded; the child ages out first, and the parent becomes
  *    eligible on a later sweep.
  * 4. **Age is measured from actual activity, not `last_seen_at` alone.**
