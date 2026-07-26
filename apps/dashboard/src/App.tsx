@@ -107,7 +107,9 @@ export function App() {
         <div className="mx-auto flex h-14 max-w-[1120px] items-center justify-between gap-6 px-6">
           <div className="flex items-center gap-8">
             <img src="/iroha-lockup-horizontal.svg" alt="iroha" className="h-6 w-auto" />
-            <nav className="flex items-center gap-6">
+            {/* Two landmarks in one header: without labels a screen reader
+                announces "navigation" twice with no way to tell them apart. */}
+            <nav aria-label={t("nav.primaryLabel")} className="flex items-center gap-6">
               <NavItem to="/" label={t("nav.digest")} />
               <NavItem to="/overview" label={t("nav.overview")} />
               <NavItem to="/sessions" label={t("nav.sessions")} />
@@ -118,7 +120,7 @@ export function App() {
             </nav>
           </div>
           <div className="flex items-center gap-5">
-            <nav className="flex items-center gap-5">
+            <nav aria-label={t("nav.secondaryLabel")} className="flex items-center gap-5">
               <NavItem to="/settings" label={t("nav.settings")} />
               <NavItem to="/doctor" label={t("nav.doctor")} />
             </nav>
