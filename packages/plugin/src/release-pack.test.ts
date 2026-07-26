@@ -95,10 +95,12 @@ describe("published package.json", () => {
 });
 
 describe("tarball contents", () => {
-  it("ships the binary, both manifests, hook/MCP config, skills, and LICENSE", () => {
+  it("ships the binary, both manifests, hook/MCP config, skills, LICENSE, and README", () => {
     for (const required of [
       "package.json",
       "LICENSE",
+      // npm renders this on the package page and warns when it is missing.
+      "README.md",
       "dist/bin.mjs",
       "migrations/001_initial.sql",
       "dashboard/index.html",
