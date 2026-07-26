@@ -92,7 +92,7 @@ function understoodEvents(adapter: typeof claudeHookAdapter): string[] {
 
 describe("hook coverage", () => {
   it("subscribes every event the Claude adapter understands", () => {
-    const claude = buildClaudeHooks();
+    const claude = buildClaudeHooks().hooks;
     const understood = understoodEvents(claudeHookAdapter);
     expect(understood).toContain("SessionEnd");
     for (const event of understood) {
@@ -112,7 +112,7 @@ describe("hook coverage", () => {
   });
 
   it("registers every declared hook event on Claude, and the portable ones on Codex", () => {
-    const claude = buildClaudeHooks();
+    const claude = buildClaudeHooks().hooks;
     const codex = buildCodexHooks().hooks;
     for (const { event, claudeOnly } of HOOK_EVENTS) {
       expect(claude[event], `Claude missing ${event}`).toBeDefined();
@@ -125,8 +125,29 @@ describe("hook coverage", () => {
   });
 
   it("dispatches every hook through the iroha binary for the right platform", () => {
-    expect(buildClaudeHooks().SessionStart?.[0]?.hooks[0]?.args).toEqual(["__hook", "claude"]);
+    expect(buildClaudeHooks().hooks.SessionStart?.[0]?.hooks[0]?.args).toEqual([
+      "__hook",
+      "claude",
+    ]);
     expect(buildCodexHooks().hooks.SessionStart?.[0]?.hooks[0]?.command).toBe("iroha __hook codex");
+  });
+
+  // Both platforms nest the event map under `hooks`. Asserting the events are
+  // *reachable* is not enough — an unwrapped map has them reachable too, just one
+  // level up, and Claude Code rejects the whole file on that schema error and
+  // loads no hook at all. Every published version through 0.3.0 shipped that
+  // shape, because the surrounding tests only ever read the builder's own output.
+  // So assert the negative: an event name at the top level is the defect itself.
+  it.each([
+    ["Claude", () => buildClaudeHooks()],
+    ["Codex", () => buildCodexHooks()],
+  ])("nests %s's event map under a top-level `hooks` key", (_platform, build) => {
+    const manifest = build() as Record<string, unknown>;
+
+    expect(Object.keys(manifest)).toContain("hooks");
+    for (const key of Object.keys(manifest)) {
+      expect(PLATFORM_EVENT_NAMES, `event name ${key} sits at the top level`).not.toContain(key);
+    }
   });
 });
 
