@@ -10,7 +10,7 @@
 
 | Concern | Authoritative contract |
 |---|---|
-| 実装者への指示 | [CLAUDE.md](./CLAUDE.md) / [AGENTS.md](./AGENTS.md) |
+| 実装者への指示 | [CLAUDE.md](../../CLAUDE.md) / [AGENTS.md](../../AGENTS.md) |
 | Runtime、version、OS、package構成 | [Compatibility Contract](./implementation/compatibility.md) |
 | `.iroha/`形式と承認transaction | [Canonical Data Contract](./implementation/canonical-schema.md) |
 | DB、search、rebuild | [Database Contract](./implementation/database-schema.md) |
@@ -19,7 +19,7 @@
 | Dashboard/API | [Dashboard/API Contract](./implementation/dashboard-api.md) |
 | End-to-end受け入れ | [First Vertical Slice](./implementation/vertical-slice.md) |
 | 実装順序 | [Implementation Plan](./implementation/implementation-plan.md) |
-| Machine contract | [schemas/](./schemas/) / [migration v1](./migrations/001_initial.sql) |
+| Machine contract | [schemas/](../../schemas/) / [migration v1](../../migrations/001_initial.sql) |
 
 矛盾がある場合は、machine contract、責務別contract、本書、requirements、backgroundの順に優先する。仕様を変更する場合は、影響するcontract・fixtureを同じ変更で更新する。
 
@@ -122,7 +122,7 @@ v0.1に常駐daemonはない。Hookは短命process、MCPはagent host管理のs
 - 承認済みDecision、Rule、Concept、Insight、Incident、Pattern、Review Learning
 - shared config、taxonomy、provenance、relation
 
-pending/rejected Candidate、raw prompt/transcript、Embedding、token、local path、Forge cursorは保存しない。厳密なpath、frontmatter、body templateは [Canonical Data Contract](./implementation/canonical-schema.md) と [canonical JSON Schema](./schemas/canonical-v1.schema.json) を使用する。
+pending/rejected Candidate、raw prompt/transcript、Embedding、token、local path、Forge cursorは保存しない。厳密なpath、frontmatter、body templateは [Canonical Data Contract](./implementation/canonical-schema.md) と [canonical JSON Schema](../../schemas/canonical-v1.schema.json) を使用する。
 
 ### Local data
 
@@ -142,7 +142,7 @@ Git内部pathを文字列連結で推測しない。linked worktree、非ASCII p
 
 ## 7. Database design
 
-DDLの正本は [001_initial.sql](./migrations/001_initial.sql) である。migrationはlibSQLで実行検証済みで、forward-onlyとする。
+DDLの正本は [001_initial.sql](../../migrations/001_initial.sql) である。migrationはlibSQLで実行検証済みで、forward-onlyとする。
 
 | Group | Tables |
 |---|---|
@@ -208,7 +208,7 @@ stdio MCP serverは次を提供する。
 
 Agentは検索とlocal Candidate作成だけを行える。approve、reject、canonical edit、Guardrail activation、delete/export、privacy設定変更はMCPへ公開しない。
 
-Hookが発行する256-bit session tokenはrepository、Session、Run、platformへbindし、DBにはHMACだけを保存する。MCP mutationはtokenとidempotency keyを要求する。Checkpoint inputは [checkpoint JSON Schema](./schemas/checkpoint-v1.schema.json) で固定する。
+Hookが発行する256-bit session tokenはrepository、Session、Run、platformへbindし、DBにはHMACだけを保存する。MCP mutationはtokenとidempotency keyを要求する。Checkpoint inputは [checkpoint JSON Schema](../../schemas/checkpoint-v1.schema.json) で固定する。
 
 ## 10. Human approval and publishing
 

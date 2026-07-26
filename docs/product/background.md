@@ -192,7 +192,7 @@ Embedding API、GitHub/GitLab API、Hookの一部が利用できなくても、G
 
 ## 12. 実装への引き渡し
 
-実装判断は確定済みである。Claude Codeは [CLAUDE.md](./CLAUDE.md) を最初に読み、[implementation/implementation-plan.md](./implementation/implementation-plan.md) のWP-00から順に着手する。
+実装判断は確定済みである。Claude Codeは [CLAUDE.md](../../CLAUDE.md) を最初に読み、[implementation/implementation-plan.md](./implementation/implementation-plan.md) のWP-00から順に着手する。
 
 詳細仕様は責務ごとに分割している。
 

@@ -25,8 +25,8 @@ WP-00で、`CLAUDE.md`と`AGENTS.md`以外の仕様を`docs/product/`へ配置�
 | [research.md](./research.md) | Claude Code/Codex公式仕様と技術調査 |
 | [requirements.md](./requirements.md) | P0/P1/P2要件とrelease criteria |
 | [design.md](./design.md) | 全体architectureと責務境界 |
-| [CLAUDE.md](./CLAUDE.md) | Claude Codeの最上位実装指示 |
-| [AGENTS.md](./AGENTS.md) | Codex等への同一指示入口 |
+| [CLAUDE.md](../../CLAUDE.md) | Claude Codeの最上位実装指示 |
+| [AGENTS.md](../../AGENTS.md) | Codex等への同一指示入口 |
 | [implementation/compatibility.md](./implementation/compatibility.md) | version、OS、package、配布 |
 | [implementation/canonical-schema.md](./implementation/canonical-schema.md) | Git正本と承認transaction |
 | [implementation/database-schema.md](./implementation/database-schema.md) | DB、検索、rebuild |
