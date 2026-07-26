@@ -320,7 +320,10 @@ function rowToEventLog(row: Record<string, unknown>): EventLogRow {
   };
 }
 
-/** Append-only — no update/delete functions by design. */
+/**
+ * Append-only — no update function by design. The one path that deletes is
+ * `retention.ts`, reached only when a human has set a retention window.
+ */
 export async function insertEventLog(
   db: Executor,
   input: InsertEventLogInput,

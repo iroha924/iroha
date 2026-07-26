@@ -1,0 +1,339 @@
+import type { TypedId } from "@iroha/domain";
+import { afterEach, describe, expect, it } from "vitest";
+import { closeDatabase, type Database } from "../connection.js";
+import { openMigratedTestDb, removeTempDir } from "../test-helpers/tmp-db.js";
+import { insertEntity, insertRepository, upsertCanonicalDocument } from "./identity.js";
+import { insertCandidate } from "./knowledge.js";
+import { insertEventLog } from "./operations.js";
+import { countLocalEventData, pruneLocalEventData } from "./retention.js";
+import {
+  getAgentSessionById,
+  getCheckpointById,
+  insertAgentSession,
+  insertCheckpoint,
+  insertSessionRun,
+  insertToolEvent,
+  insertTurn,
+} from "./sessions.js";
+
+const OLD = "2026-01-01T00:00:00.000Z";
+const CUTOFF = "2026-06-01T00:00:00.000Z";
+const RECENT = "2026-07-01T00:00:00.000Z";
+
+const REPO = "repo_00000000000000000000000000" as TypedId<"repo">;
+
+function pad(suffix: string): string {
+  return suffix.padEnd(26, "0");
+}
+function sesId(s: string): TypedId<"ses"> {
+  return `ses_${pad(s)}` as TypedId<"ses">;
+}
+function runIdOf(s: string): TypedId<"run"> {
+  return `run_${pad(s)}` as TypedId<"run">;
+}
+function trnId(s: string): TypedId<"trn"> {
+  return `trn_${pad(s)}` as TypedId<"trn">;
+}
+function evtId(s: string): TypedId<"evt"> {
+  return `evt_${pad(s)}` as TypedId<"evt">;
+}
+function chkId(s: string): TypedId<"chk"> {
+  return `chk_${pad(s)}` as TypedId<"chk">;
+}
+function candId(s: string): TypedId<"cand"> {
+  return `cand_${pad(s)}` as TypedId<"cand">;
+}
+function logId(s: string): TypedId<"log"> {
+  return `log_${pad(s)}` as TypedId<"log">;
+}
+
+/** A session with a full run/turn/tool-event chain, last seen at `lastSeenAt`. */
+async function seedSession(
+  db: Database,
+  suffix: string,
+  lastSeenAt: string,
+): Promise<{ sessionId: TypedId<"ses">; turnId: TypedId<"trn"> }> {
+  const sessionId = sesId(suffix);
+  await insertEntity(db, {
+    id: sessionId,
+    repositoryId: REPO,
+    entityType: "session",
+    title: "Session",
+    status: "active",
+    authority: 60,
+    sourceKind: "hook",
+    createdAt: OLD,
+    updatedAt: lastSeenAt,
+  });
+  await insertAgentSession(db, {
+    id: sessionId,
+    repositoryId: REPO,
+    platform: "claude_code",
+    platformSessionId: `plat-${suffix}`,
+    startedAt: OLD,
+    lastSeenAt,
+  });
+  const runId = runIdOf(suffix);
+  await insertSessionRun(db, {
+    id: runId,
+    sessionId,
+    startSource: "startup",
+    cwdFingerprint: "fp",
+    startedAt: OLD,
+  });
+  const turnId = trnId(suffix);
+  await insertTurn(db, { id: turnId, runId, startedAt: OLD });
+  await insertToolEvent(db, {
+    id: evtId(suffix),
+    turnId,
+    toolName: "Read",
+    phase: "post",
+    status: "succeeded",
+    occurredAt: OLD,
+  });
+  return { sessionId, turnId };
+}
+
+async function seedCheckpoint(
+  db: Database,
+  suffix: string,
+  sessionId: TypedId<"ses">,
+): Promise<TypedId<"chk">> {
+  const checkpointId = chkId(suffix);
+  await insertEntity(db, {
+    id: checkpointId,
+    repositoryId: REPO,
+    entityType: "checkpoint",
+    title: "Checkpoint",
+    status: "draft",
+    authority: 40,
+    sourceKind: "mcp",
+    createdAt: OLD,
+    updatedAt: OLD,
+  });
+  await insertCheckpoint(db, {
+    id: checkpointId,
+    sessionId,
+    outcome: "completed",
+    objective: "o",
+    summary: "s",
+    implementationJson: "[]",
+    validationJson: "[]",
+    unresolvedJson: "[]",
+    referencesJson: "[]",
+    labelsJson: "[]",
+    createdAt: OLD,
+  });
+  return checkpointId;
+}
+
+async function seedCanonicalDocument(db: Database, entityId: string, path: string): Promise<void> {
+  const result = await upsertCanonicalDocument(db, {
+    entityId,
+    canonicalPath: path,
+    revision: 1,
+    frontmatterJson: "{}",
+    body: "body",
+    fileHash: `sha256:${"a".repeat(64)}`,
+    approvedAt: OLD,
+    importedAt: OLD,
+  });
+  if (!result.ok) {
+    throw new Error(`seed canonical document failed: ${result.error.message}`);
+  }
+}
+
+describe("pruneLocalEventData", () => {
+  let tempDir: string | undefined;
+  let db: Database | undefined;
+
+  afterEach(async () => {
+    if (db) {
+      await closeDatabase(db);
+      db = undefined;
+    }
+    if (tempDir) {
+      await removeTempDir(tempDir);
+      tempDir = undefined;
+    }
+  });
+
+  async function open(): Promise<Database> {
+    const opened = await openMigratedTestDb();
+    tempDir = opened.dir;
+    db = opened.db;
+    const inserted = await insertRepository(db, {
+      id: REPO,
+      rootFingerprint: "fp-retention",
+      createdAt: OLD,
+      updatedAt: OLD,
+    });
+    if (!inserted.ok) {
+      throw new Error(`seed repository failed: ${inserted.error.message}`);
+    }
+    return db;
+  }
+
+  it("deletes an aged session with its runs, turns, and tool events", async () => {
+    const database = await open();
+    const { sessionId } = await seedSession(database, "aged", OLD);
+
+    const pruned = await pruneLocalEventData(database, REPO, CUTOFF);
+    expect(pruned.ok).toBe(true);
+    if (!pruned.ok) return;
+    expect(pruned.value.sessions).toBe(1);
+
+    expect((await getAgentSessionById(database, sessionId)).ok).toBe(true);
+    const gone = await getAgentSessionById(database, sessionId);
+    expect(gone.ok && gone.value).toBeNull();
+    // The cascade must reach the whole chain, and the session's own entity row
+    // must go with it rather than being orphaned.
+    const counts = await countLocalEventData(database, REPO, null);
+    expect(counts.ok).toBe(true);
+    if (!counts.ok) return;
+    expect(counts.value).toMatchObject({ sessions: 0, runs: 0, turns: 0, toolEvents: 0 });
+    const entities = await database.execute({
+      sql: "SELECT COUNT(*) AS n FROM entities WHERE id = ?",
+      args: [sessionId],
+    });
+    expect(Number(entities.rows[0]?.n)).toBe(0);
+  });
+
+  it("keeps a session still inside the window", async () => {
+    const database = await open();
+    await seedSession(database, "recent", RECENT);
+
+    const pruned = await pruneLocalEventData(database, REPO, CUTOFF);
+    expect(pruned.ok && pruned.value.sessions).toBe(0);
+  });
+
+  it("keeps an aged session whose summary is approved canonical", async () => {
+    const database = await open();
+    const { sessionId } = await seedSession(database, "canon", OLD);
+    await seedCanonicalDocument(database, sessionId, "sessions/2026/canon.md");
+
+    const pruned = await pruneLocalEventData(database, REPO, CUTOFF);
+    expect(pruned.ok && pruned.value.sessions).toBe(0);
+    // `canonical_documents.entity_id` cascades from `entities`, so pruning this
+    // session would delete the index row for Git-tracked team knowledge.
+    const doc = await database.execute({
+      sql: "SELECT COUNT(*) AS n FROM canonical_documents WHERE entity_id = ?",
+      args: [sessionId],
+    });
+    expect(Number(doc.rows[0]?.n)).toBe(1);
+  });
+
+  it("keeps an aged session whose checkpoint is approved canonical", async () => {
+    const database = await open();
+    const { sessionId } = await seedSession(database, "chkcanon", OLD);
+    const checkpointId = await seedCheckpoint(database, "chkcanon", sessionId);
+    await seedCanonicalDocument(database, checkpointId, "checkpoints/2026/c.md");
+
+    const pruned = await pruneLocalEventData(database, REPO, CUTOFF);
+    expect(pruned.ok && pruned.value.sessions).toBe(0);
+    const kept = await getCheckpointById(database, checkpointId);
+    expect(kept.ok && kept.value).not.toBeNull();
+  });
+
+  it("keeps an aged session that still has a pending candidate", async () => {
+    const database = await open();
+    const { sessionId } = await seedSession(database, "pending", OLD);
+    const candidate = await insertCandidate(database, {
+      id: candId("pending"),
+      repositoryId: REPO,
+      candidateType: "session_summary",
+      payloadJson: "{}",
+      sourceSessionId: sessionId,
+      revisionToken: "tok",
+      createdAt: OLD,
+    });
+    expect(candidate.ok).toBe(true);
+
+    const pruned = await pruneLocalEventData(database, REPO, CUTOFF);
+    expect(pruned.ok && pruned.value.sessions).toBe(0);
+    // `candidates.source_session_id` is ON DELETE SET NULL, so pruning would not
+    // delete the candidate — it would silently strip its provenance.
+    const rows = await database.execute({
+      sql: "SELECT source_session_id FROM candidates WHERE id = ?",
+      args: [candId("pending")],
+    });
+    expect(rows.rows[0]?.source_session_id).toBe(sessionId);
+  });
+
+  it("deletes an aged session's checkpoint entity rather than orphaning it", async () => {
+    const database = await open();
+    const { sessionId } = await seedSession(database, "chkplain", OLD);
+    const checkpointId = await seedCheckpoint(database, "chkplain", sessionId);
+
+    const pruned = await pruneLocalEventData(database, REPO, CUTOFF);
+    expect(pruned.ok).toBe(true);
+    if (!pruned.ok) return;
+    expect(pruned.value).toMatchObject({ sessions: 1, checkpoints: 1 });
+    const entities = await database.execute({
+      sql: "SELECT COUNT(*) AS n FROM entities WHERE id IN (?, ?)",
+      args: [sessionId, checkpointId],
+    });
+    expect(Number(entities.rows[0]?.n)).toBe(0);
+  });
+
+  it("prunes event_log by its own timestamp, independently of any session", async () => {
+    const database = await open();
+    // event_log.session_id is ON DELETE SET NULL, so these rows survive a session
+    // delete; without their own timestamp sweep they would be unbounded.
+    for (const [suffix, occurredAt] of [
+      ["old1", OLD],
+      ["old2", OLD],
+      ["new1", RECENT],
+    ] as const) {
+      const inserted = await insertEventLog(database, {
+        id: logId(suffix),
+        repositoryId: REPO,
+        eventType: "api.request",
+        outcome: "failure",
+        occurredAt,
+      });
+      expect(inserted.ok).toBe(true);
+    }
+
+    const pruned = await pruneLocalEventData(database, REPO, CUTOFF);
+    expect(pruned.ok && pruned.value.eventLogRows).toBe(2);
+    const counts = await countLocalEventData(database, REPO, null);
+    expect(counts.ok && counts.value.eventLogRows).toBe(1);
+  });
+});
+
+describe("countLocalEventData", () => {
+  let tempDir: string | undefined;
+  let db: Database | undefined;
+
+  afterEach(async () => {
+    if (db) {
+      await closeDatabase(db);
+      db = undefined;
+    }
+    if (tempDir) {
+      await removeTempDir(tempDir);
+      tempDir = undefined;
+    }
+  });
+
+  it("reports prunable sessions only when a cutoff is given", async () => {
+    const opened = await openMigratedTestDb();
+    tempDir = opened.dir;
+    db = opened.db;
+    await insertRepository(db, {
+      id: REPO,
+      rootFingerprint: "fp-counts",
+      createdAt: OLD,
+      updatedAt: OLD,
+    });
+    await seedSession(db, "aged", OLD);
+
+    const disabled = await countLocalEventData(db, REPO, null);
+    expect(disabled.ok && disabled.value.prunableSessions).toBe(0);
+    expect(disabled.ok && disabled.value.sessions).toBe(1);
+
+    const enabled = await countLocalEventData(db, REPO, CUTOFF);
+    expect(enabled.ok && enabled.value.prunableSessions).toBe(1);
+  });
+});

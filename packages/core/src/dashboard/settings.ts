@@ -4,6 +4,11 @@ import { type RepositoryConfig, serializeRepositoryConfig } from "@iroha/config"
 import type { Clock, IrohaError, RandomSource, Result } from "@iroha/domain";
 import { err, IrohaError as IrohaErrorClass, ok } from "@iroha/domain";
 import { getLocalSetting, upsertLocalSetting } from "@iroha/storage";
+import {
+  RETENTION_SETTING_KEY,
+  readRetentionSetting,
+  retentionSettingSchema,
+} from "../retention.js";
 import { withDashboardRepository } from "./with-repository.js";
 
 export interface SettingsData {
@@ -11,6 +16,8 @@ export interface SettingsData {
   local: {
     /** Presence only — the embedding API key value is never returned. */
     embeddingKeyPresent: boolean;
+    /** Local event-data retention: the window in days, or `null` when off. */
+    retentionDays: number | null;
   };
 }
 
@@ -26,14 +33,20 @@ export async function getSettings(
 ): Promise<Result<SettingsData, IrohaError>> {
   return withDashboardRepository(
     { cwd: input.cwd, clock: input.clock, random: input.random },
-    async (ctx) =>
-      ok({
+    async (ctx) => {
+      const retention = await readRetentionSetting(ctx.db, ctx.repo.repositoryId);
+      if (!retention.ok) {
+        return retention;
+      }
+      return ok({
         shared: ctx.repo.config,
         local: {
           embeddingKeyPresent:
             process.env[ctx.repo.config.search.embedding.api_key_env] !== undefined,
+          retentionDays: retention.value.days,
         },
-      }),
+      });
+    },
   );
 }
 
@@ -100,6 +113,20 @@ export async function updateLocalSettings(
   return withDashboardRepository(
     { cwd: input.cwd, clock: input.clock, random: input.random },
     async (ctx) => {
+      // The API accepts any `(key, value)` pair, so a known key must be
+      // validated here or a malformed window would be stored and only rejected
+      // later, when it is read to decide what to delete.
+      if (input.key === RETENTION_SETTING_KEY) {
+        const parsed = retentionSettingSchema.safeParse(input.value);
+        if (!parsed.success) {
+          return err(
+            new IrohaErrorClass(
+              "INVALID_INPUT",
+              `${RETENTION_SETTING_KEY} must be {"days": <1-3650>} or {"days": null}`,
+            ),
+          );
+        }
+      }
       const updated = await upsertLocalSetting(ctx.db, {
         repositoryId: ctx.repo.repositoryId,
         key: input.key,
