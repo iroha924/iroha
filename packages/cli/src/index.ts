@@ -10,7 +10,7 @@ import { initCommand } from "./commands/init.js";
 import { searchCommand } from "./commands/search.js";
 import { syncCommand } from "./commands/sync.js";
 
-export const CLI_VERSION = "0.2.1";
+export const CLI_VERSION = "0.2.2";
 
 const mainCommand = define({
   name: "iroha",
