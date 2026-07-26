@@ -33,14 +33,17 @@ export interface ToolTarget {
  * as the tool event's `inputDigest`.
  */
 export function classifyCommandTarget(command: string): string {
-  const leading = command.trim().split(/\s+/)[0] ?? "";
-  // An env-assignment prefix (`VAR=value`) is never a program name — collapse it
-  // *before* any path handling, because the assigned value can itself contain a
-  // `/` whose tail would otherwise pass the bare-name check and leak.
-  if (leading.length === 0 || leading.includes("=")) {
+  // An env-assignment prefix (`VAR=value`) is never the program. Skip such tokens
+  // whole — never split or inspect them — because an assigned value can contain a
+  // `/` whose tail would otherwise pass the bare-name check below and leak. The
+  // program *after* the prefix is safe to name and is what the command actually is:
+  // collapsing `CI=1 pnpm test` to the generic label loses that it was a test run.
+  const tokens = command.trim().split(/\s+/);
+  const program = tokens.find((token) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(token)) ?? "";
+  if (program.length === 0 || program.includes("=")) {
     return "command";
   }
-  const base = leading.split(/[/\\]/).pop() ?? "";
+  const base = program.split(/[/\\]/).pop() ?? "";
   return /^[A-Za-z0-9._-]+$/.test(base) ? base : "command";
 }
 

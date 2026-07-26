@@ -41,6 +41,10 @@ const RESOLUTION_GIT_TIMEOUT_MS: Record<string, number> = {
   UserPromptSubmit: 750,
   PreToolUse: 250,
   PostToolUse: 375,
+  // Same shape and budget as PostToolUse — without an entry it silently falls to
+  // the unknown-event default of 250 ms, so on a slow mount Git resolution could
+  // time out and the failure would never be parsed or persisted.
+  PostToolUseFailure: 375,
   PreCompact: 500,
   PostCompact: 500,
   Stop: 1000,

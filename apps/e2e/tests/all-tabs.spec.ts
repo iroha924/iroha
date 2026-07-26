@@ -129,9 +129,19 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  server?.kill("SIGTERM");
-  if (repoDir) {
-    await rm(repoDir, { recursive: true, force: true }).catch(() => {});
+  // `kill` only initiates termination. Removing the repository while the child
+  // still owns it as cwd and holds an open libSQL database races it — the deletion
+  // error is swallowed, so the temp repo leaks and a still-running child can
+  // overlap the next serial spec. Matches approve-candidate.spec.ts's teardown.
+  if (server !== undefined && server.exitCode === null) {
+    await new Promise<void>((resolve) => {
+      server?.once("exit", () => resolve());
+      server?.kill("SIGTERM");
+      setTimeout(() => resolve(), 3_000);
+    });
+  }
+  if (repoDir !== undefined) {
+    await rm(repoDir, { recursive: true, force: true }).catch(() => undefined);
   }
 });
 

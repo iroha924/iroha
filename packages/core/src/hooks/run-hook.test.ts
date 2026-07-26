@@ -215,6 +215,75 @@ describe("runHook", () => {
     expect(secondStop.stdout).toBeUndefined();
   });
 
+  // §6.6 conditions a Checkpoint on success for a *mutation tool* only; a
+  // build/test/migration command qualifies because it **ran**. Gating both on
+  // success dropped exactly the turn worth recording — a failed validation and the
+  // unresolved work behind it.
+  it("requests a checkpoint after a validation command that failed", async () => {
+    repoDir = await initedRepo();
+    await hook(repoDir, "claude_code", {
+      session_id: "s1",
+      hook_event_name: "SessionStart",
+      source: "startup",
+    });
+    await hook(repoDir, "claude_code", {
+      session_id: "s1",
+      hook_event_name: "UserPromptSubmit",
+      prompt: "run the tests",
+      prompt_id: "p1",
+    });
+    await hook(repoDir, "claude_code", {
+      session_id: "s1",
+      hook_event_name: "PostToolUseFailure",
+      tool_name: "Bash",
+      tool_input: { command: "pnpm test" },
+      tool_use_id: "t1",
+    });
+
+    const stop = await hook(repoDir, "claude_code", {
+      session_id: "s1",
+      hook_event_name: "Stop",
+      stop_hook_active: false,
+    });
+    expect(parse(stop.stdout)).toStrictEqual({
+      decision: "block",
+      reason: expect.stringContaining("create_checkpoint"),
+    });
+  });
+
+  // The rule names build/test/migration commands, not every command. Polling an
+  // API is not work, and demanding a Checkpoint for it fills the record with
+  // near-empty entries that the Digest then counts.
+  it("does not request a checkpoint after a read-only command", async () => {
+    repoDir = await initedRepo();
+    await hook(repoDir, "claude_code", {
+      session_id: "s1",
+      hook_event_name: "SessionStart",
+      source: "startup",
+    });
+    await hook(repoDir, "claude_code", {
+      session_id: "s1",
+      hook_event_name: "UserPromptSubmit",
+      prompt: "check the PR",
+      prompt_id: "p1",
+    });
+    await hook(repoDir, "claude_code", {
+      session_id: "s1",
+      hook_event_name: "PostToolUse",
+      tool_name: "Bash",
+      tool_input: { command: "curl -s https://api.github.com/repos/x/y" },
+      tool_response: { stdout: "{}" },
+      tool_use_id: "t1",
+    });
+
+    const stop = await hook(repoDir, "claude_code", {
+      session_id: "s1",
+      hook_event_name: "Stop",
+      stop_hook_active: false,
+    });
+    expect(stop.stdout).toBeUndefined();
+  });
+
   it("does not request a checkpoint at Stop when the turn made no meaningful change", async () => {
     repoDir = await initedRepo();
     await hook(repoDir, "claude_code", {

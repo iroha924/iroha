@@ -14,10 +14,14 @@ describe("classifyCommandTarget", () => {
     expect(classifyCommandTarget("C:\\Users\\bob\\tool.exe")).toBe("tool.exe");
   });
 
-  it("collapses an env-assignment prefix to the generic label (never leaks the secret)", () => {
+  it("skips an env-assignment prefix and names the program, never the assigned value", () => {
     // The leading token is the credential itself; it must not survive as the value.
-    expect(classifyCommandTarget("GITHUB_TOKEN=ghp_notARealSecret gh api /user")).toBe("command");
-    expect(classifyCommandTarget("AWS_SECRET_ACCESS_KEY=abc/def aws s3 ls")).toBe("command");
+    // The assigned value is never split or inspected — only the program after it is
+    // named. Collapsing the whole thing to a generic label was over-conservative: it
+    // also lost that `CI=1 pnpm test` was a test run, which §6.6 needs to know.
+    expect(classifyCommandTarget("GITHUB_TOKEN=ghp_notARealSecret gh api /user")).toBe("gh");
+    expect(classifyCommandTarget("AWS_SECRET_ACCESS_KEY=abc/def aws s3 ls")).toBe("aws");
+    expect(classifyCommandTarget("CI=1 pnpm test")).toBe("pnpm");
   });
 
   it("collapses anything else that is not a bare program name", () => {
@@ -63,7 +67,8 @@ describe("isBuildTestOrMigrationCommand", () => {
     expect(
       isBuildTestOrMigrationCommand(classifyCommandTarget("curl -s https://example.com")),
     ).toBe(false);
-    // An env-assignment prefix collapses to the generic label, which must not match.
-    expect(isBuildTestOrMigrationCommand(classifyCommandTarget("CI=1 pnpm test"))).toBe(false);
+    // This asserted `false` when the env prefix collapsed the label — encoding a
+    // false negative, and a skipped Checkpoint, as expected behaviour.
+    expect(isBuildTestOrMigrationCommand(classifyCommandTarget("CI=1 pnpm test"))).toBe(true);
   });
 });

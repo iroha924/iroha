@@ -456,27 +456,31 @@ async function handleToolStarted(
 
 /**
  * Whether a tool use makes the Turn checkpoint-worthy, per `contracts/hooks.md`
- * §6.6: a mutation succeeded, or a build/test/migration command ran.
+ * §6.6 — "a mutation tool **succeeded**" or "a build/test/migration command
+ * **ran**". The success condition belongs to the first clause only.
  *
- * "or a command ran" is not the rule and was never meant to be. Treating every
- * command as qualifying marked a Turn pending for `curl` and `git status`, so a
- * turn that only polled a URL still had its stop blocked for a Checkpoint — the
- * record then fills with near-empty entries, and the Digest counts them.
+ * And it is only those commands. Treating every command as qualifying marked a Turn
+ * pending for `curl` and `git status`, so a turn that only polled a URL still had
+ * its stop blocked for a Checkpoint, filling the record with near-empty entries the
+ * Digest then counts.
  */
-function isMeaningfulMutation(targets: readonly ToolTarget[]): boolean {
-  return targets.some(
-    (t) =>
-      t.operation === "write" ||
-      t.operation === "delete" ||
-      (t.kind === "command" && isBuildTestOrMigrationCommand(t.value)),
-  );
+function requiresCheckpoint(targets: readonly ToolTarget[], succeeded: boolean): boolean {
+  return targets.some((t) => {
+    if (t.kind === "command") {
+      return isBuildTestOrMigrationCommand(t.value);
+    }
+    return succeeded && (t.operation === "write" || t.operation === "delete");
+  });
 }
 
 /**
- * Records the settled outcome of a tool call. Shared by the success and failure
- * paths, which differ only in the phase/status pair they persist — and in that only
- * a success can make a Turn checkpoint-worthy, since a tool that failed changed
- * nothing.
+ * Records the settled outcome of a tool call, success or failure.
+ *
+ * The two conditions §6.6 states are not symmetric, and conflating them loses the
+ * case that matters most: a *mutation* qualifies only when it succeeded, but a
+ * build/test/migration command qualifies because it **ran**. A failed `pnpm test`
+ * is precisely the turn whose unresolved work needs recording, so gating the whole
+ * check on success would drop it.
  */
 async function handleToolSettled(
   event: EventOf<"TOOL_COMPLETED"> | EventOf<"TOOL_FAILED">,
@@ -512,7 +516,7 @@ async function handleToolSettled(
     occurredAt: event.occurredAt,
   });
 
-  if (succeeded && isMeaningfulMutation(targets) && turn.checkpointState === "not_required") {
+  if (turn.checkpointState === "not_required" && requiresCheckpoint(targets, succeeded)) {
     await updateTurnCheckpointState(ctx.db, turn.id, "pending");
   }
   return noOutput;
