@@ -275,6 +275,27 @@ export async function getLocalSetting(
   }
 }
 
+/**
+ * Every local setting for a repository. Used by `sync --rebuild` to carry these
+ * deliberate per-developer choices onto the fresh sibling database — they are
+ * stored in the disposable index but are not themselves reconstructible from
+ * canonical data.
+ */
+export async function listLocalSettings(
+  db: Executor,
+  repositoryId: TypedId<"repo">,
+): Promise<Result<LocalSettingRow[], IrohaError>> {
+  try {
+    const result = await db.execute({
+      sql: "SELECT * FROM local_settings WHERE repository_id = ? ORDER BY key",
+      args: [repositoryId],
+    });
+    return ok(result.rows.map(rowToLocalSetting));
+  } catch (cause) {
+    return err(mapLibsqlError(cause, "Failed to list local settings"));
+  }
+}
+
 // --- event_log ---------------------------------------------------
 
 export type EventLogOutcome = "success" | "warning" | "failure" | "denied";

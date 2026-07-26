@@ -15,11 +15,13 @@ import {
   type Database,
   getEmbeddingVectorByContentHash,
   insertRepository,
+  listLocalSettings,
   listSearchDocumentHashes,
   openDatabase,
   replaceDatabaseAtomically,
   runMigrations,
   upsertEmbedding,
+  upsertLocalSetting,
 } from "@iroha/storage";
 import { computeRootFingerprint } from "./init-repository.js";
 import { resolveInitializedRepository } from "./resolve-repository.js";
@@ -89,6 +91,50 @@ async function reuseEmbeddings(
         contentHash,
         embedding: vector.value,
         createdAt: now,
+      });
+    }
+  } finally {
+    await closeDatabase(primaryOpen.value);
+  }
+}
+
+/**
+ * Copies `local_settings` from the current database onto the fresh sibling.
+ *
+ * These are deliberate per-developer choices — the event-data retention window
+ * among them — and unlike everything else in this index they are not
+ * reconstructible from `.iroha/`. Without this, a routine `sync --rebuild` would
+ * silently reset a configured retention window to "keep forever", and the local
+ * event tables would start growing unbounded again with no indication why.
+ *
+ * Best-effort for the same reasons as `reuseEmbeddings`: the previous database
+ * being absent or unreadable is often the very reason a rebuild is running.
+ */
+async function carryLocalSettings(
+  siblingDb: Database,
+  primaryDbPath: string,
+  repositoryId: TypedId<"repo">,
+): Promise<void> {
+  try {
+    await access(primaryDbPath);
+  } catch {
+    return;
+  }
+  const primaryOpen = await openDatabase(primaryDbPath);
+  if (!primaryOpen.ok) {
+    return;
+  }
+  try {
+    const settings = await listLocalSettings(primaryOpen.value, repositoryId);
+    if (!settings.ok) {
+      return;
+    }
+    for (const setting of settings.value) {
+      await upsertLocalSetting(siblingDb, {
+        repositoryId,
+        key: setting.key,
+        valueJson: setting.valueJson,
+        updatedAt: setting.updatedAt,
       });
     }
   } finally {
@@ -182,6 +228,7 @@ export async function rebuildDatabase(
   }
 
   await reuseEmbeddings(siblingDb, primaryDbPath, clock);
+  await carryLocalSettings(siblingDb, primaryDbPath, repositoryId);
 
   const integrityResult = await checkIntegrity(siblingDb);
   if (!integrityResult.ok) {

@@ -5,8 +5,10 @@ import { CryptoRandomSource, FixedClock, makeTypedId } from "@iroha/domain";
 import {
   closeDatabase,
   getEntityById,
+  getLocalSetting,
   getSearchDocumentByEntityId,
   openDatabase,
+  upsertLocalSetting,
 } from "@iroha/storage";
 import { afterEach, describe, expect, it } from "vitest";
 import { initRepository } from "./init-repository.js";
@@ -48,6 +50,57 @@ describe("rebuildDatabase", () => {
       expect(result.error.code).toBe("NOT_INITIALIZED");
     }
   });
+
+  it(
+    "carries local settings onto the rebuilt database",
+    async () => {
+      repoDir = await createTempGitRepo();
+      const init = await initRepository(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR);
+      expect(init.ok).toBe(true);
+      if (!init.ok) return;
+
+      const before = await openDatabase(init.value.dbPath);
+      expect(before.ok).toBe(true);
+      if (!before.ok) return;
+      const stored = await upsertLocalSetting(before.value, {
+        repositoryId: init.value.repositoryId,
+        key: "retention.local_events",
+        valueJson: JSON.stringify({ days: 30 }),
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      });
+      expect(stored.ok).toBe(true);
+      await closeDatabase(before.value);
+
+      const rebuilt = await rebuildDatabase(
+        repoDir,
+        CLOCK,
+        new CryptoRandomSource(),
+        MIGRATIONS_DIR,
+      );
+      expect(rebuilt.ok).toBe(true);
+      if (!rebuilt.ok) return;
+
+      // A retention window is a deliberate privacy choice and is not
+      // reconstructible from `.iroha/`. Losing it here would silently reset
+      // pruning to "keep forever" after a routine repair.
+      const after = await openDatabase(rebuilt.value.dbPath);
+      expect(after.ok).toBe(true);
+      if (!after.ok) return;
+      try {
+        const setting = await getLocalSetting(
+          after.value,
+          rebuilt.value.repositoryId,
+          "retention.local_events",
+        );
+        expect(setting.ok).toBe(true);
+        if (!setting.ok) return;
+        expect(setting.value?.valueJson).toBe(JSON.stringify({ days: 30 }));
+      } finally {
+        await closeDatabase(after.value);
+      }
+    },
+    REBUILD_TEST_TIMEOUT_MS,
+  );
 
   it(
     "rebuilds a fresh database that reflects .iroha/'s current canonical documents",

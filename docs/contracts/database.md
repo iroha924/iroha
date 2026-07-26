@@ -320,21 +320,35 @@ The local index otherwise grows without bound: `agent_sessions`, `session_runs`,
   starts deleting history on its own.
 - **Runs during `iroha sync`**, after canonical and forge work, and is non-fatal — a pruning
   failure reports an outcome rather than failing a sync that already succeeded. There is no
-  daemon and no scheduler.
+  daemon and no scheduler. `iroha sync` reports what it deleted; `iroha doctor` reports the
+  window, the current row counts, and how many sessions the next sync would prune.
+- **Survives `sync --rebuild`.** The rebuild copies `local_settings` onto the fresh sibling
+  (`carryLocalSettings`). Everything else in this index is reconstructible from `.iroha/`; a
+  retention window is not, and losing it would silently reset pruning to "keep forever".
 
 Pruning deletes an aged session through `entities` (the session row is the *child* of its
 entity, so deleting `agent_sessions` directly would orphan the entity), which cascades to its
 runs, turns, tool events, relations, and search documents. Its checkpoint entities are deleted
 first, for the same reason.
 
+Selection and every delete share **one write transaction**. Hooks and MCP tools write
+concurrently, so with independently committed statements a session selected as eligible could
+gain a checkpoint, a pending candidate, or an imported canonical row before its delete ran, and
+be deleted anyway. The predicates below only mean anything if nothing can write between
+evaluating and acting on them.
+
 A session is eligible only when all of the following hold. Each exclusion exists because the
 cascade would otherwise reach data this contract protects:
 
-1. `last_seen_at` is before the cutoff;
-2. neither the session nor any of its checkpoints has a `canonical_documents` row —
+1. `last_seen_at` is before the cutoff. It advances on every prompt, tool event, and stop (the
+   hook dispatcher touches it through `resolveSessionId`), so an active agent does not age out
+   mid-session;
+2. it has no `session_runs` row with `status = 'active'` — a session left open and idle past a
+   short window still has the run an agent would resume into;
+3. neither the session nor any of its checkpoints has a `canonical_documents` row —
    `canonical_documents.entity_id` cascades from `entities`, so pruning an approved session
    would delete the index row for Git-tracked team knowledge;
-3. no `candidates` row with `status = 'pending'` references it — `source_session_id` is
+4. no `candidates` row with `status = 'pending'` references it — `source_session_id` is
    `ON DELETE SET NULL`, so pruning would not delete the candidate, it would silently strip
    its provenance.
 

@@ -19,19 +19,30 @@
  *    provenance. Sessions with a pending candidate are excluded too.
  */
 import { err, type IrohaError, ok, type Result, type TypedId } from "@iroha/domain";
-import type { Executor } from "../connection.js";
+import type { Database, Executor } from "../connection.js";
 import { mapLibsqlError } from "../errors.js";
+import { withTransaction } from "../transaction.js";
 
 /**
- * Sessions eligible for pruning: last seen before `cutoff`, carrying no
- * approved canonical document (their own or one of their checkpoints') and no
- * candidate still awaiting review.
+ * Sessions eligible for pruning: last seen before `cutoff`, not currently in
+ * use, carrying no approved canonical document (their own or one of their
+ * checkpoints') and no candidate still awaiting review.
+ *
+ * `last_seen_at` advances on every prompt, tool event, and stop (the hook
+ * dispatcher touches it through `resolveSessionId`), so an active agent does not
+ * age out mid-session. The `active` run exclusion covers the remaining case: a
+ * session left open and idle past a short window, whose run is still the one the
+ * agent would resume into.
  */
 const PRUNABLE_SESSIONS_SQL = `
   SELECT s.id AS id
   FROM agent_sessions s
   WHERE s.repository_id = ?
     AND s.last_seen_at < ?
+    AND NOT EXISTS (
+      SELECT 1 FROM session_runs r
+      WHERE r.session_id = s.id AND r.status = 'active'
+    )
     AND NOT EXISTS (SELECT 1 FROM canonical_documents cd WHERE cd.entity_id = s.id)
     AND NOT EXISTS (
       SELECT 1 FROM checkpoints c
@@ -65,44 +76,56 @@ export interface PruneCounts {
  * `event_log` is pruned by its own timestamp rather than with its session: its
  * `session_id` is `ON DELETE SET NULL`, so those rows survive a session delete
  * and would otherwise be the one table retention never bounds.
+ *
+ * Selection and deletion share one write transaction. Hooks and MCP tools write
+ * concurrently, so with independently committed statements a session selected as
+ * eligible could gain a checkpoint, a pending candidate, or an imported
+ * canonical row before its delete ran — and be deleted anyway, taking that new
+ * row with it. The predicates are only meaningful if nothing can write between
+ * evaluating and acting on them.
  */
 export async function pruneLocalEventData(
-  db: Executor,
+  db: Database,
   repositoryId: TypedId<"repo">,
   cutoff: string,
 ): Promise<Result<PruneCounts, IrohaError>> {
-  try {
-    const prunable = await db.execute({ sql: PRUNABLE_SESSIONS_SQL, args: [repositoryId, cutoff] });
-    const sessionIds = prunable.rows.map((row) => String(row.id));
-
-    let checkpoints = 0;
-    for (const sessionId of sessionIds) {
-      // Delete each session's checkpoint entities, then the session entity. Done
-      // per session (not as one IN-list) so a large backlog stays a bounded
-      // number of parameters per statement.
-      const deletedCheckpoints = await db.execute({
-        sql: `DELETE FROM entities WHERE id IN (
-                SELECT c.id FROM checkpoints c WHERE c.session_id = ?
-              )`,
-        args: [sessionId],
+  return withTransaction(db, "write", async (tx) => {
+    try {
+      const prunable = await tx.execute({
+        sql: PRUNABLE_SESSIONS_SQL,
+        args: [repositoryId, cutoff],
       });
-      checkpoints += Number(deletedCheckpoints.rowsAffected);
-      await db.execute({ sql: "DELETE FROM entities WHERE id = ?", args: [sessionId] });
+      const sessionIds = prunable.rows.map((row) => String(row.id));
+
+      let checkpoints = 0;
+      for (const sessionId of sessionIds) {
+        // Delete each session's checkpoint entities, then the session entity. Done
+        // per session (not as one IN-list) so a large backlog stays a bounded
+        // number of parameters per statement.
+        const deletedCheckpoints = await tx.execute({
+          sql: `DELETE FROM entities WHERE id IN (
+                  SELECT c.id FROM checkpoints c WHERE c.session_id = ?
+                )`,
+          args: [sessionId],
+        });
+        checkpoints += Number(deletedCheckpoints.rowsAffected);
+        await tx.execute({ sql: "DELETE FROM entities WHERE id = ?", args: [sessionId] });
+      }
+
+      const deletedEvents = await tx.execute({
+        sql: "DELETE FROM event_log WHERE repository_id = ? AND occurred_at < ?",
+        args: [repositoryId, cutoff],
+      });
+
+      return ok({
+        sessions: sessionIds.length,
+        checkpoints,
+        eventLogRows: Number(deletedEvents.rowsAffected),
+      });
+    } catch (cause) {
+      return err(mapLibsqlError(cause, "Failed to prune local event data"));
     }
-
-    const deletedEvents = await db.execute({
-      sql: "DELETE FROM event_log WHERE repository_id = ? AND occurred_at < ?",
-      args: [repositoryId, cutoff],
-    });
-
-    return ok({
-      sessions: sessionIds.length,
-      checkpoints,
-      eventLogRows: Number(deletedEvents.rowsAffected),
-    });
-  } catch (cause) {
-    return err(mapLibsqlError(cause, "Failed to prune local event data"));
-  }
+  });
 }
 
 export interface LocalEventCounts {

@@ -34,16 +34,18 @@ export async function getSettings(
   return withDashboardRepository(
     { cwd: input.cwd, clock: input.clock, random: input.random },
     async (ctx) => {
+      // An unreadable window must not fail the whole Settings read. This page is
+      // the only place a bad value can be overwritten, so failing here would
+      // render the error state and leave no way to repair it — while `iroha
+      // doctor` keeps reporting the invalid setting. Reading it as "off" is safe:
+      // `applyRetention` still refuses to delete anything it cannot parse.
       const retention = await readRetentionSetting(ctx.db, ctx.repo.repositoryId);
-      if (!retention.ok) {
-        return retention;
-      }
       return ok({
         shared: ctx.repo.config,
         local: {
           embeddingKeyPresent:
             process.env[ctx.repo.config.search.embedding.api_key_env] !== undefined,
-          retentionDays: retention.value.days,
+          retentionDays: retention.ok ? retention.value.days : null,
         },
       });
     },

@@ -7,6 +7,7 @@ import { insertCandidate } from "./knowledge.js";
 import { insertEventLog } from "./operations.js";
 import { countLocalEventData, pruneLocalEventData } from "./retention.js";
 import {
+  closeSessionRun,
   getAgentSessionById,
   getCheckpointById,
   insertAgentSession,
@@ -81,6 +82,15 @@ async function seedSession(
     cwdFingerprint: "fp",
     startedAt: OLD,
   });
+  const closed = await closeSessionRun(db, runId, {
+    from: "active",
+    to: "completed",
+    endedAt: OLD,
+    endReason: "normal",
+  });
+  if (!closed.ok) {
+    throw new Error(`seed run close failed: ${closed.error.message}`);
+  }
   const turnId = trnId(suffix);
   await insertTurn(db, { id: turnId, runId, startedAt: OLD });
   await insertToolEvent(db, {
@@ -274,6 +284,23 @@ describe("pruneLocalEventData", () => {
       args: [sessionId, checkpointId],
     });
     expect(Number(entities.rows[0]?.n)).toBe(0);
+  });
+
+  it("keeps an aged session whose run is still active", async () => {
+    const database = await open();
+    const { sessionId } = await seedSession(database, "active", OLD);
+    // `last_seen_at` advances on every prompt and tool event, so an agent at work
+    // never ages out. This covers the remaining case: a session left open and
+    // idle past a short window, whose active run the agent would resume into.
+    await database.execute({
+      sql: "UPDATE session_runs SET status = 'active', ended_at = NULL WHERE session_id = ?",
+      args: [sessionId],
+    });
+
+    const pruned = await pruneLocalEventData(database, REPO, CUTOFF);
+    expect(pruned.ok && pruned.value.sessions).toBe(0);
+    const kept = await getAgentSessionById(database, sessionId);
+    expect(kept.ok && kept.value).not.toBeNull();
   });
 
   it("prunes event_log by its own timestamp, independently of any session", async () => {

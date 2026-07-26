@@ -16,6 +16,7 @@ import type { Clock, IrohaError, Result, TypedId } from "@iroha/domain";
 import { err, IrohaError as IrohaErrorClass, ok } from "@iroha/domain";
 import {
   countLocalEventData,
+  type Database,
   type Executor,
   getLocalSetting,
   type LocalEventCounts,
@@ -98,7 +99,7 @@ export interface RetentionOutcome {
  * succeeded, mirroring how forge and embedding failures are handled.
  */
 export async function applyRetention(
-  db: Executor,
+  db: Database,
   repositoryId: TypedId<"repo">,
   clock: Clock,
 ): Promise<RetentionOutcome> {

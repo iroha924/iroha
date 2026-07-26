@@ -1,4 +1,5 @@
 import { CryptoRandomSource, FixedClock } from "@iroha/domain";
+import { closeDatabase, openDatabase, upsertLocalSetting } from "@iroha/storage";
 import { afterEach, describe, expect, it } from "vitest";
 import { RETENTION_SETTING_KEY } from "../retention.js";
 import { type McpTestRepo, setupMcpRepo } from "../test-helpers/mcp-repo.js";
@@ -77,6 +78,40 @@ describe("local retention setting", () => {
     }
     const settings = await getSettings({ cwd: repo.repoDir, clock, random });
     expect(settings.ok && settings.value.local.retentionDays).toBeNull();
+  });
+
+  it("still returns Settings when the stored window is unreadable", async () => {
+    repo = await setupMcpRepo(random);
+    // A value that predates this key's validation (the endpoint accepted anything)
+    // must not make Settings unreadable — this page is the only place it can be
+    // overwritten, so failing here would leave no way to repair it.
+    const opened = await openDatabase(repo.dbPath);
+    expect(opened.ok).toBe(true);
+    if (!opened.ok) return;
+    const stored = await upsertLocalSetting(opened.value, {
+      repositoryId: repo.repositoryId,
+      key: RETENTION_SETTING_KEY,
+      valueJson: '"90 days"',
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    expect(stored.ok).toBe(true);
+    await closeDatabase(opened.value);
+
+    const settings = await getSettings({ cwd: repo.repoDir, clock, random });
+    expect(settings.ok).toBe(true);
+    if (!settings.ok) return;
+    expect(settings.value.local.retentionDays).toBeNull();
+    expect(settings.value.shared.repository_id).toBe(repo.repositoryId);
+
+    // And the bad value is repairable through the same page.
+    const repaired = await updateLocalSettings({
+      cwd: repo.repoDir,
+      clock,
+      random,
+      key: RETENTION_SETTING_KEY,
+      value: { days: 30 },
+    });
+    expect(repaired.ok).toBe(true);
   });
 
   it("leaves an unrelated local key unvalidated", async () => {
