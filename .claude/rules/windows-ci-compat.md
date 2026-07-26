@@ -48,4 +48,3 @@ Do the same arithmetic as `~/.claude/rules/ci-discipline.md`'s "Retry budget mus
 
 - General CI verification discipline is `~/.claude/rules/ci-discipline.md`.
 - Path resolution and symlink safety is [[path-and-symlink-safety]] (a separate concern from this file — that one is about the security boundary, this one is about cross-platform compatibility).
-- The full record of the background is `implementation/decision-log.md` ID-026(12)-(14).

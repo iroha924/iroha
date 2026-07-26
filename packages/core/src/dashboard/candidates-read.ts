@@ -103,7 +103,7 @@ export interface CandidateValidation {
   schemaValid: boolean;
   bodyValid: boolean;
   secretsClean: boolean;
-  /** True only when every check passes — the API gates approval on this (dashboard-api.md §6). */
+  /** True only when every check passes — the API gates approval on this (contracts/dashboard-api.md §6). */
   approvable: boolean;
   issues: string[];
   secretFindings: Array<{ ruleId: string; message: string }>;
@@ -132,7 +132,7 @@ export interface GetCandidateDetailInput {
 
 /**
  * Candidate detail with the canonical diff preview and validation results the
- * Review Queue shows (dashboard-api.md §6). Builds the canonical document from
+ * Review Queue shows (contracts/dashboard-api.md §6). Builds the canonical document from
  * the draft and runs the same Zod + body-template + secret checks the approval
  * transaction runs — WITHOUT writing anything — so the UI can render the
  * preview, block approval on a detected secret, and show why validation fails.

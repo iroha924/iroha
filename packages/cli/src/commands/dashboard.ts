@@ -28,7 +28,7 @@ function waitForShutdown(): Promise<void> {
 }
 
 /**
- * Launches the local dashboard (dashboard-api.md §3). Validates the repository
+ * Launches the local dashboard (contracts/dashboard-api.md §3). Validates the repository
  * is initialized first, then binds the Hono API to `127.0.0.1` on a random
  * port and prints the loopback URL with the one-time launch token. Runs until
  * SIGINT/SIGTERM, then closes the listener.

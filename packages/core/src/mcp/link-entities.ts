@@ -37,7 +37,7 @@ function storedToData(responseJson: string): McpLinkEntitiesData {
 
 /**
  * Creates a local inferred relation between two existing entities
- * (mcp-contract.md §6.8). A self-relation is rejected unless the type is
+ * (contracts/mcp.md §6.8). A self-relation is rejected unless the type is
  * `RELATED_TO`, and both endpoints must already exist — this tool never invents
  * placeholder entities. The write is idempotent by `idempotencyKey`; the
  * underlying insert also de-duplicates the (from, type, to, source) tuple.
@@ -46,7 +46,7 @@ export async function mcpLinkEntities(
   input: McpLinkEntitiesInput,
 ): Promise<Result<McpLinkEntitiesData, IrohaError>> {
   return withMcpRepository(
-    { cwd: input.cwd, clock: input.clock, random: input.random },
+    { cwd: input.cwd, clock: input.clock, random: input.random, tool: "link_entities" },
     async (ctx) => {
       const verified = await verifySessionToken({
         db: ctx.db,

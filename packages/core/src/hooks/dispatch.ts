@@ -82,7 +82,7 @@ const MAX_BRANCH_CHARS = 200;
  * An iroha session token embedded anywhere in a string — `ist_` followed by 43
  * base64url characters, `sessionTokenSchema`'s shape without its anchors. The
  * shared `scanForSecrets` deliberately requires the token to be followed by a
- * non-token character (a canonical-write tradeoff, decision-log ID-050) so it
+ * non-token character (a canonical-write tradeoff) so it
  * does not over-reject prose, which means a token glued to a suffix
  * (`…ist_<43>-work`) passes it. For a branch name that leniency is wrong: the
  * value is short opaque provenance, dropping it costs only a `NULL` (the same as
@@ -96,7 +96,7 @@ const EMBEDDED_SESSION_TOKEN = /ist_[A-Za-z0-9_-]{43}/;
 /**
  * HEAD as it stands for this hook invocation, or `null` when Git cannot answer
  * — an unborn HEAD, a Git failure, or no Git at all. Fail-open like the rest of
- * the hook path (hooks-contract.md §2/§7): the Run is still recorded, just
+ * the hook path (contracts/hooks.md §2/§7): the Run is still recorded, just
  * without the code state it acted on. A detached HEAD is not a failure; it
  * resolves to a sha with no branch.
  *
@@ -252,7 +252,7 @@ async function handleSessionStart(
         endReason: "interrupted",
       });
     }
-    // The branch and commit this Run acts on (dashboard-api.md §6): the only
+    // The branch and commit this Run acts on (contracts/dashboard-api.md §6): the only
     // link from a recorded session back to the code state it saw.
     const head = await readHeadOrNull(ctx);
     runId = makeTypedId("run", ctx.clock, ctx.random);
@@ -316,9 +316,9 @@ const MAX_UNRESOLVED_CHARS = 800;
 
 /**
  * The last Checkpoint's unresolved items, rendered as a single bounded line for
- * the recovery context (hooks-contract.md §9). Returns `undefined` when there
+ * the recovery context (contracts/hooks.md §9). Returns `undefined` when there
  * are none, so a resumed session only shows work that actually remained open —
- * no summary is fabricated (vertical-slice.md §5). The output is length-capped
+ * no summary is fabricated. The output is length-capped
  * because `create_checkpoint` permits up to 100 items × 1000 chars, which would
  * otherwise truncate the whole 8,000-char block (`formatSessionContext`).
  */
@@ -343,7 +343,7 @@ function formatUnresolvedItems(unresolvedJson: string): string | undefined {
   }
 }
 
-/** Approved Rules shown at SessionStart, oldest→newest (hooks-contract.md §9). No embedding — a direct list. */
+/** Approved Rules shown at SessionStart, oldest→newest (contracts/hooks.md §9). No embedding — a direct list. */
 const MAX_HOOK_KNOWLEDGE = 10;
 
 function ruleProvenance(scopeJson: string): string {
@@ -421,7 +421,7 @@ async function handleToolStarted(
   }
   const targets = await resolveTargets(event.payload.targets, ctx.repo.gitLocation.root, ctx.cwd);
 
-  // Evaluate approved Guardrails over the resolved targets (hooks-contract.md
+  // Evaluate approved Guardrails over the resolved targets (contracts/hooks.md
   // §6.3). Fail-open: a query failure or a corrupt spec yields no denial. A
   // matching Guardrail records the Tool Event as denied and returns a
   // deterministic deny with the Rule id and reason.
@@ -514,7 +514,7 @@ async function handleStop(
   }
 
   // Ask for a checkpoint exactly once: the Turn needs one (pending) and this is
-  // not already a continuation retry (hooks-contract.md §6.6 step 3). The Turn
+  // not already a continuation retry (contracts/hooks.md §6.6 step 3). The Turn
   // stays active so the agent can still save it.
   if (turn.checkpointState === "pending" && !event.payload.stopHookActive) {
     return continuationOutput(CONTINUATION_REASON);
@@ -522,7 +522,7 @@ async function handleStop(
 
   // Otherwise the Turn ends now (§6.6 steps 1/2/4: no checkpoint required, one
   // was already saved, or we are allowing the stop after the single
-  // continuation). Complete it if still active (database-schema.md §7).
+  // continuation). Complete it if still active (contracts/database.md §7).
   if (turn.status === "active") {
     await closeTurn(ctx.db, turn.id, {
       from: "active",
@@ -572,6 +572,17 @@ async function handleSessionEnd(
  * hook should emit. Events with no v0.1 use case (compaction, and any P1/P2
  * kind an adapter still produced) are recorded implicitly by their upstream
  * lifecycle and need no output.
+ *
+ * The hook path writes no `event_log` row. A diagnostics INSERT here waits on
+ * libSQL's 2500ms `busy_timeout` (connection.ts) whenever another process holds
+ * the write lock, which exceeds every §7 hook budget — measured at 2655ms on a
+ * Stop (budget 2.0s) and 7932ms on a PreToolUse denial (budget 0.5s) against a
+ * concurrent writer. The platform kills the hook at its deadline, so the very
+ * outputs worth diagnosing (a Guardrail deny, a Stop continuation) are the ones
+ * the diagnostics row would destroy. Discarding the write's error cannot help
+ * either: a busy wait is latency, not an error. Hook activity stays observable
+ * through the Turn/Run/Tool Event rows the handlers already write, where a
+ * denial is `tool_events.phase = 'denied'`.
  */
 export async function dispatchHookEvent(
   event: NormalizedEvent,

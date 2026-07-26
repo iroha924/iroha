@@ -33,7 +33,7 @@ async function scanFinding(value: string): Promise<Result<string | null, IrohaEr
  * Scans one local checkpoint/proposal free-text field for secrets. A Checkpoint
  * is a candidate, not canonical, so — unlike a canonical write, which rejects on
  * a finding (secret-scan.ts) — a flagged field is redacted wholesale and the
- * redaction is reported (mcp-contract.md §6.6 step 2 / §8). Coarse field-level
+ * redaction is reported (contracts/mcp.md §6.6 step 2 / §8). Coarse field-level
  * redaction favours safety over preserving partial context. A scanner failure
  * propagates as an error: an unscanned field is never stored.
  */

@@ -7,6 +7,9 @@
 [default.extend-words]
 # `ist_…` is iroha's launch/session token prefix (pervasive in tests/fixtures).
 ist = "ist"
+# `kno_…` is the typed-id prefix for a knowledge entity (see `ID_PREFIXES`); every
+# typed-id prefix is a fixed three-or-four-letter token, not prose.
+kno = "kno"
 # `mis-parsing`, `mis-window(ing)` — a hyphen split leaves a bare "mis".
 mis = "mis"
 # "unparseable" is an accepted variant spelling (alongside "unparsable").

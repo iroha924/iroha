@@ -1,5 +1,5 @@
 /**
- * @iroha/api — the dashboard's local Hono API (dashboard-api.md).
+ * @iroha/api — the dashboard's local Hono API (contracts/dashboard-api.md).
  */
 
 // The response `data` shapes each endpoint returns, re-exported so the SPA's
@@ -15,6 +15,8 @@ export type {
   CandidateStatusChangeData,
   CandidateValidation,
   CheckpointDetailData,
+  DiagnosticsEvent,
+  DiagnosticsEventsData,
   DoctorRepairData,
   DoctorReport,
   EditCandidateData,

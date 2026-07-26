@@ -1,6 +1,6 @@
 /**
  * Assemble the distributable plugin archive tree (WP-11). Under Option A
- * (decision-log ID-038) the archive is thin: the two platform manifests, their
+ * the archive is thin: the two platform manifests, their
  * hook/MCP configs, and the shared skills — no runtime `dist/` and no native
  * binaries, because hooks and the MCP server run through the npm-installed
  * `iroha` binary. The result therefore contains only text and needs no install

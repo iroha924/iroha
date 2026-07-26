@@ -32,7 +32,7 @@ interface Recorded {
   queries: Record<string, number[]>;
 }
 
-// database-schema.md §14 initial-release thresholds (absolute floors).
+// contracts/database.md §14 initial-release thresholds (absolute floors).
 const RECALL_AT_10 = 0.85;
 const NDCG_AT_10 = 0.7;
 const MRR_AT_10 = 0.7;

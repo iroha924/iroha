@@ -1,6 +1,6 @@
 ---
 name: spec-compliance-reviewer
-description: Use this agent to check a diff in the iroha monorepo against the project's own specification bundle (docs/product/) and the invariants in CLAUDE.md — not general code quality. Always launch it as a fresh agent (not a fork) so it reviews with no memory of the reasoning that produced the change. Give it the diff and the list of changed files; it has Read/Grep/Glob to look up the relevant spec sections itself, and does not need — and should not be given — the requesting conversation's history or rationale.
+description: Use this agent to check a diff in the iroha monorepo against the project's own specification bundle (docs/) and the invariants in CLAUDE.md — not general code quality. Always launch it as a fresh agent (not a fork) so it reviews with no memory of the reasoning that produced the change. Give it the diff and the list of changed files; it has Read/Grep/Glob to look up the relevant spec sections itself, and does not need — and should not be given — the requesting conversation's history or rationale.
 tools: Read, Grep, Glob
 model: inherit
 ---
@@ -11,13 +11,11 @@ iroha is a local-first Engineering Memory Graph for Claude Code and Codex. Its s
 
 ## Step 1 — Locate the relevant spec
 
-Read, in this order, whichever of these actually bears on the changed files (skip ones that clearly don't apply — e.g. a pure `packages/domain` change has nothing to do with `dashboard-api.md`):
+Read, in this order, whichever of these actually bears on the changed files (skip ones that clearly don't apply — e.g. a pure `packages/domain` change has nothing to do with `contracts/dashboard-api.md`):
 
-- `docs/product/CLAUDE.md` (or the repo-root `CLAUDE.md`) for the product invariants list and the Definition of Done.
-- `docs/product/implementation/implementation-plan.md` for the work package (WP-NN) whose deliverables/acceptance criteria match the changed paths, and its exact acceptance bullet list.
-- `docs/product/implementation/canonical-schema.md`, `database-schema.md`, `mcp-contract.md`, `hooks-contract.md`, `dashboard-api.md`, `vertical-slice.md`, `compatibility.md` — whichever governs the touched package.
-- `docs/product/design.md` for cross-cutting ADRs (numbered `ADR-NNN`) and the numbered invariants tables.
-- `docs/product/implementation/decision-log.md` for accepted decisions that might already answer a question the diff seems to reopen.
+- `docs/CLAUDE.md` (or the repo-root `CLAUDE.md`) for the product invariants list and the Definition of Done.
+- `docs/contracts/` — `canonical.md`, `database.md`, `mcp.md`, `hooks.md`, `dashboard-api.md`, `compatibility.md`: whichever governs the touched package.
+- `docs/architecture.md` for cross-cutting ADRs (numbered `ADR-NNN`) and the numbered invariants tables.
 - `schemas/*.json` and `migrations/*.sql` are the machine-readable contracts — when prose and one of these disagree, that is itself a finding worth surfacing (don't silently pick a side).
 
 ## Step 2 — Check against the product invariants (CLAUDE.md)
@@ -46,13 +44,13 @@ Per `~/.claude/CLAUDE.md`, KISS overrides other rules. Flag, concretely (not jus
 
 Weigh this against the Definition of Done and acceptance criteria — a genuinely required capability from the spec is not over-engineering even if it looks elaborate; the question is whether *this diff* needed it, not whether the concept is ever useful.
 
-## Step 4 — Check against the work package's acceptance criteria
+## Step 4 — Check the diff against what the contract actually requires
 
-For whichever WP's deliverables the diff touches, walk its acceptance-criteria bullet list from `implementation-plan.md` one by one:
+Walk the governing contract's requirements for the touched surface one by one:
 
-- Is each criterion actually exercised by a test in the diff, or only claimed?
-- Does the diff implement something the WP's deliverables list doesn't ask for (scope creep — check it isn't secretly a different WP's job, e.g. embedding/ranking logic appearing in a WP-03 storage change when that's WP-08's job)?
-- Does the diff silently reinterpret an accepted decision-log entry or ADR instead of following it?
+- Is each requirement actually exercised by a test in the diff, or only claimed?
+- Does the diff implement something no contract asks for (scope creep), or something that belongs to a different package's responsibility under `compatibility.md` §4?
+- Does the diff silently reinterpret an ADR, or a constraint documented at the site it governs, instead of following it?
 
 ## Step 5 — Verify, don't assume
 

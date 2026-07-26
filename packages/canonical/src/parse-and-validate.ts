@@ -4,7 +4,7 @@ import { parseCanonicalDocument } from "./parse-canonical-document.js";
 
 /**
  * Full read-side validation of a canonical document: schema (Zod) followed
- * by the body-template check, matching canonical-schema.md §7's stated
+ * by the body-template check, matching contracts/canonical.md §7's stated
  * order ("validated by the canonical parser after JSON Schema
  * validation").
  */

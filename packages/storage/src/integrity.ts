@@ -67,7 +67,7 @@ async function runForeignKeyCheck(
 
 /**
  * Application-level checks that are expressible purely in SQL against this
- * database (implementation/database-schema.md §13). Checks that require
+ * database (contracts/database.md §13). Checks that require
  * filesystem access to canonical files (path existence, filename/ID
  * agreement) belong to the CLI/sync layer, not this package — and
  * "no canonical ID represented by multiple paths" is already structurally
@@ -165,7 +165,7 @@ async function runApplicationChecks(
 
 /**
  * Runs the release/doctor-repair integrity checks from implementation/
- * database-schema.md §13: the two `PRAGMA` checks plus the subset of
+ * contracts/database.md §13: the two `PRAGMA` checks plus the subset of
  * application-level checks that need only this database (not the Git
  * worktree's canonical files).
  */

@@ -174,12 +174,12 @@ function isMissingSeverityColumn(cause: unknown): boolean {
 /**
  * Lists a repository's approved Rule knowledge items (both advisory and
  * guardrail enforcement) with their entity title/summary, for the MCP
- * `get_active_rules` tool (mcp-contract.md §6.3). Only `status = 'approved'`
+ * `get_active_rules` tool (contracts/mcp.md §6.3). Only `status = 'approved'`
  * entities are returned — pending candidates are never included.
  *
  * Tolerates a DB from before migration 004 (the hook guardrail path and the MCP
  * server open the DB without migrating — only init/sync/doctor migrate,
- * database-schema.md §3): if `severity` does not exist yet, it degrades to a
+ * contracts/database.md §3): if `severity` does not exist yet, it degrades to a
  * `NULL`-severity read rather than erroring, so guardrail evaluation keeps
  * working in the window between a package upgrade and the next sync/init.
  */
@@ -322,7 +322,7 @@ export async function getCandidateById(
 
 /**
  * Matches the `idx_candidates_queue` index — backs the dashboard review
- * queue. dashboard-api.md §4 requires "deterministic sort with ID
+ * queue. contracts/dashboard-api.md §4 requires "deterministic sort with ID
  * tie-breaker" for every paginated/sorted API response; several candidates
  * can share the same `created_at` (e.g. one Checkpoint producing multiple
  * proposals at once), so `id` breaks ties to keep ordering — and therefore
@@ -383,7 +383,7 @@ export interface ListCandidatesPageFilter {
  * Keyset-paginated candidate list for the dashboard review queue
  * (`GET /api/v1/candidates`). Same deterministic `created_at DESC, id DESC`
  * order as `listCandidatesByStatus`, plus a `(created_at, id)` cursor so paging
- * stays stable across reloads (dashboard-api.md §4).
+ * stays stable across reloads (contracts/dashboard-api.md §4).
  */
 export async function listCandidatesPage(
   db: Executor,
@@ -472,7 +472,7 @@ export interface UpdateCandidatePayloadInput {
 
 /**
  * Dashboard candidate edit (design.md §10's `approvals.action = 'edit'`),
- * guarded the same way. dashboard-api.md describes `PATCH /candidates/:id`
+ * guarded the same way. contracts/dashboard-api.md describes `PATCH /candidates/:id`
  * as editing a *draft*; once a candidate leaves `pending` (approved,
  * rejected, or superseded), its payload is fixed and any further change
  * must go through a new transition, not a silent payload rewrite — so this

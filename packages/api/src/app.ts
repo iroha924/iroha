@@ -19,12 +19,15 @@ import {
   getSyncStatus,
   graphPath,
   graphQuery,
+  isRecordableFailure,
   listCandidateQueue,
   listDashboardSessions,
+  listDiagnosticsEvents,
   listKnowledge,
   mcpSearch,
   proposalSchema,
   type RandomSource,
+  recordEventForRepository,
   rejectCandidate,
   repositoryConfigSchema,
   runDashboardSync,
@@ -53,6 +56,8 @@ export interface AppConfig {
 
 interface Variables {
   requestId: string;
+  /** Set by whichever branch answers with a failure envelope; read by the diagnostics middleware. */
+  errorCode?: string;
 }
 
 interface Vars {
@@ -133,7 +138,7 @@ const editSchema = z.strictObject({
 
 // A query param may arrive once (a string) or repeated (an array). The SPA sends
 // each once, but a duplicated param must not 400 — the query behavior is lenient
-// (dashboard-api.md: an invalid or unknown value is ignored, `?from=not-a-date`
+// (contracts/dashboard-api.md: an invalid or unknown value is ignored, `?from=not-a-date`
 // lists unfiltered). So accept the single-or-array shape (a plain `z.string()`
 // would reject the array form) and read the first value with `firstOf` in the
 // handler, matching the pre-migration `c.req.query()`; the lenient helpers below
@@ -166,8 +171,9 @@ const knowledgeQuery = z.object({
   cursor: queryParam("Opaque pagination cursor"),
 });
 const relationsQuery = z.object({ limit: queryParam("Max relations to return") });
+const eventsQuery = z.object({ limit: queryParam("Max events to return (1-100, default 30)") });
 
-// The anti-CSRF marker every state-changing request must carry (dashboard-api.md
+// The anti-CSRF marker every state-changing request must carry (contracts/dashboard-api.md
 // §3). Documented on each mutation so a client generated from `/api/doc` sends it
 // (without it the `antiCsrf` middleware 403s). Enforcement is the middleware, not
 // this schema — the header is always present by the time route validation runs.
@@ -181,7 +187,7 @@ const runParam = z.object({
   runId: z.string().openapi({ param: { name: "runId", in: "path" } }),
 });
 
-// Response envelopes for the OpenAPI document (dashboard-api.md §4). Responses
+// Response envelopes for the OpenAPI document (contracts/dashboard-api.md §4). Responses
 // are not validated at runtime — the handlers answer through `respond()`, whose
 // dynamic status the literal-typed response union cannot express — so these
 // schemas are documentation only.
@@ -248,6 +254,7 @@ export function createApp(config: AppConfig) {
     // with per-field errors, matching the pre-migration `readJson` behavior.
     defaultHook: (result, c) => {
       if (!result.success) {
+        c.set("errorCode", "INVALID_INPUT");
         return c.json(
           failureBody(
             c.get("requestId"),
@@ -266,7 +273,7 @@ export function createApp(config: AppConfig) {
     await next();
   });
 
-  // Anti-CSRF for every state-changing request (dashboard-api.md §3): exact
+  // Anti-CSRF for every state-changing request (contracts/dashboard-api.md §3): exact
   // same-origin, JSON content type, and the custom `X-Iroha-Request` header a
   // cross-site form or `<img>`/`<script>` load can never set.
   const antiCsrf: MiddlewareHandler<Vars> = async (c, next) => {
@@ -278,6 +285,7 @@ export function createApp(config: AppConfig) {
       const jsonType = (c.req.header("Content-Type") ?? "").includes("application/json");
       const marker = c.req.header("X-Iroha-Request") === "1";
       if (!sameOrigin || !jsonType || !marker) {
+        c.set("errorCode", "INVALID_INPUT");
         return c.json(
           failureBody(c.get("requestId"), {
             code: "INVALID_INPUT",
@@ -294,6 +302,7 @@ export function createApp(config: AppConfig) {
 
   const requireCookie: MiddlewareHandler<Vars> = async (c, next) => {
     if (!auth.verify(getCookie(c, SESSION_COOKIE))) {
+      c.set("errorCode", "INVALID_SESSION_TOKEN");
       return c.json(
         failureBody(c.get("requestId"), {
           code: "INVALID_SESSION_TOKEN",
@@ -308,6 +317,50 @@ export function createApp(config: AppConfig) {
   app.use("/api/v1/*", requireCookie);
   app.use("/api/auth/logout", requireCookie);
 
+  // One `event_log` row per **failed** API request, for the Doctor page's
+  // diagnostics list.
+  //
+  // Scoped to `/api/v1/*` and registered *after* `requireCookie`, so only an
+  // authenticated request can ever write a row. `/api/auth/exchange` is
+  // deliberately outside both: it is the unauthenticated entry point, and
+  // logging it would hand anything that reaches the loopback port a write into
+  // an unpruned table. Before this endpoint existed a rejected request did zero
+  // I/O; that stays true.
+  //
+  // Only failures are recorded. A success — a poll, a search, an approval —
+  // either repeats every 5s (contracts/dashboard-api.md §7; measured at 50 of 50
+  // rows within ~4 minutes on one focused tab) or is already durably recorded as
+  // canonical data. What a diagnostics list is read for is what went wrong, and
+  // that is not periodic. It also means the record cannot be inflated by ordinary
+  // use, whatever HTTP method an endpoint happens to use.
+  //
+  // `adapter` is the matched route pattern in the router's own `:id` form, never
+  // the concrete URL, so no id, query value, or path from the request is recorded.
+  // 4xx is a `warning` — a rejected request is the client's problem, not a
+  // malfunction; only 5xx is a `failure`.
+  app.use("/api/v1/*", async (c, next) => {
+    const startedAt = performance.now();
+    await next();
+    const status = c.res.status;
+    if (status < 400) {
+      return;
+    }
+    const errorCode = c.get("errorCode");
+    if (errorCode !== undefined && !isRecordableFailure(errorCode)) {
+      return;
+    }
+    await recordEventForRepository({
+      cwd,
+      clock,
+      random,
+      eventType: "api.request",
+      adapter: `${c.req.method} ${c.req.routePath}`,
+      outcome: status >= 500 ? "failure" : status >= 400 ? "warning" : "success",
+      durationMs: Math.round(performance.now() - startedAt),
+      ...(errorCode === undefined ? {} : { errorCode }),
+    });
+  });
+
   // A thrown handler error (a use case should return a Result, not throw)
   // becomes a clean INTERNAL_ERROR envelope — never a stack trace (§4). The one
   // exception is a request body that is not parseable JSON: `@hono/zod-openapi`'s
@@ -316,6 +369,7 @@ export function createApp(config: AppConfig) {
   app.onError((err, c) => {
     const requestId = c.get("requestId") ?? "req_unknown";
     if (err instanceof HTTPException) {
+      c.set("errorCode", "INVALID_INPUT");
       return c.json(
         failureBody(requestId, {
           code: "INVALID_INPUT",
@@ -325,6 +379,7 @@ export function createApp(config: AppConfig) {
         400,
       );
     }
+    c.set("errorCode", "INTERNAL_ERROR");
     return c.json(
       failureBody(requestId, {
         code: "INTERNAL_ERROR",
@@ -866,6 +921,27 @@ export function createApp(config: AppConfig) {
 
   app.openapi(
     createRoute({
+      method: "get",
+      path: "/api/v1/events",
+      tags: ["doctor"],
+      summary: "List recent local diagnostics events",
+      request: { query: eventsQuery },
+      responses: RESPONSES,
+    }),
+    (c) => {
+      const query = c.req.valid("query");
+      return respond(
+        c,
+        listDiagnosticsEvents({
+          ...useCaseCtx,
+          ...numOpt("limit", firstOf(query.limit)),
+        }),
+      );
+    },
+  );
+
+  app.openapi(
+    createRoute({
       method: "post",
       path: "/api/v1/doctor/repair",
       tags: ["doctor"],
@@ -887,7 +963,8 @@ export function createApp(config: AppConfig) {
         info: {
           title: "iroha dashboard API",
           version: "0.1.0",
-          description: "Local, loopback-only API for the iroha dashboard (dashboard-api.md).",
+          description:
+            "Local, loopback-only API for the iroha dashboard (contracts/dashboard-api.md).",
         },
       }),
     ),
@@ -921,6 +998,7 @@ async function respond<T>(
   const requestId = c.get("requestId");
   const result = await resultPromise;
   if (!result.ok) {
+    c.set("errorCode", result.error.code);
     return c.json(
       failureBody(requestId, result.error),
       httpStatusForCode(result.error.code) as ContentfulStatusCode,
@@ -941,6 +1019,7 @@ function fail(
   status: ContentfulStatusCode,
   fieldErrors?: Record<string, string>,
 ): never {
+  c.set("errorCode", error.code);
   return c.json(failureBody(c.get("requestId"), error, fieldErrors), status) as never;
 }
 

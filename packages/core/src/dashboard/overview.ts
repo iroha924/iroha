@@ -40,7 +40,7 @@ export interface GetOverviewInput {
 /**
  * Overview page data (`GET /api/v1/overview`): pending-candidate pressure,
  * recent Sessions, unresolved dirty markers, and last sync. Deliberately has no
- * per-person metric — NFR-008 / FR-108 forbid individual ranking.
+ * per-person metric — individual productivity ranking is forbidden.
  */
 export async function getOverview(
   input: GetOverviewInput,
@@ -110,7 +110,7 @@ export interface GetBootstrapInput {
 /**
  * Startup summary the SPA loads first (`GET /api/v1/bootstrap`): repository
  * identity, UI language, schema status, and capability/embedding flags. The
- * embedding secret is reported only as a presence boolean (NFR-005: secrets are
+ * embedding secret is reported only as a presence boolean (secrets are
  * never exposed).
  */
 export async function getBootstrap(

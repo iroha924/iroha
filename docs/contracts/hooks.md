@@ -11,7 +11,7 @@ Hooks provide low-latency lifecycle observation, context injection, and approved
 ## 2. Entrypoint
 
 One entrypoint serves both platforms, invoked through the installed `iroha`
-binary (WP-11 Option A — see decision-log ID-038; the native `@libsql/client`
+binary (WP-11 Option A; the native `@libsql/client`
 binding cannot be inlined into a standalone plugin `.mjs`, so the plugin archive
 ships no runtime `dist` and the hook shares the npm-installed binary):
 
@@ -95,7 +95,7 @@ Codex command hooks require explicit user trust. `iroha doctor` must distinguish
 | `AGENT_STARTED` | `SubagentStart` | `SubagentStart` | P1 |
 | `AGENT_STOPPED` | `SubagentStop` | `SubagentStop` | P1 |
 | `TURN_STOPPED` | `Stop` | `Stop` | P0 |
-| `SESSION_ENDED` | `SessionEnd` | unavailable | P0, Claude only (FR-029) |
+| `SESSION_ENDED` | `SessionEnd` | unavailable | P0, Claude only |
 | `TOOL_FAILED` | `PostToolUseFailure` | derive from `PostToolUse` response | P1 |
 | `TURN_FAILED` | `StopFailure` | unavailable | Claude enhancement |
 | `INSTRUCTIONS_OBSERVED` | `InstructionsLoaded` | unavailable | Claude enhancement |
@@ -319,6 +319,10 @@ Never persist or log:
 - secrets or credentials.
 
 Local structured logs include event kind, adapter, duration, outcome, IDs, and stable error code. Debug mode may show sanitized field names and sizes, never values from blocked fields.
+
+These logs are the `event_log` table. **The Hook path deliberately writes no row to it.** The INSERT waits on libSQL's `busy_timeout` (2500 ms) whenever another process holds the write lock — measured at 2655 ms on a Stop against a concurrent writer, versus a §7 budget of 2.0 s, and 7932 ms on a PreToolUse denial against a budget of 0.5 s. The platform kills the hook at its deadline, so a diagnostics row would destroy exactly the outputs worth diagnosing: a Guardrail deny and a Stop continuation. Fail-open does not save it either, since a busy wait is latency rather than an error. Hook activity remains observable through the Turn/Run/Tool Event records the handlers already write, where a denial is `tool_events.phase = 'denied'`.
+
+`event_log` is written by the other producers — MCP tool calls, dashboard API mutations and failures, and canonical/Forge sync. `adapter` therefore holds the source identifier of whichever producer wrote the row (the tool name for MCP, the matched route pattern for an API request), always a value fixed in this repository, never one derived from a prompt, a tool input, or a request path.
 
 ## 11. Contract fixtures
 

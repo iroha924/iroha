@@ -335,7 +335,7 @@ describe("graph-search repositories", () => {
   });
 
   it("returns neighbors ordered by id, so a limit truncates deterministically", async () => {
-    // dashboard-api.md §4: "deterministic sort with ID tie-breaker" —
+    // contracts/dashboard-api.md §4: "deterministic sort with ID tie-breaker" —
     // without an ORDER BY, a `limit` cutoff could keep a different subset
     // of edges across otherwise-identical calls.
     const opened = await openMigratedTestDb();
@@ -468,7 +468,7 @@ describe("graph-search repositories", () => {
   });
 
   it("excludes a DUPLICATES edge back to an already-visited node, but keeps other relation types", async () => {
-    // implementation/database-schema.md §11: subgraph traversal "excludes
+    // contracts/database.md §11: subgraph traversal "excludes
     // DUPLICATES cycles already visited". A visited via RELATED_TO to B,
     // then B has a DUPLICATES edge back to A — that back edge must be
     // dropped, but a non-DUPLICATES edge between the same already-visited

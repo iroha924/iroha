@@ -1,6 +1,6 @@
 /**
  * An opaque keyset pagination cursor: the `(sort-key, id)` of the last item on a
- * page, base64url-encoded. dashboard-api.md §4 requires cursor pagination with a
+ * page, base64url-encoded. contracts/dashboard-api.md §4 requires cursor pagination with a
  * deterministic ID tie-breaker, so both halves are encoded — the cursor stays
  * stable even when many rows share a sort key (e.g. one Checkpoint emitting
  * several candidates at the same timestamp).
@@ -32,7 +32,7 @@ export function decodeCursor(cursor: string): CursorParts | null {
   }
 }
 
-/** Default page size and hard cap (dashboard-api.md §4: "default 30, maximum 100"). */
+/** Default page size and hard cap (contracts/dashboard-api.md §4: "default 30, maximum 100"). */
 export const DEFAULT_PAGE_SIZE = 30;
 export const MAX_PAGE_SIZE = 100;
 

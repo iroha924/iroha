@@ -22,7 +22,7 @@ export interface ToolTarget {
 /**
  * A safe, bounded classification of a shell command for a `command` tool target.
  * The full command is only ever kept as a digest; this value must never carry a
- * secret or an absolute path (hooks-contract.md §8/§10). Shared by both adapters
+ * secret or an absolute path (contracts/hooks.md §8/§10). Shared by both adapters
  * so the two extractors cannot drift.
  *
  * It takes the leading whitespace token, drops any leading directory (so
@@ -69,7 +69,7 @@ export interface HookAdapter {
   /**
    * Parse one raw hook input object into a normalized event. Known required
    * fields are validated; unknown fields are ignored — raw platform schemas are
-   * forward-compatible (hooks-contract.md §2). Returns:
+   * forward-compatible (contracts/hooks.md §2). Returns:
    * - `ok(event)` for a supported event;
    * - `ok(null)` for a recognized event with no v0.1 normalized mapping (ignore it);
    * - `err(INVALID_INPUT)` for a structurally unusable payload.

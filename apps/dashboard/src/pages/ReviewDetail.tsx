@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea.js";
 import { useI18n } from "@/i18n/index.js";
 
 /**
- * Candidate review detail (dashboard-api.md §6): edit the draft, view the
+ * Candidate review detail (contracts/dashboard-api.md §6): edit the draft, view the
  * canonical diff preview and validation, then approve or reject. Approval is
  * disabled until validation passes, and a detected secret hard-blocks it.
  */

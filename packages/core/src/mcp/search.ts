@@ -53,6 +53,12 @@ export interface McpSearchInput {
   clock: Clock;
   random: RandomSource;
   query: string;
+  /**
+   * Set to `"search"` only by the MCP tool. The CLI and the dashboard API share
+   * this use case and leave it unset, so their calls are not recorded as MCP
+   * tool calls.
+   */
+  tool?: "search" | undefined;
   repositoryPath?: string | undefined;
   mode?: SearchMode | undefined;
   limit?: number | undefined;
@@ -65,7 +71,7 @@ const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 50;
 
 /**
- * `search` (mcp-contract.md §6.1): database-schema.md §9's hybrid retrieval over
+ * `search` (contracts/mcp.md §6.1): contracts/database.md §9's hybrid retrieval over
  * approved/verified entities. When embedding is configured and the query
  * embedding succeeds, the vector term joins the FTS RRF sum; otherwise the
  * request degrades to lexical (CLAUDE.md: "embedding failure must degrade to
@@ -76,7 +82,12 @@ const MAX_LIMIT = 50;
  */
 export async function mcpSearch(input: McpSearchInput): Promise<Result<McpSearchData, IrohaError>> {
   return withMcpRepository(
-    { cwd: input.repositoryPath ?? input.cwd, clock: input.clock, random: input.random },
+    {
+      cwd: input.repositoryPath ?? input.cwd,
+      clock: input.clock,
+      random: input.random,
+      tool: input.tool ?? null,
+    },
     async (ctx) => {
       // Clamp both bounds: the MCP/API transports reject `limit < 1` at their Zod
       // boundary, but `runSearch` (the CLI) forwards the raw value, and a negative

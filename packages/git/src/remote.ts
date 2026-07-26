@@ -7,9 +7,9 @@ import { runGit } from "./run-git.js";
 // these can be redacted down to something safe the way a credential-bearing
 // `scheme://` URL can, since the ENTIRE value is the sensitive part (an
 // absolute local filesystem path), not just a userinfo/query slot within it.
-// mcp-contract.md §8 forbids returning filesystem absolute paths in any
+// contracts/mcp.md §8 forbids returning filesystem absolute paths in any
 // DB/API/MCP-reachable text, and `repositories.remote_url_normalized`
-// (database-schema.md) is nullable, so suppressing it entirely for a
+// (contracts/database.md) is nullable, so suppressing it entirely for a
 // local-path remote applies that existing invariant rather than adding a
 // new one.
 // A local-path marker (`file:` scheme, bare POSIX absolute path, Windows

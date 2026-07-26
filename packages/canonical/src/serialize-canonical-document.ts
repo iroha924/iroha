@@ -26,7 +26,7 @@ function orderedPick<T extends object>(obj: T, keys: readonly (keyof T)[]): T {
 
 // Field orders below mirror schemas/canonical-v1.schema.json's `properties`
 // declaration order for each `$defs` entry — "the contract order" that
-// canonical-schema.md §11 step 3 requires.
+// contracts/canonical.md §11 step 3 requires.
 
 const ACTOR_REF_ORDER = ["provider", "id", "display_name"] as const;
 const SCOPE_ORDER = ["repository", "paths", "symbols", "languages"] as const;
@@ -52,7 +52,7 @@ function orderScope(scope: Frontmatter["scope"]) {
   return orderedPick(scope, SCOPE_ORDER);
 }
 
-/** canonical-schema.md §11 step 5: sort sources by `(type, ref, path, line_start)`. */
+/** contracts/canonical.md §11 step 5: sort sources by `(type, ref, path, line_start)`. */
 function orderSources(sources: Frontmatter["sources"]) {
   const sorted = [...sources].sort((a, b) => {
     if (a.type !== b.type) return a.type < b.type ? -1 : 1;
@@ -67,7 +67,7 @@ function orderSources(sources: Frontmatter["sources"]) {
   return sorted.map((source) => orderedPick(source, SOURCE_ORDER));
 }
 
-/** canonical-schema.md §11 step 6: sort relations by `(type, target)`. */
+/** contracts/canonical.md §11 step 6: sort relations by `(type, target)`. */
 function orderRelations(relations: Frontmatter["relations"]) {
   const sorted = [...relations].sort((a, b) => {
     if (a.type !== b.type) return a.type < b.type ? -1 : 1;
@@ -76,7 +76,7 @@ function orderRelations(relations: Frontmatter["relations"]) {
   return sorted.map((relation) => orderedPick(relation, RELATION_ORDER));
 }
 
-/** canonical-schema.md §11 step 7: UTC with milliseconds — `Date#toISOString()` always produces this exact shape. */
+/** contracts/canonical.md §11 step 7: UTC with milliseconds — `Date#toISOString()` always produces this exact shape. */
 function formatTimestamp(iso: string): string {
   return new Date(iso).toISOString();
 }
@@ -108,7 +108,7 @@ function orderTypeSpecific(frontmatter: Frontmatter): Record<string, unknown> {
 }
 
 /**
- * canonical-schema.md §11 step 3: the common frontmatter fields in exactly
+ * contracts/canonical.md §11 step 3: the common frontmatter fields in exactly
  * the order the §5 example shows them (schema_version, id, type, title,
  * status, revision, created_at, updated_at, created_by, approved_by,
  * approved_at, labels, scope, sources, relations), followed by the single
@@ -140,7 +140,7 @@ function orderFrontmatter(frontmatter: Frontmatter): Record<string, unknown> {
   };
 }
 
-/** canonical-schema.md §11 step 8: trim trailing spaces per line, exactly one final newline. */
+/** contracts/canonical.md §11 step 8: trim trailing spaces per line, exactly one final newline. */
 function normalizeWhitespace(text: string): string {
   const trimmedLines = text.split("\n").map((line) => line.replace(/[ \t]+$/, ""));
   return `${trimmedLines.join("\n").replace(/\n+$/, "")}\n`;
@@ -154,7 +154,7 @@ export interface SerializedCanonicalDocument {
 
 /**
  * Deterministically serializes a canonical document candidate to its final
- * on-disk text, per canonical-schema.md §11 (steps 1, 3-10 — step 2,
+ * on-disk text, per contracts/canonical.md §11 (steps 1, 3-10 — step 2,
  * secret scanning, is a separate concern composed by the write primitive,
  * since it needs to run on this function's *output* text and involves
  * async I/O this package's pure serializer should not require).

@@ -19,7 +19,7 @@ import {
 } from "./build-canonical.js";
 import { withDashboardWrite } from "./with-repository.js";
 
-/** The AI agent that authored a candidate, recorded as `created_by` (NFR-006: AI-vs-human provenance). */
+/** The AI agent that authored a candidate, recorded as `created_by` (AI-vs-human provenance). */
 const AGENT_ACTOR: CanonicalActorRef = { provider: "local", display_name: "iroha agent" };
 
 async function pathExists(path: string): Promise<boolean> {
@@ -69,8 +69,8 @@ function provenanceFor(
 }
 
 /**
- * The human approval transaction (canonical-schema.md §12 / design.md §10 /
- * decision-log ID-025(2)) — the higher layer that composes
+ * The human approval transaction (contracts/canonical.md §12 / design.md §10 /
+ * — the higher layer that composes
  * `writeCanonicalDocument` (steps 3-7) with the storage/git steps
  * `@iroha/canonical` cannot reach. Fixed order:
  *
@@ -78,7 +78,7 @@ function provenanceFor(
  * 2. reload the candidate and verify its optimistic revision token;
  * 3-7. `writeCanonicalDocument` validates (Zod + body template + secret scan)
  *      and atomically writes the `.iroha/` file — a detected secret or invalid
- *      body fails here BEFORE any DB change (dashboard-api.md §6/§10 "secret
+ *      body fails here BEFORE any DB change (contracts/dashboard-api.md §6/§10 "secret
  *      warning blocks approval");
  * 8-9. in one DB transaction: import the document exactly as `sync --rebuild`
  *      would (so approve and rebuild produce identical rows), insert its
@@ -88,7 +88,7 @@ function provenanceFor(
  * If the DB transaction fails after the file has landed, a
  * `canonical_db_divergence` dirty marker is recorded and a recoverable error
  * returned: the canonical file is authoritative and the next `sync` repairs the
- * DB (FR-053).
+ * DB.
  */
 export async function approveCandidate(
   input: ApproveCandidateInput,
@@ -145,9 +145,9 @@ export async function approveCandidate(
         return built;
       }
 
-      // Cross-process double-approval guard (ID-065's deterministic id makes two
+      // Cross-process double-approval guard (the deterministic canonical id makes two
       // processes approving the same candidate target the same path; in-process
-      // locking does not serialize across processes — ID-022 lineage). If that
+      // locking does not serialize across processes). If that
       // file already exists and the candidate is no longer pending, another
       // approval already committed it — abort instead of overwriting it. A
       // same-process retry after a crash (candidate still pending) still overwrites

@@ -3,7 +3,7 @@
  * `bin.ts` so that a failure while *loading* it (e.g. a transitive dependency
  * calling `process.cwd()` at module top level when the agent's working directory
  * has been deleted) is a catchable rejection rather than an uncatchable ESM
- * module-load crash. Routes the three entry modes (decision-log ID-038):
+ * module-load crash. Routes the three entry modes:
  *
  *   - `iroha __mcp`         → the stdio MCP server
  *   - `iroha __hook <plat>` → one hook invocation for `claude` or `codex`
@@ -22,14 +22,14 @@ const [command, ...rest] = argv;
 
 if (command === MCP_SUBCOMMAND) {
   startStdioServer().catch((error: unknown) => {
-    // Protocol frames own stdout; diagnostics go to stderr only (mcp-contract.md §2).
+    // Protocol frames own stdout; diagnostics go to stderr only (contracts/mcp.md §2).
     process.stderr.write(
       `iroha mcp server failed to start: ${error instanceof Error ? error.message : String(error)}\n`,
     );
     process.exit(1);
   });
 } else if (command === HOOK_SUBCOMMAND) {
-  // Hook internal failure is fail-open (CLAUDE.md; hooks-contract.md §2/§7): a
+  // Hook internal failure is fail-open (CLAUDE.md; contracts/hooks.md §2/§7): a
   // throw that escapes `runHook`'s own handling — e.g. `process.cwd()` on a
   // deleted working directory, a stdin `'error'`, or a `close()` failure in a
   // `finally` — must still exit 0 with no stdout so the agent is never blocked.

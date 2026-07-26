@@ -134,6 +134,17 @@ async function seedSession(
   return id;
 }
 
+async function eventLogCount(dbPath: string): Promise<number> {
+  const db = await openDatabase(dbPath);
+  if (!db.ok) throw new Error(db.error.code);
+  try {
+    const result = await db.value.execute("SELECT COUNT(*) AS n FROM event_log");
+    return Number(result.rows[0]?.n ?? 0);
+  } finally {
+    await closeDatabase(db.value);
+  }
+}
+
 function makeApp(cwd: string): { app: Hono; launchToken: string } {
   const auth = createAuth(random, LAUNCH_TOKEN);
   const app = createApp({ cwd, clock, random, auth }) as unknown as Hono;
@@ -556,5 +567,97 @@ describe("dashboard API", () => {
     // A GET with a query param is present; the doc endpoint does not describe itself.
     expect(doc.paths["/api/v1/sessions"]?.get).toBeDefined();
     expect(doc.paths["/api/doc"]).toBeUndefined();
+  });
+
+  it("records a failure but never a success, and keeps the concrete URL out", async () => {
+    const repo = await setupApiRepo();
+    dir = repo.dir;
+    const { app } = makeApp(repo.dir);
+    const cookie = await exchange(app);
+    const { candidateId, revisionToken } = await seedDecision(repo.dbPath, repo.repositoryId);
+
+    await get(app, "/api/v1/overview", cookie);
+    const approved = await post(app, `/api/v1/candidates/${candidateId}/approve`, cookie, {
+      revisionToken,
+      actor: { provider: "git", displayName: "Example Reviewer" },
+    });
+    expect(approved.status).toBe(200);
+    const search = await post(app, "/api/v1/search", cookie, { query: "libSQL" });
+    expect(search.status).toBe(200);
+    const missing = await get(app, "/api/v1/knowledge/kno_01JQZ0000000000000000000", cookie);
+    expect(missing.status).toBe(404);
+
+    const body = (await (await get(app, "/api/v1/events", cookie)).json()) as {
+      data: {
+        events: {
+          eventType: string;
+          adapter: string | null;
+          outcome: string;
+          durationMs: number | null;
+          errorCode: string | null;
+        }[];
+      };
+    };
+    const adapters = body.data.events.map((e) => e.adapter);
+
+    // No success is recorded, whatever the method — a poll, a POST search, and
+    // an approval would each otherwise displace the rows worth reading.
+    expect(adapters).not.toContain("GET /api/v1/overview");
+    expect(adapters).not.toContain("GET /api/v1/events");
+    expect(adapters).not.toContain("POST /api/v1/search");
+    expect(adapters).not.toContain("POST /api/v1/candidates/:id/approve");
+
+    // Hono reports the route pattern in its own `:param` form, not OpenAPI's `{param}`.
+    const failed = body.data.events.find((e) => e.adapter === "GET /api/v1/knowledge/:id");
+    expect(failed?.eventType).toBe("api.request");
+    expect(failed?.outcome).toBe("warning");
+    expect(failed?.errorCode).toBe("NOT_FOUND");
+    expect(failed?.durationMs).not.toBeNull();
+
+    // The concrete URL never reaches the row — only the matched route pattern.
+    expect(body.data.events.every((e) => e.adapter === null || !e.adapter.includes("?"))).toBe(
+      true,
+    );
+  });
+
+  it("writes nothing for a request rejected before authentication", async () => {
+    const repo = await setupApiRepo();
+    dir = repo.dir;
+    const { app } = makeApp(repo.dir);
+
+    // A 401 must cost no repository resolution and no write: `event_log` has no
+    // pruning, so logging outside the guards would be an unauthenticated
+    // disk-write for anything that can reach the loopback port.
+    const before = await eventLogCount(repo.dbPath);
+    const unauth = await app.request("/api/v1/overview", { headers: { Host: HOST } });
+    expect(unauth.status).toBe(401);
+    const csrf = await app.request("/api/v1/sync", {
+      method: "POST",
+      headers: { Host: HOST, "Content-Type": "application/json" },
+      body: "{}",
+    });
+    expect(csrf.status).toBe(403);
+    // The token exchange is the unauthenticated entry point and sits outside the
+    // middleware entirely, so a wrong-token 401 cannot write either.
+    const badToken = await app.request("/api/auth/exchange", {
+      method: "POST",
+      headers: CSRF,
+      body: JSON.stringify({ token: "wrong-token-0000000000000000" }),
+    });
+    expect(badToken.status).toBe(401);
+    expect(await eventLogCount(repo.dbPath)).toBe(before);
+  });
+
+  it("ignores a non-integer limit instead of failing the request", async () => {
+    const repo = await setupApiRepo();
+    dir = repo.dir;
+    const { app } = makeApp(repo.dir);
+    const cookie = await exchange(app);
+
+    // A fractional value reaches SQL `LIMIT` unless it is truncated, where it
+    // raises SQLITE_MISMATCH and becomes a 500 — the query rules require an
+    // invalid value to be ignored, not to fail the request.
+    const res = await get(app, "/api/v1/events?limit=10.5", cookie);
+    expect(res.status).toBe(200);
   });
 });

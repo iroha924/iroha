@@ -67,7 +67,7 @@ function references(value: unknown): Reference[] {
   });
 }
 
-/** Structured Checkpoint detail (dashboard-api.md §6): what was done, validated, and left open. */
+/** Structured Checkpoint detail (contracts/dashboard-api.md §6): what was done, validated, and left open. */
 export function CheckpointDetail() {
   const { t } = useI18n();
   const { id = "", checkpointId = "" } = useParams();

@@ -20,7 +20,7 @@ Code is read in its final state, not as a diff. Do not narrate how it got there:
 - no "previously ...", "changed because ...", "was Y, now Z", "renamed from ...";
 - no justifying a change against the old code, and no migration/shim breadcrumbs.
 
-That context belongs in git history and `implementation/decision-log.md`, not in the source.
+That context belongs in git history and the pull request, not in the source. A decision's *reasoning* may stay (see above); its chronology may not.
 
 ## When editing
 

@@ -4,7 +4,7 @@ import type { Database } from "./connection.js";
 import { mapLibsqlError } from "./errors.js";
 
 /**
- * implementation/database-schema.md §3: "retry SQLITE_BUSY with bounded jitter
+ * contracts/database.md §3: "retry SQLITE_BUSY with bounded jitter
  * for at most 2 seconds". `PRAGMA busy_timeout = 2500` (connection.ts) already
  * makes a *single* driver call wait up to ~2.5s before raising SQLITE_BUSY, and
  * that wait is a blocking native call that starves the event loop for its whole

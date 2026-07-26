@@ -420,7 +420,7 @@ export async function updateEntityStatus(
 
 /**
  * `entities.authority` is recalculated during sync when canonical state
- * changes (implementation/database-schema.md §6), not edited alongside
+ * changes (contracts/database.md §6), not edited alongside
  * arbitrary other columns — kept as its own narrow update for that reason.
  */
 export async function updateEntityAuthority(

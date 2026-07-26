@@ -140,7 +140,7 @@ export async function toRepoRelativePath(
     realRoot = await safeRealpath(root);
     realTarget = await safeRealpath(absoluteTarget);
   } catch (cause) {
-    // No `root`/`targetPath` in message or details: mcp-contract.md §8
+    // No `root`/`targetPath` in message or details: contracts/mcp.md §8
     // forbids returning filesystem absolute paths to the model, and this
     // error can reach an MCP response as-is.
     return err(new IrohaError("INVALID_INPUT", "Failed to resolve path", { cause }));

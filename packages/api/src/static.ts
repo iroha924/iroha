@@ -66,7 +66,7 @@ async function readWithin(
 /**
  * Serves the built SPA from `root` for non-API GET requests, falling back to
  * index.html for client-side routes so a direct-route reload works
- * (dashboard-api.md §10). API paths are left to return the JSON 404.
+ * (contracts/dashboard-api.md §10). API paths are left to return the JSON 404.
  */
 export function createStaticHandler(root: string): MiddlewareHandler {
   return async (c) => {

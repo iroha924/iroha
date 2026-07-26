@@ -1,7 +1,7 @@
 import type { GraphEdge, GraphNode } from "@iroha/api";
 import type { Edge, Node } from "@xyflow/react";
 
-// Color encodes entity type, never person performance (dashboard-api.md §6).
+// Color encodes entity type, never person performance (contracts/dashboard-api.md §6).
 const TYPE_COLOR: Record<string, string> = {
   decision: "#6E7B57",
   rule: "#515E3E",

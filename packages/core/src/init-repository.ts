@@ -41,10 +41,10 @@ const CANONICAL_SUBDIRECTORIES = [
   "sessions",
 ];
 
-/** canonical-schema.md §3: `.iroha/.gitignore` contains exactly this. */
+/** contracts/canonical.md §3: `.iroha/.gitignore` contains exactly this. */
 const IROHA_GITIGNORE_CONTENT = ".*.tmp\n";
 
-/** Local-state subdirectories under `<git-path iroha>/` (database-schema.md §2). */
+/** Local-state subdirectories under `<git-path iroha>/` (contracts/database.md §2). */
 const LOCAL_STATE_SUBDIRECTORIES = ["locks", "dirty", "logs", "hook-outputs"];
 
 /** Also used by `rebuild-database.ts` — a rebuilt DB's `repositories` row must agree with what `initRepository` would compute for the same clone. */
@@ -85,7 +85,7 @@ function buildDefaultConfig(repositoryId: TypedId<"repo">): RepositoryConfig {
 
 /**
  * Creates `.iroha/`'s directory skeleton, `.gitignore`, `schema-version`,
- * and an empty `taxonomy/labels.yaml` (canonical-schema.md §3) — everything
+ * and an empty `taxonomy/labels.yaml` (contracts/canonical.md §3) — everything
  * except `config.yaml`, which needs a `repository_id` resolved against the
  * local DB first (see `resolveOrRegisterRepository`). Every file here has
  * content that is identical no matter which racing process's write lands
@@ -144,7 +144,7 @@ async function writeConfigAtomic(
  * durably writing a different random `repository_id` to `config.yaml`
  * independently, which would leave `config.yaml` and the winning DB row
  * permanently disagreeing (not self-correcting the way a plain retry fixes
- * ID-024(5)'s migration-insert race).
+ * the migration-insert race).
  */
 async function resolveOrRegisterRepository(
   db: Database,
@@ -228,16 +228,16 @@ export interface InitRepositoryResult {
 }
 
 export interface InitRepositoryOptions {
-  /** canonical-schema.md §14: `iroha init --scan` only. Plain `iroha init` never scans. */
+  /** contracts/canonical.md §14: `iroha init --scan` only. Plain `iroha init` never scans. */
   scan?: boolean;
 }
 
 /**
- * `iroha init` (implementation-plan.md WP-05, requirements.md Scenario A):
+ * `iroha init`:
  * resolves Git identity, bootstraps `.iroha/` on a genuinely fresh
  * repository (or reuses the existing `repository_id` otherwise), opens and
  * migrates the local DB, ensures the `repositories` row exists, and — only
- * when `options.scan` is set (canonical-schema.md §14: `iroha init --scan`)
+ * when `options.scan` is set (contracts/canonical.md §14: `iroha init --scan`)
  * — scans `AGENTS.md`/`CLAUDE.md`/`.claude/rules/**\/*.md` into local
  * (non-canonical) `rule` candidates. Idempotent: a second run against the
  * same repository makes no further changes (Scenario A: "a re-run does not

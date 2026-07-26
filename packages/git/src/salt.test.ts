@@ -149,7 +149,7 @@ describe("ensureRepositorySalt", () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      // mcp-contract.md §8: filesystem absolute paths are never returned to
+      // contracts/mcp.md §8: filesystem absolute paths are never returned to
       // the model, and IrohaError.message/details can reach MCP responses.
       expect(result.error.message.includes(irohaDir)).toBe(false);
       expect(JSON.stringify(result.error.details ?? {}).includes(irohaDir)).toBe(false);

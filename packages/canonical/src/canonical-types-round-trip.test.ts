@@ -19,7 +19,7 @@ interface TypeFixture {
 }
 
 // WP-04 acceptance criteria: "all canonical type round trips" — one fixture
-// per canonical-schema.md §7 body template / schemas/canonical-v1.schema.json
+// per contracts/canonical.md §7 body template / schemas/canonical-v1.schema.json
 // `$defs` entry, so every type is actually exercised through
 // write→scan→parse, not just eyeballed as "the switch branch looks right."
 const FIXTURES: TypeFixture[] = [

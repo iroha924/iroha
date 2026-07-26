@@ -63,7 +63,7 @@ function SeedGroup({
 }
 
 /**
- * Work Graph (dashboard-api.md §6): an interactive bounded relation view. Seed
+ * Work Graph (contracts/dashboard-api.md §6): an interactive bounded relation view. Seed
  * from browsable entities (Knowledge / Sessions), pick a depth, then explore by
  * clicking a node to load its neighbors (server-side expansion). React Flow
  * applies node positions via CSSOM (not a `style` attribute), so it stays within

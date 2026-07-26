@@ -21,7 +21,7 @@ The iroha MCP server is the stable agent-facing API shared by Claude Code and Co
 - A missing/uninitialized repository returns a typed error; it does not initialize implicitly.
 
 Plugin config launches the stdio MCP server through the installed `iroha`
-binary (WP-11 Option A — see decision-log ID-038):
+binary (WP-11 Option A):
 
 ```text
 iroha __mcp
@@ -164,11 +164,11 @@ interface SearchData {
 
 `SourceRef` and `RelationPreview` are MCP *output* shapes — the server constructs
 them, they are never parsed from a request — so they intentionally have no
-`schemas/*.json` JSON Schema mirror (decision-log ID-032):
+`schemas/*.json` JSON Schema mirror:
 
 ```ts
 interface SourceRef {
-  // canonical-schema.md §5 source kinds
+  // contracts/canonical.md §5 source kinds
   type:
     | "session" | "checkpoint" | "issue" | "pull_request" | "review"
     | "commit" | "file" | "symbol" | "document" | "url";
@@ -178,7 +178,7 @@ interface SourceRef {
 }
 
 interface RelationPreview {
-  relationType: RelationType;              // canonical-schema.md §5 relation types
+  relationType: RelationType;              // contracts/canonical.md §5 relation types
   direction: "outgoing" | "incoming";
   entityId: string;
   title: string;
@@ -226,7 +226,7 @@ interface ContextData {
 }
 ```
 
-Ordering follows `database-schema.md` context-pack priority. Pending candidates are excluded.
+Ordering follows `contracts/database.md` context-pack priority. Pending candidates are excluded.
 
 ### 6.3 `get_active_rules`
 

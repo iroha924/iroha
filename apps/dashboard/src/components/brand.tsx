@@ -152,7 +152,7 @@ export function FilterChip({
   );
 }
 
-/** "Load more" affordance for cursor-paginated lists (dashboard-api.md §4). */
+/** "Load more" affordance for cursor-paginated lists (contracts/dashboard-api.md §4). */
 export function LoadMore({ onClick, loading }: { onClick: () => void; loading: boolean }) {
   const { t } = useI18n();
   return (

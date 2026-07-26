@@ -17,7 +17,7 @@ When you create or edit any of the above — especially a new `.claude/**` file 
 
 ## Japanese is allowed here
 
-- **`docs/`** (design / spec / reference material). It is maintainer-facing reference, not a shipped artifact, so Japanese is acceptable there — do not force `docs/` to English. (The existing `docs/product` spec is in English and stays that way as the authoritative contract; this exemption only means `docs/` is not a target of English enforcement.)
+- **`docs/`** (architecture and contract reference). It is maintainer-facing reference, not a shipped artifact, so the Japanese already there is acceptable — do not force `docs/` to English. This exemption means `docs/` is not a *target* of English enforcement; it does not mean new `docs/` prose should be written in Japanese.
 
 ## Exempt: intentional Japanese as data, not prose (keep as-is)
 
@@ -31,7 +31,7 @@ The dashboard keeps both English and Japanese message catalogs and makes `ja` **
 
 ## Discrepancy with the spec
 
-`docs/product/implementation/dashboard-api.md` §8 prose says "Japanese is the default UI locale," but that is **overridden by this rule** (English default). `iroha init` already writes `default_language: "en"`, so the code and this rule are authoritative. The prose is wrong (to be corrected in a future doc pass).
+`docs/contracts/dashboard-api.md` §8 prose says "Japanese is the default UI locale," but that is **overridden by this rule** (English default). `iroha init` already writes `default_language: "en"`, so the code and this rule are authoritative. The prose is wrong (to be corrected in a future doc pass).
 
 ## Related
 

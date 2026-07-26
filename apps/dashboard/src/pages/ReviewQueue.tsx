@@ -22,7 +22,7 @@ const CANDIDATE_STATUSES: readonly CandidateStatusFilter[] = [
   "superseded",
 ];
 
-/** Review queue (dashboard-api.md §6): candidates by status, with cursor pagination. */
+/** Review queue (contracts/dashboard-api.md §6): candidates by status, with cursor pagination. */
 export function ReviewQueue() {
   const { t } = useI18n();
   const [status, setStatus] = useState<CandidateStatusFilter>("pending");

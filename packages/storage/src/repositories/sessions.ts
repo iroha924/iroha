@@ -468,7 +468,7 @@ export async function closeTurn(
   }
 }
 
-/** hooks-contract.md §6.6 owns the `checkpoint_state` transition rules, not this package. */
+/** contracts/hooks.md §6.6 owns the `checkpoint_state` transition rules, not this package. */
 export async function updateTurnCheckpointState(
   db: Executor,
   id: TypedId<"trn">,
@@ -743,7 +743,7 @@ export async function listCheckpointsBySession(
 // --- dashboard list queries (WP-09) ---------------------------------------
 
 /**
- * One row of the dashboard Session list (dashboard-api.md §6 "Session detail"
+ * One row of the dashboard Session list (contracts/dashboard-api.md §6 "Session detail"
  * header fields), an `agent_sessions` row enriched with per-Session Run
  * aggregates so the list can show run count, the newest Run's status, and its
  * branch without an N+1 query.
@@ -784,7 +784,7 @@ function rowToSessionListItem(row: Record<string, unknown>): SessionListItemRow 
 /**
  * Paginated Session list for the dashboard (`GET /api/v1/sessions`). Ordered
  * `last_seen_at DESC, id DESC` — the deterministic ID tie-breaker
- * dashboard-api.md §4 requires for stable cursor pagination — and filtered by
+ * contracts/dashboard-api.md §4 requires for stable cursor pagination — and filtered by
  * the keyset cursor plus optional platform/summary-status/date-range. The Run
  * aggregates are correlated subqueries rather than a GROUP BY so the outer
  * keyset predicate and LIMIT stay simple and index-friendly.

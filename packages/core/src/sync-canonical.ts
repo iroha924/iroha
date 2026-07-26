@@ -32,11 +32,12 @@ import {
   upsertSyncCursor,
   withTransaction,
 } from "@iroha/storage";
+import { recordEvent } from "./event-log.js";
 
 /**
- * database-schema.md §6: approved canonical = 100 is the only documented tier. A
+ * contracts/database.md §6: approved canonical = 100 is the only documented tier. A
  * superseded/archived document must not tie current knowledge in ranking, so it is
- * tiered below (decision-log ID-048): `superseded = 70`, `archived = 60`. Both stay
+ * tiered below: `superseded = 70`, `archived = 60`. Both stay
  * **at or above** the `DEFAULT_MINIMUM_AUTHORITY` floor (60) on purpose — dropping
  * a status below it would exclude those rows only *after* the top-N FTS/vector
  * candidate cap, so a burst of low-authority matches could starve the candidate set
@@ -79,12 +80,12 @@ export interface SyncCanonicalResult {
  * entity, `canonical_documents` row, `search_documents` row, and an enqueued
  * embedding job — at an authority tiered by lifecycle status (`authorityForStatus`,
  * `source_kind = 'canonical'`). Exported so
- * the WP-09 approval transaction (design.md §10 / ID-025(2)) reuses the exact
+ * the approval transaction (design.md §10) reuses the exact
  * same import path `sync --rebuild` uses, guaranteeing that approving a
  * candidate and rebuilding from `.iroha/` produce byte-identical DB rows
  * (`path`/`hash` must be `computeCanonicalPath`/the file SHA-256, as the
  * canonical scan produces). It also projects every knowledge-type document
- * into `knowledge_items` (WP-10, closing decision-log ID-033), so approved
+ * into `knowledge_items`, so approved
  * Rules/Decisions are visible to `listApprovedRulesForRepository` (SessionStart
  * context, MCP `get_active_rules`) and PreToolUse guardrail evaluation — for
  * both `sync`/`--rebuild` and the approval transaction, keeping them equivalent.
@@ -134,7 +135,7 @@ export async function importCanonicalDocument(
 
   // Project knowledge-type documents (every canonical type except
   // session_summary) into `knowledge_items`. A guardrail Rule carries its
-  // machine-evaluable guard spec (canonical-schema.md §7); every other item is
+  // machine-evaluable guard spec (contracts/canonical.md §7); every other item is
   // advisory. The Zod-validated canonical document guarantees a guardrail Rule
   // has a `guard` object, so the `guard !== undefined` check only satisfies the
   // type-checker (the advisory fallback is unreachable for a guardrail Rule).
@@ -192,11 +193,11 @@ export async function importCanonicalDocument(
   }
   if (storedSearch.value !== null) {
     // Queue this (re-)indexed document for embedding. Offline-safe: this only
-    // enqueues work — no embedding provider is called here (ID-014 forbids
+    // enqueues work — no embedding provider is called here (a hook makes no
     // remote calls in hooks, and sync stays usable with no network/key). The
     // worker (`runEmbeddingSync`) drains the queue during `iroha sync` when
     // embedding is enabled and a key is present, and otherwise leaves jobs
-    // pending (database-schema.md §12 step 9). Both plain `sync` and
+    // pending (contracts/database.md §12 step 9). Both plain `sync` and
     // `sync --rebuild` funnel through here, so one hook covers both.
     const enqueueResult = await enqueueEmbeddingJob(db, {
       id: makeTypedId("job", clock, random),
@@ -285,11 +286,11 @@ export async function insertCanonicalDocumentRelations(
 }
 
 /**
- * `iroha sync` (implementation-plan.md WP-05, requirements.md Scenario C):
+ * `iroha sync`:
  * scans `.iroha/`, diffs it against this local DB's current
  * `canonical_documents`, and applies the difference — upserting
  * added/changed entities, recording a `sync_required` tombstone marker for
- * deletions that remain referenced (canonical-schema.md §13), and a
+ * deletions that remain referenced (contracts/canonical.md §13), and a
  * `canonical_db_divergence` marker for any file that failed to parse/
  * validate (so one malformed document does not abort the whole sync).
  * Idempotent: re-running with no on-disk changes touches nothing (every
@@ -311,6 +312,45 @@ export async function syncCanonicalToDatabase(
   clock: Clock,
   random: RandomSource,
   reprojectAll = false,
+): Promise<Result<SyncCanonicalResult, IrohaError>> {
+  const startedAt = performance.now();
+  const result = await runCanonicalSync(
+    db,
+    repositoryId,
+    irohaCanonicalDir,
+    clock,
+    random,
+    reprojectAll,
+  );
+  // Only a sync that failed or skipped a document is worth a row; a clean sync
+  // is already observable as `sync_cursors.last_success_at`.
+  if (result.ok && result.value.scanErrors === 0) {
+    return result;
+  }
+  await recordEvent(
+    db,
+    repositoryId,
+    { clock, random },
+    {
+      eventType: "sync.canonical",
+      // A sync that parsed every document reports success; one that skipped a
+      // malformed document still returns `ok` (it records a divergence marker
+      // rather than aborting), and that must read as a warning, not health.
+      outcome: result.ok ? (result.value.scanErrors > 0 ? "warning" : "success") : "failure",
+      durationMs: Math.round(performance.now() - startedAt),
+      ...(result.ok ? {} : { errorCode: result.error.code }),
+    },
+  );
+  return result;
+}
+
+async function runCanonicalSync(
+  db: Database,
+  repositoryId: TypedId<"repo">,
+  irohaCanonicalDir: string,
+  clock: Clock,
+  random: RandomSource,
+  reprojectAll: boolean,
 ): Promise<Result<SyncCanonicalResult, IrohaError>> {
   const now = clock.now().toISOString();
 

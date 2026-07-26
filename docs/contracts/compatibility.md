@@ -136,7 +136,7 @@ The dependency graph must be acyclic. Domain packages must not depend on platfor
   from CI (`.github/workflows/ci.yml`'s `verify` matrix); a native libSQL
   WAL-mode file lock can outlive `db.close()` on Windows for an unbounded
   time, so single-invocation retry budgets cannot make Windows CI reliably
-  green (implementation/decision-log.md ID-026(14))
+  green (see `.claude/rules/windows-ci-compat.md`)
 - Windows 10 22H2
 
 ### Not supported in 0.1
@@ -215,7 +215,7 @@ Unknown newer agent versions produce a warning, not an automatic failure. Contra
 - Explicit invocation: `/iroha:<skill>`
 - Hook commands invoke the installed `iroha` binary in exec form with `args`
   (`iroha __hook claude`); the plugin archive ships no `dist` (WP-11 Option A,
-  decision-log ID-038).
+  WP-11 Option A).
 - Persistent data must not be stored under `${CLAUDE_PLUGIN_ROOT}`.
 
 ### Codex

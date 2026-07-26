@@ -26,7 +26,7 @@ export interface IdempotentWriteArgs<T> {
 }
 
 /**
- * Runs a local MCP write under the idempotency contract (mcp-contract.md §9): a
+ * Runs a local MCP write under the idempotency contract (contracts/mcp.md §9): a
  * repeat of the same (repository, operation, key) returns the original result
  * and never duplicates the write. A pre-check short-circuits the common retry;
  * the idempotency row is inserted last inside the same transaction, so a

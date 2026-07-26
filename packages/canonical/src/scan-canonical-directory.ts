@@ -38,7 +38,7 @@ function toPosixPath(path: string): string {
 
 /**
  * Recursively reads and validates every `.md` file under `repositoryRoot`
- * (the `.iroha/` directory), the read side of canonical-schema.md §3's
+ * (the `.iroha/` directory), the read side of contracts/canonical.md §3's
  * layout. A file that fails to parse — or whose path disagrees with
  * `computeCanonicalPath(document)` (§4: "The file basename must equal
  * `<id>.md`"; WP-04 acceptance criteria: "filename/ID/path validation") —
@@ -113,7 +113,7 @@ export async function scanCanonicalDirectory(
 
 /**
  * Distinguishes an unresolved Git merge conflict (a specific, actionable
- * diagnostic — canonical-schema.md §13: "Git content conflicts are never
+ * diagnostic — contracts/canonical.md §13: "Git content conflicts are never
  * semantically auto-merged") from a generic parse failure. Requires *both*
  * an opening (`<<<<<<<`) and closing (`>>>>>>>`) marker to be present, not
  * just one — a document body containing a single marker-length banner/

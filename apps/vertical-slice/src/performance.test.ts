@@ -6,7 +6,7 @@ import { seedApprovedGeneratedFilesRule } from "./helpers/canonical-seed.js";
 import { claudePreTool, claudePrompt, claudeSessionStart } from "./helpers/hook-events.js";
 import { buildSliceRepo, cleanupSliceRepo, type SliceRepo } from "./helpers/slice-repo.js";
 
-// vertical-slice.md §7 performance budgets are "regression gates after a stable
+// The performance budgets are "regression gates after a stable
 // baseline is recorded". This fixture records the baseline and asserts generous
 // ceilings (~10-30× the p95 targets) so a gross regression (an N+1, a full scan)
 // fails while ordinary shared-runner variance does not.
@@ -181,7 +181,7 @@ afterAll(async () => {
   }
 });
 
-describe(`Performance budgets with ${ENTITY_COUNT} search entities (vertical-slice.md §7)`, () => {
+describe(`Performance budgets with ${ENTITY_COUNT} search entities`, () => {
   it("lexical search stays within the regression ceiling", async () => {
     const latency = await measure(20, () =>
       runSearch(repo.repoDir, "synthetic benchmark", { limit: 10 }),

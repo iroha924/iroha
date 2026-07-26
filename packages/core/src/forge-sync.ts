@@ -38,6 +38,7 @@ import {
   withTransaction,
 } from "@iroha/storage";
 import { z } from "zod";
+import { recordEvent } from "./event-log.js";
 import { detectReviewLearnings } from "./forge-review-learning.js";
 
 type ForgeConfig = RepositoryConfig["forge"];
@@ -489,6 +490,47 @@ async function persistForgeGraph(
  * records the attempt/error without advancing them (COALESCE upsert).
  */
 export async function runForgeSync(
+  db: Database,
+  repositoryId: TypedId<"repo">,
+  ref: ForgeRepositoryRef,
+  provider: ForgeProvider,
+  clock: Clock,
+  random: RandomSource,
+  reviewLearningThreshold: number,
+): Promise<ForgeSyncOutcome> {
+  const startedAt = performance.now();
+  const outcome = await forgeSyncOutcome(
+    db,
+    repositoryId,
+    ref,
+    provider,
+    clock,
+    random,
+    reviewLearningThreshold,
+  );
+  // `disabled`/`skipped` are configuration states, not runs; a clean sync is
+  // already observable as `sync_cursors.last_success_at`. Only an attempt that
+  // reached the provider and then failed or truncated is worth a row.
+  const clean = outcome.status === "synced" && !outcome.truncated;
+  if (outcome.status !== "disabled" && outcome.status !== "skipped" && !clean) {
+    await recordEvent(
+      db,
+      repositoryId,
+      { clock, random },
+      {
+        eventType: "sync.forge",
+        adapter: FORGE_PROVIDER,
+        outcome:
+          outcome.status === "synced" ? (outcome.truncated ? "warning" : "success") : "failure",
+        durationMs: Math.round(performance.now() - startedAt),
+        ...(outcome.status === "error" ? { errorCode: outcome.errorCode } : {}),
+      },
+    );
+  }
+  return outcome;
+}
+
+async function forgeSyncOutcome(
   db: Database,
   repositoryId: TypedId<"repo">,
   ref: ForgeRepositoryRef,

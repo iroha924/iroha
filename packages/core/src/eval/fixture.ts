@@ -1,7 +1,7 @@
 import type { RelationType } from "@iroha/storage";
 
 /**
- * The search-evaluation corpus and query set (database-schema.md §14). It is a
+ * The search-evaluation corpus and query set (contracts/database.md §14). It is a
  * synthetic, deterministic `.iroha`-shaped knowledge base about a fictional
  * payments platform: relevant docs carry distinctive terms for the lexical/
  * vector path, scope for the scope boost, and relations for the graph path,

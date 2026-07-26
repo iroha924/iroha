@@ -3,7 +3,7 @@ import { z } from "zod";
 
 const HEX_COLOR_PATTERN = /^#[0-9A-Fa-f]{6}$/;
 
-/** A single entry in `taxonomy/labels.yaml` (canonical-schema.md §10). */
+/** A single entry in `taxonomy/labels.yaml` (contracts/canonical.md §10). */
 const labelDefinitionSchema = z.strictObject({
   id: labelSchema,
   title: z.string().min(1).max(120),
@@ -16,7 +16,7 @@ const labelDefinitionSchema = z.strictObject({
 export type LabelDefinition = z.infer<typeof labelDefinitionSchema>;
 
 /**
- * Mirrors canonical-schema.md §10: `taxonomy/labels.yaml` "contains a
+ * Mirrors contracts/canonical.md §10: `taxonomy/labels.yaml` "contains a
  * sorted list" of label IDs, each unique. Sorted order and uniqueness are
  * validated here (not left to writer discipline) so a hand-edited file
  * that violates either is rejected on read, the same way malformed

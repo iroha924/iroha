@@ -63,7 +63,7 @@ function toStringArray(value: unknown): string[] {
  * Zod-validated canonical `rule.guard`). Returns null on any malformed shape or
  * empty `tools` (canonical `guard.tools` is min 1) so a corrupt spec is skipped
  * rather than blocking a tool — the per-rule half of the fail-open guarantee
- * (hooks-contract.md §6.3 / §7).
+ * (contracts/hooks.md §6.3 / §7).
  */
 function parseGuardSpec(json: string): GuardSpec | null {
   try {
@@ -84,7 +84,7 @@ function parseGuardSpec(json: string): GuardSpec | null {
  * classify every file-write tool (Claude Edit/Write/MultiEdit/NotebookEdit,
  * Codex apply_patch) to `operation: "write"`/`"delete"`, and reads to
  * `"read"` — so keying on the normalized operation, not the tool name, is what
- * "normalize tool name" (hooks-contract.md §6.3 step 1) means here and closes
+ * "normalize tool name" (contracts/hooks.md §6.3 step 1) means here and closes
  * the bypass where a write tool the guard did not enumerate slips through.
  */
 function isProtectedMutation(target: ToolTarget): boolean {
@@ -95,9 +95,9 @@ function isProtectedMutation(target: ToolTarget): boolean {
 }
 
 /**
- * Evaluate approved Guardrails against a tool use (hooks-contract.md §6.3): deny
+ * Evaluate approved Guardrails against a tool use (contracts/hooks.md §6.3): deny
  * the first Guardrail whose protected `guard.paths` glob covers a written/deleted
- * file target. Tool-agnostic by design (decision-log ID-036): `guard.tools` is
+ * file target. Tool-agnostic by design: `guard.tools` is
  * retained as author intent but path protection keys on the target operation, so
  * no write tool can bypass it. Pure and deterministic; a rule whose spec fails to
  * parse, or which protects no paths, is skipped (fail-open).
@@ -129,7 +129,7 @@ export function evaluateGuardrails(
 /**
  * Fetch approved Guardrails and evaluate them on the Hook path. Fail-open on a
  * query error (returns no denial): an internal failure never blocks the agent
- * (hooks-contract.md §7 — CI is the hard enforcement layer).
+ * (contracts/hooks.md §7 — CI is the hard enforcement layer).
  */
 export async function evaluateActiveGuardrails(
   db: Database,
@@ -146,11 +146,11 @@ export async function evaluateActiveGuardrails(
 export type GuardEnforceability = "enforceable" | "not_hook_enforceable" | "invalid";
 
 /**
- * Classify a stored guard spec for `iroha doctor` (vertical-slice.md §4):
+ * Classify a stored guard spec for `iroha doctor`:
  * `enforceable` (parses and protects at least one path), `not_hook_enforceable`
  * (parses but names no paths — a command/`deny_commands`-scoped Guardrail the
  * Hook cannot enforce, since the raw command is not available post-classification
- * per hooks-contract.md §8; CI is the hard enforcement layer), or `invalid`
+ * per contracts/hooks.md §8; CI is the hard enforcement layer), or `invalid`
  * (missing / malformed / empty `tools`). Reporting `not_hook_enforceable` and
  * `invalid` as warnings prevents a silent no-op Guardrail from reading as healthy.
  */
@@ -172,13 +172,13 @@ export interface GuardrailPathViolation {
 
 /**
  * Evaluate approved Guardrails against a set of changed paths, independent of any
- * tool — the deterministic check a CI job runs over a PR diff (vertical-slice.md
- * §4: "CI fixture independently enforces the generated-file rule"). Any changed
- * path under a Guardrail's protected `guard.paths` is a violation. Shares the
+ * tool — the deterministic check a CI job runs over a PR diff, so CI enforces a
+ * generated-file rule independently of the Hook. Any changed path under a
+ * Guardrail's protected `guard.paths` is a violation. Shares the
  * spec parsing and glob matching with the Hook path; the two can still differ on
  * their inputs (the Hook feeds realpath-resolved, repo-relative POSIX paths,
  * while a caller here supplies raw diff paths), so callers must pass normalized
- * repo-relative paths. `deny_commands` is not evaluated (ID-036).
+ * repo-relative paths. `deny_commands` is not evaluated.
  */
 export function guardrailPathViolations(
   rules: readonly ActiveRuleRow[],

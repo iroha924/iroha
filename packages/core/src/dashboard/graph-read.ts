@@ -12,7 +12,7 @@ import {
 } from "@iroha/storage";
 import { withDashboardRepository } from "./with-repository.js";
 
-/** dashboard-api.md §5: "Graph query limits: depth 4, 200 edges, 200 nodes." */
+/** contracts/dashboard-api.md §5: "Graph query limits: depth 4, 200 edges, 200 nodes." */
 const MAX_DEPTH = 4;
 const MAX_EDGES = 200;
 const MAX_NODES = 200;

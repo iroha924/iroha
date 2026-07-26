@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { err, IrohaError, ok, type Result } from "@iroha/domain";
 
-/** canonical-schema.md §3: `.iroha/schema-version` "contains exactly: `1`". */
+/** contracts/canonical.md §3: `.iroha/schema-version` "contains exactly: `1`". */
 export const SUPPORTED_SCHEMA_VERSION = "1";
 
 /**

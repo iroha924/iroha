@@ -32,7 +32,7 @@ body:
     id: refs
     attributes:
       label: Related spec / ADR
-      description: A docs/product/... path, or a decision-log ID
+      description: A docs/... path
     validations:
       required: true
   - type: textarea

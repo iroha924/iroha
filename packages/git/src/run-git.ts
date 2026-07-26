@@ -91,7 +91,7 @@ const GIT_TRACE_ENV_VARS = [
 // fails reading that file — i.e. stripping only GIT_CONFIG_GLOBAL leaves the
 // XDG pivot open; clearing both, it succeeds. This denylist still cannot strip
 // a config env var Git may add later; replacing it wholesale with an allowlist
-// was deferred (decision-log ID-049) because the allowlist's dropped-variable
+// was deferred because the allowlist's dropped-variable
 // risk lands on Windows, which is Tier 2 and absent from CI, so the change
 // would ship unvalidated.
 // https://git-scm.com/docs/git-config#ENVIRONMENT

@@ -1,6 +1,6 @@
 /**
  * @iroha/core dashboard use cases — the human control plane
- * (dashboard-api.md). The `@iroha/domain`/`@iroha/config`/`@iroha/storage`
+ * (contracts/dashboard-api.md). The `@iroha/domain`/`@iroha/config`/`@iroha/storage`
  * symbols the local API needs (`@iroha/api` may import only `@iroha/core`,
  * compatibility.md §4) are re-exported once from `mcp/facade.ts`, the single
  * cross-package re-export hub — not repeated here, so a duplicate `export *`
@@ -13,6 +13,7 @@ export * from "./candidate-review.js";
 export * from "./candidates-read.js";
 export * from "./cursor.js";
 export * from "./doctor.js";
+export * from "./events-read.js";
 export * from "./graph-read.js";
 export * from "./knowledge-read.js";
 export * from "./overview.js";

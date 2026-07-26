@@ -158,8 +158,8 @@ export interface GetNeighborsOptions {
 }
 
 /**
- * Matches implementation/database-schema.md §11: `getNeighbors(entityId, relationTypes?, direction?, limit?)`.
- * Ordered by `id` — dashboard-api.md §4 requires deterministic sorting with
+ * Matches contracts/database.md §11: `getNeighbors(entityId, relationTypes?, direction?, limit?)`.
+ * Ordered by `id` — contracts/dashboard-api.md §4 requires deterministic sorting with
  * an ID tie-breaker, and without any `ORDER BY`, SQLite is free to return
  * rows in whatever order the query plan happens to produce; when `limit`
  * cuts the result short (directly here, or via `getSubgraph`'s `maxEdges`),
@@ -293,7 +293,7 @@ function groupIncidentRelations(
 }
 
 /**
- * Matches implementation/database-schema.md §11: `getPath(fromId, toId, maxDepth = 4)`.
+ * Matches contracts/database.md §11: `getPath(fromId, toId, maxDepth = 4)`.
  * Implemented as breadth-first search in application code, one `getNeighbors`
  * call per frontier node, rather than a single recursive SQL CTE: SQLite's
  * recursive CTEs do not guarantee BFS expansion order without a hand-built
@@ -345,7 +345,7 @@ export async function getPath(
 }
 
 /**
- * Matches implementation/database-schema.md §11:
+ * Matches contracts/database.md §11:
  * `getSubgraph(rootIds, maxDepth = 2, maxEdges = 200)`. Also implemented as
  * BFS (see `getPath`'s comment). The visited-entity set stops re-expanding
  * an already-visited node, but that alone does not stop a `DUPLICATES`
@@ -588,7 +588,7 @@ export interface EmbeddingMetadataRow {
 export interface UpsertEmbeddingInput {
   searchDocumentId: TypedId<"sdoc">;
   contentHash: string;
-  /** Exactly 1024 components (implementation/database-schema.md §8: `F32_BLOB(1024)`). */
+  /** Exactly 1024 components (contracts/database.md §8: `F32_BLOB(1024)`). */
   embedding: readonly number[];
   createdAt: string;
 }
@@ -668,7 +668,7 @@ export async function getEmbeddingMetadataBySearchDocumentId(
  * e.g. `"[0.1,0.2]"`). `rebuildDatabase` uses this to carry an
  * already-computed embedding across a rebuild by content hash — the vector
  * for identical content is identical, so any row sharing the hash serves —
- * instead of re-calling the embedding provider (database-schema.md §12
+ * instead of re-calling the embedding provider (contracts/database.md §12
  * steps 8-9). Returns null when no stored embedding shares the hash.
  */
 export async function getEmbeddingVectorByContentHash(
@@ -800,7 +800,7 @@ function rowToEmbeddingJob(row: Record<string, unknown>): EmbeddingJobRow {
  * `pending`: `embedding_jobs` has no `content_hash` column of its own, so
  * this table cannot tell a genuinely-finished embedding from one whose
  * `search_documents.content_hash` has since changed underneath it — the
- * caller (who does have that context, per implementation/database-schema.md
+ * caller (who does have that context, per contracts/database.md
  * §12 step 9 "queue missing embeddings") signals "this needs work" simply
  * by calling this function again, and a `DO NOTHING` on a completed row
  * would otherwise leave `listDueEmbeddingJobs` never finding it, and the

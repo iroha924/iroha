@@ -17,7 +17,7 @@ import {
 export type SearchMode = "hybrid" | "lexical" | "vector" | "graph";
 export type MatchSource = "unicode" | "trigram" | "vector";
 
-/** database-schema.md §9's post-RRF boost multipliers. */
+/** contracts/database.md §9's post-RRF boost multipliers. */
 const AUTHORITY_FULL_MULTIPLIER = 1.25; // authority === 100 (approved canonical)
 const AUTHORITY_HIGH_MULTIPLIER = 1.1; // authority 80–99 (verified Git/Forge)
 /** Recency is a bounded tie-breaker only: ≤5% contribution, 180-day half-life. */
@@ -55,7 +55,7 @@ function authorityMultiplier(authority: number): number {
 }
 
 /**
- * Bounded recency nudge (database-schema.md §9): at most +5%, halving every 180
+ * Bounded recency nudge (contracts/database.md §9): at most +5%, halving every 180
  * days, so it breaks near-ties without letting a fresh low-authority document
  * outrank a directly-applicable approved one. A future/equal `updatedAt` (or a
  * clock skew) yields the full 5%; an unparseable timestamp contributes nothing.
@@ -70,7 +70,7 @@ function recencyFactor(updatedAt: string, now: string): number {
 }
 
 /**
- * database-schema.md §9's hybrid retrieval: fuses unicode-FTS, trigram-FTS, and
+ * contracts/database.md §9's hybrid retrieval: fuses unicode-FTS, trigram-FTS, and
  * (when a query vector is available) vector candidates with Reciprocal Rank
  * Fusion, then applies the authority multiplier and the recency tie-breaker.
  * `searchText` shares the same FTS/RRF primitives, so the lexical path and this

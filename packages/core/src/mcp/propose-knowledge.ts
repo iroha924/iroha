@@ -27,7 +27,7 @@ export interface McpProposeKnowledgeData {
   deduplicated: boolean;
   /**
    * Existing candidates of the same type (any status) whose title matches this
-   * proposal's (mcp-contract.md §6.7: "a likely duplicate returns a warning and
+   * proposal's (contracts/mcp.md §6.7: "a likely duplicate returns a warning and
    * related IDs; it does not silently merge"). Advisory only — the new candidate
    * is always created regardless.
    */
@@ -147,7 +147,7 @@ async function supersedePriorCandidate(
 }
 
 /**
- * Creates one pending knowledge candidate outside a Checkpoint (mcp-contract.md
+ * Creates one pending knowledge candidate outside a Checkpoint (contracts/mcp.md
  * §6.7). Never writes `.iroha/` — the candidate stays local and pending until a
  * human approves it. Free-text proposal fields are secret-scanned and redacted;
  * the write is idempotent by `idempotencyKey`. When `supersedesCandidateId` is
@@ -159,7 +159,7 @@ export async function mcpProposeKnowledge(
   input: McpProposeKnowledgeInput,
 ): Promise<Result<McpProposeKnowledgeData, IrohaError>> {
   return withMcpRepository(
-    { cwd: input.cwd, clock: input.clock, random: input.random },
+    { cwd: input.cwd, clock: input.clock, random: input.random, tool: "propose_knowledge" },
     async (ctx) => {
       const verified = await verifySessionToken({
         db: ctx.db,

@@ -1,4 +1,4 @@
-/** Hook context is capped well below Codex's ~2,500-token limit (hooks-contract.md §9, §12). */
+/** Hook context is capped well below Codex's ~2,500-token limit (contracts/hooks.md §9, §12). */
 const MAX_CONTEXT_CHARS = 8000;
 
 export interface RecentCheckpoint {
@@ -24,14 +24,14 @@ export interface SessionContextInput {
 }
 
 /**
- * Render the SessionStart context block (hooks-contract.md §9): the session
+ * Render the SessionStart context block (contracts/hooks.md §9): the session
  * token and IDs, the applicable approved knowledge, an optional recent
  * checkpoint, and the MCP instruction. IDs and provenance stay visible; the
  * text states repository facts, never a higher-priority command. The result is
  * bounded to {@link MAX_CONTEXT_CHARS}.
  *
  * The "Applicable approved knowledge" section is built from approved Rules only
- * — a direct, lexical listing with no remote embedding (ID-014 forbids remote
+ * — a direct, lexical listing with no remote embedding (a hook makes no remote
  * calls in hooks). Full query-driven vector retrieval stays in the MCP `search`/
  * `get_context` tools, which the agent calls explicitly.
  */

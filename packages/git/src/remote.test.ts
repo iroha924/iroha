@@ -36,7 +36,7 @@ describe("sanitizeRemoteUrl", () => {
   });
 
   it("suppresses a Windows drive-letter local path instead of exposing it (backslash form)", () => {
-    // mcp-contract.md §8: absolute filesystem paths never reach the model
+    // contracts/mcp.md §8: absolute filesystem paths never reach the model
     // or persistence; unlike a credential-bearing scheme:// URL, there is
     // no sub-slot to redact here — the whole value is the sensitive part.
     expect(sanitizeRemoteUrl("C:\\Users\\dev\\repo.git")).toBe(null);

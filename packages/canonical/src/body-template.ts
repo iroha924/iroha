@@ -5,7 +5,7 @@ import { visit } from "unist-util-visit";
 
 type CanonicalType = CanonicalDocument["frontmatter"]["type"];
 
-/** Required H2 section headings per canonical type, per canonical-schema.md §7. */
+/** Required H2 section headings per canonical type, per contracts/canonical.md §7. */
 const REQUIRED_H2_SECTIONS: Record<CanonicalType, readonly string[]> = {
   session_summary: [
     "Objective",
@@ -40,7 +40,7 @@ function collectHeadings(body: string): Heading[] {
 }
 
 /**
- * Validates the Markdown body template, per canonical-schema.md §7: "The
+ * Validates the Markdown body template, per contracts/canonical.md §7: "The
  * first H1 must equal `title`. Required H2 sections are validated by the
  * canonical parser after JSON Schema validation." Uses an actual Markdown
  * AST (not line/regex scanning) so a `#`-prefixed line inside a fenced

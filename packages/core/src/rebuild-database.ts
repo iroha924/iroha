@@ -45,7 +45,7 @@ async function removeSiblingDatabase(dbPath: string): Promise<void> {
 
 /**
  * Carries already-computed embeddings from the current database into the fresh
- * sibling by content hash (database-schema.md §12 steps 8-9), so an unchanged
+ * sibling by content hash (contracts/database.md §12 steps 8-9), so an unchanged
  * corpus does not re-hit the embedding provider after a rebuild. Best-effort
  * and fully offline: if the previous database is gone or unreadable — often the
  * very reason a rebuild is being run — reuse is silently skipped and the
@@ -105,7 +105,7 @@ export interface RebuildDatabaseResult {
 }
 
 /**
- * `iroha sync --rebuild` (database-schema.md §12, requirements.md Scenario
+ * `iroha sync --rebuild` (contracts/database.md §12, recovery scenario
  * E): builds a fresh sibling database from `.iroha/` alone — Git history
  * and Forge metadata import (§12 steps 1/5) are out of WP-05's scope, and
  * embedding reuse (§12 steps 8-9) needs WP-08's embedding provider — then
@@ -117,7 +117,7 @@ export interface RebuildDatabaseResult {
  * On a fresh clone that has never been initialized locally — the git-tracked
  * `.iroha/` canonical files are present but the git-ignored primary `index.db`
  * does not exist yet — this bootstraps that database instead of failing
- * (requirements.md Scenario E): `resolveInitializedRepository`
+ * (the missing-database recovery path): `resolveInitializedRepository`
  * succeeds from `.iroha/config.yaml`, and `replaceDatabaseAtomically` installs
  * the rebuilt sibling with no backup (`backupPath: null`).
  */

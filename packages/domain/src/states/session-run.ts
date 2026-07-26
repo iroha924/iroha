@@ -4,7 +4,7 @@ import { createTransitionValidator } from "./transition.js";
 
 /**
  * Matches migrations/001_initial.sql `session_runs.status` and
- * implementation/database-schema.md §7 "Session Run". Resume creates a new
+ * contracts/database.md §7 "Session Run". Resume creates a new
  * Run; it never reactivates a previous one, so no transition targets "active".
  */
 export type SessionRunStatus = "active" | "completed" | "interrupted" | "abandoned";

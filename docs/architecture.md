@@ -1,8 +1,8 @@
-# iroha — Design
+# iroha — Architecture
 
-> Status: Implementation Baseline v1  
-> Updated: 2026-07-18  
-> Requirements: [requirements.md](./requirements.md)
+The overall shape of iroha: responsibility boundaries, the main data flows, and the
+accepted architecture decisions (ADR table at the end). For the exact fields, timeouts, SQL,
+and HTTP endpoints, the per-concern contracts under `contracts/` are authoritative.
 
 ## 1. この文書の役割
 
@@ -10,19 +10,16 @@
 
 | Concern | Authoritative contract |
 |---|---|
-| 実装者への指示 | [CLAUDE.md](./CLAUDE.md) / [AGENTS.md](./AGENTS.md) |
-| Runtime、version、OS、package構成 | [Compatibility Contract](./implementation/compatibility.md) |
-| `.iroha/`形式と承認transaction | [Canonical Data Contract](./implementation/canonical-schema.md) |
-| DB、search、rebuild | [Database Contract](./implementation/database-schema.md) |
-| MCP tool | [MCP Contract](./implementation/mcp-contract.md) |
-| Claude Code/Codex Hook | [Hook Contract](./implementation/hooks-contract.md) |
-| Dashboard/API | [Dashboard/API Contract](./implementation/dashboard-api.md) |
-| End-to-end受け入れ | [First Vertical Slice](./implementation/vertical-slice.md) |
-| 実装順序 | [Implementation Plan](./implementation/implementation-plan.md) |
-| 確定判断 | [Decision Log](./implementation/decision-log.md) |
-| Machine contract | [schemas/](./schemas/) / [migration v1](./migrations/001_initial.sql) |
+| 実装者への指示 | [CLAUDE.md](../CLAUDE.md) / [AGENTS.md](../AGENTS.md) |
+| Runtime、version、OS、package構成 | [Compatibility Contract](./contracts/compatibility.md) |
+| `.iroha/`形式と承認transaction | [Canonical Data Contract](./contracts/canonical.md) |
+| DB、search、rebuild | [Database Contract](./contracts/database.md) |
+| MCP tool | [MCP Contract](./contracts/mcp.md) |
+| Claude Code/Codex Hook | [Hook Contract](./contracts/hooks.md) |
+| Dashboard/API | [Dashboard/API Contract](./contracts/dashboard-api.md) |
+| Machine contract | [schemas/](../schemas/) / [migration v1](../migrations/001_initial.sql) |
 
-矛盾がある場合は、machine contract、責務別contract、本書、requirements、backgroundの順に優先する。仕様を変更する場合は、Decision Logと影響するcontract・fixtureを同じ変更で更新する。
+矛盾がある場合は、machine contract、責務別contract、本書の順に優先する。仕様を変更する場合は、影響するcontract・fixtureを同じ変更で更新する。
 
 ## 2. アーキテクチャ概要
 
@@ -68,11 +65,11 @@ flowchart TB
 | Test | Vitest、Playwright、contract fixtures |
 | Build | tsdown Node bundle、Vite static assets |
 
-依存versionは自動追従せず、[Compatibility Contract](./implementation/compatibility.md) の固定baselineと`pnpm-lock.yaml`を使用する。
+依存versionは自動追従せず、[Compatibility Contract](./contracts/compatibility.md) の固定baselineと`pnpm-lock.yaml`を使用する。
 
 ## 4. Repository and package boundaries
 
-目標treeは [Implementation Plan](./implementation/implementation-plan.md) を正本とする。主要package責務は次の通り。
+主要package責務は次の通り。
 
 | Package | Responsibility |
 |---|---|
@@ -123,7 +120,7 @@ v0.1に常駐daemonはない。Hookは短命process、MCPはagent host管理のs
 - 承認済みDecision、Rule、Concept、Insight、Incident、Pattern、Review Learning
 - shared config、taxonomy、provenance、relation
 
-pending/rejected Candidate、raw prompt/transcript、Embedding、token、local path、Forge cursorは保存しない。厳密なpath、frontmatter、body templateは [Canonical Data Contract](./implementation/canonical-schema.md) と [canonical JSON Schema](./schemas/canonical-v1.schema.json) を使用する。
+pending/rejected Candidate、raw prompt/transcript、Embedding、token、local path、Forge cursorは保存しない。厳密なpath、frontmatter、body templateは [Canonical Data Contract](./contracts/canonical.md) と [canonical JSON Schema](../schemas/canonical-v1.schema.json) を使用する。
 
 ### Local data
 
@@ -143,7 +140,7 @@ Git内部pathを文字列連結で推測しない。linked worktree、非ASCII p
 
 ## 7. Database design
 
-DDLの正本は [001_initial.sql](./migrations/001_initial.sql) である。migrationはlibSQLで実行検証済みで、forward-onlyとする。
+DDLの正本は [001_initial.sql](../migrations/001_initial.sql) である。migrationはlibSQLで実行検証済みで、forward-onlyとする。
 
 | Group | Tables |
 |---|---|
@@ -209,7 +206,7 @@ stdio MCP serverは次を提供する。
 
 Agentは検索とlocal Candidate作成だけを行える。approve、reject、canonical edit、Guardrail activation、delete/export、privacy設定変更はMCPへ公開しない。
 
-Hookが発行する256-bit session tokenはrepository、Session、Run、platformへbindし、DBにはHMACだけを保存する。MCP mutationはtokenとidempotency keyを要求する。Checkpoint inputは [checkpoint JSON Schema](./schemas/checkpoint-v1.schema.json) で固定する。
+Hookが発行する256-bit session tokenはrepository、Session、Run、platformへbindし、DBにはHMACだけを保存する。MCP mutationはtokenとidempotency keyを要求する。Checkpoint inputは [checkpoint JSON Schema](../schemas/checkpoint-v1.schema.json) で固定する。
 
 ## 10. Human approval and publishing
 
@@ -247,7 +244,7 @@ Session Summaryは1 Agent Sessionにつき1 canonical documentとし、追加Run
 - `F32_BLOB(1024)`: 任意のVoyage vector
 - `relations`: Issue/file/symbol/PRとの近接性
 
-candidate generationは各indexのtop 30を取得し、RRFで融合する。authority、同一symbol/path、active Issue/PR、graph distanceをbounded multiplierで加味し、recencyは最大5%のtie-breakerにする。正確な式と評価thresholdは [Database Contract](./implementation/database-schema.md) を正本とする。
+candidate generationは各indexのtop 30を取得し、RRFで融合する。authority、同一symbol/path、active Issue/PR、graph distanceをbounded multiplierで加味し、recencyは最大5%のtie-breakerにする。正確な式と評価thresholdは [Database Contract](./contracts/database.md) を正本とする。
 
 Embedding未設定・失敗時はFTS+Graphへdegradeする。Hookはremote query embeddingを行わず、深いsemantic searchはMCP/CLI/Dashboardから明示的に実行する。
 
@@ -336,7 +333,7 @@ Guardrailは完全なsecurity boundaryではない。決定的に判定できる
 | Compatibility | Tier 1 OS、worktree、非ASCII/path space、CRLF |
 | Performance | 10k entity、Hook p95、search evaluation 60 queries |
 
-最初のend-to-end判定は [First Vertical Slice](./implementation/vertical-slice.md) を使用する。実装は [Implementation Plan](./implementation/implementation-plan.md) のWP-00から順に進める。
+end-to-endの受け入れは `apps/vertical-slice` と `apps/e2e` のテストが正本である。
 
 ## 17. Architecture Decision Record summary
 

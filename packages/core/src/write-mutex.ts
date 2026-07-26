@@ -1,5 +1,5 @@
 /**
- * In-process, per-repository write serialization (canonical-schema.md §12 step 1:
+ * In-process, per-repository write serialization (contracts/canonical.md §12 step 1:
  * "acquire a per-repository canonical write lock"). The MCP server and the
  * dashboard each run as a single process that can have concurrent in-flight
  * writers — the dashboard serves concurrent HTTP requests, and the MCP SDK
@@ -13,8 +13,7 @@
  * need it.
  *
  * It deliberately does NOT provide a cross-process lock. No cross-process lock
- * primitive exists in this repo and it has been deferred repeatedly
- * (decision-log ID-022 / ID-024(5) / ID-026(10) / ID-028(q) / ID-030); see the
+ * primitive exists in this repo and it has been deferred repeatedly; see the
  * WP-09 ADR. A canonical write in another process (a second `iroha` invocation)
  * is not serialized against this one — the canonical file rename is still
  * atomic, MCP writes stay correct via the idempotency-key conflict path, and a

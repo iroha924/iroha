@@ -6,7 +6,7 @@ const ALL_STATUSES: TurnStatus[] = ["active", "completed", "failed", "interrupte
 const VALID_EDGES = new Set(["active->completed", "active->failed", "active->interrupted"]);
 
 describe("turn status transitions", () => {
-  it("matches implementation/database-schema.md §7 exactly for every from/to pair", () => {
+  it("matches contracts/database.md §7 exactly for every from/to pair", () => {
     for (const from of ALL_STATUSES) {
       for (const to of ALL_STATUSES) {
         const expected = VALID_EDGES.has(`${from}->${to}`);

@@ -38,7 +38,7 @@ export interface RejectCandidateInput {
 /**
  * Rejects a pending candidate (`POST /api/v1/candidates/:id/reject`). No
  * canonical file is written; the candidate transitions `pending -> rejected`
- * (retained locally for audit, database-schema.md §7) and an audit row is
+ * (retained locally for audit, contracts/database.md §7) and an audit row is
  * appended, both under the optimistic revision token.
  */
 export async function rejectCandidate(
@@ -109,9 +109,9 @@ export interface SupersedeCandidateInput {
 /**
  * Supersedes a pending or approved candidate
  * (`POST /api/v1/candidates/:id/supersede`) — a `pending -> superseded` or
- * `approved -> superseded` transition plus audit (database-schema.md §7). The
+ * `approved -> superseded` transition plus audit (contracts/database.md §7). The
  * canonical-side effect of superseding an approved document (setting the file's
- * `status: superseded` and adding a `SUPERSEDES` edge, canonical-schema.md §13)
+ * `status: superseded` and adding a `SUPERSEDES` edge, contracts/canonical.md §13)
  * is a canonical edit deferred beyond v0.1.
  */
 export async function supersedeCandidate(
@@ -192,7 +192,7 @@ export interface EditCandidateData {
  * Edits a pending candidate's draft (`PATCH /api/v1/candidates/:id`). Only the
  * payload changes — no canonical file, no status transition — guarded by the
  * optimistic token, and a new token is returned so the reviewer can continue
- * editing (dashboard-api.md §5). An `edit` audit row is appended.
+ * editing (contracts/dashboard-api.md §5). An `edit` audit row is appended.
  */
 export async function editCandidate(
   input: EditCandidateInput,

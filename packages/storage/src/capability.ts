@@ -61,7 +61,7 @@ async function probeVector(db: Database, uniqueId: string): Promise<boolean> {
 }
 
 /**
- * Directly exercises each capability compatibility/implementation-plan.md §9
+ * Directly exercises each capability contracts/compatibility.md §9
  * requires `iroha doctor` to report (FTS5 `unicode61`, FTS5 `trigram`,
  * `F32_BLOB(1024)` + `libsql_vector_idx` + `vector_top_k`), using disposable
  * scratch tables so `doctor` can distinguish "libSQL build lacks the feature"

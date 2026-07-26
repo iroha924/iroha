@@ -1,8 +1,8 @@
 # CI review bots (Greptile / Codex): monitoring and response
 
-Every PR in this repo is reviewed by two AI reviewers: **Greptile** and **OpenAI Codex**. They are observed in fundamentally different ways. In particular, **Codex is invisible to CI**, so judging "the review passed" from `gh pr checks` alone silently misses every Codex finding. After a push, do not report the work as done until you have actually seen both reviewers' verdicts (an extension of `~/.claude/rules/ci-discipline.md`, "see CI through to completion"). The discipline of reading every finding without skipping is [[code-review-triage]].
+**Greptile is currently disabled for this repo**, so the only AI reviewer running on a PR is **OpenAI Codex**. The Greptile section below is kept for the day it is re-enabled — do not act on it while it is off (waiting for a "Greptile Review" check that will never appear stalls the whole post-push check). Codex is **invisible to CI**, so judging "the review passed" from `gh pr checks` alone sees nothing at all. After a push, do not report the work as done until you have actually seen Codex's verdict (an extension of `~/.claude/rules/ci-discipline.md`, "see CI through to completion"). The discipline of reading every finding without skipping is [[code-review-triage]].
 
-## Greptile
+## Greptile (disabled — reference only)
 
 - **Triggers**: on PR open, and on **every push** (observed in this repo). The public default is `triggerOnUpdates: false` (initial PR only), but this repo enables review-on-push via dashboard settings — there is no `greptile.json` in the repo; it is dashboard-managed. Manual re-trigger: comment `@greptileai` on the PR (no rate limits).
 - **Signals (three channels)**:
@@ -76,7 +76,7 @@ Before resolving a finding you judged INVALID, leave a PR comment with the evide
 
 After a push, do not say "review passed" until you have actually confirmed:
 
-- [ ] `gh pr checks <PR>` shows Greptile Review passing, AND you read the Summary + every inline comment and triaged them.
+- [ ] `gh pr checks <PR>` is green. (While Greptile is disabled there is no "Greptile Review" check to wait for.)
 - [ ] Codex checked: you polled its reaction/review and it is **not mid-review** (no lingering 👀 from `chatgpt-codex-connector[bot]`) — waited for it to resolve, never merged under a 👀. Only after the limit is confirmed clear and no reaction appears do you state "Codex did not run" and decide re-review necessity by the criteria above.
 - [ ] Threads for the findings you addressed are resolved.
 

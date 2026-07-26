@@ -19,7 +19,7 @@ function contextEventName(kind: NormalizedEvent["kind"]): string | undefined {
 
 /**
  * Render a normalized hook output to Claude Code's stdout JSON string, or
- * `undefined` when nothing should be written (hooks-contract.md §6/§9). Output
+ * `undefined` when nothing should be written (contracts/hooks.md §6/§9). Output
  * shapes are verbatim from the official Claude Code hooks documentation.
  */
 export function renderClaudeOutput(output: HookOutput, event: NormalizedEvent): string | undefined {

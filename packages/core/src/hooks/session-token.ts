@@ -15,7 +15,7 @@ const TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
 /**
  * The salt-keyed HMAC-SHA-256 of a plaintext token, in `hmac-sha256:<hex>` form
- * — the only representation of the token that is ever persisted (mcp-contract.md
+ * — the only representation of the token that is ever persisted (contracts/mcp.md
  * §5). Verification recomputes this from the presented
  * token and looks it up; a leaked database alone yields no usable token.
  */

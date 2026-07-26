@@ -49,7 +49,7 @@ the **trigger** (when to run it).
 - **What:** `pnpm knip` finds unused files, unused (dev)dependencies, and unused exports/types across
   the whole workspace. Its config is `knip.json`.
 - **Trigger:** run it after removing a feature or a caller, or when auditing what can be trimmed. It is
-  a review-time check (listed in the `iroha-review`/`self-review` skills), **not** a hard CI gate — a
+  a review-time check (listed in the `iroha-review` skill), **not** a hard CI gate — a
   knip false-positive on a legitimate new dependency should not block an unrelated PR.
 - **The config models these project-specific false positives.** knip cannot see them statically, so
   they are configured, not real dead code — do **not** "fix" a config entry by deleting the code:
@@ -62,7 +62,7 @@ the **trigger** (when to run it).
     at runtime by string id (`createEngine({ rules: [{ id: "@secretlint/..." }] })`), so no static
     import exists ([[secure-subprocess-and-credentials]]).
   - `packages/plugin` ignores its runtime deps: those are the concrete deps of the **published** npm
-    package (decision-log ID-038); the workspace source reaches them through the bundled
+    package; the workspace source reaches them through the bundled
     `@iroha/cli`/`@iroha/mcp`, not direct imports.
   - `packages/forge-github` ignores the graphql-codegen deps: `codegen.ts` references them by plugin
     name (string) at codegen time, not by import.
@@ -85,7 +85,7 @@ the **trigger** (when to run it).
 
 - **What:** `.github/renovate.json` configures the Renovate app to open the routine dependency-update
   PRs (npm + the `pnpm-workspace.yaml` catalog + GitHub Actions). It **replaces Dependabot** (there is
-  no `.github/dependabot.yml`; decision-log ID-083): Renovate understands the pnpm catalog, groups
+  no `.github/dependabot.yml`): Renovate understands the pnpm catalog, groups
   non-major bumps into one PR while a major is proposed on its own (except a genuine monorepo family,
   which `config:recommended`'s `group:monorepos`/`group:recommended` correctly keep together — e.g.
   `react` + `react-dom`), keeps action pins as commit SHAs + a version comment
@@ -115,7 +115,7 @@ the **trigger** (when to run it).
   before every publish (a `release.yml` step).
 - **attw reports "This package does not contain types" and that is expected:** the published package
   is a **CLI** (`bin: { iroha }`), not an importable library — `build-release.ts` strips the workspace
-  `exports`/types (decision-log ID-038). attw exits 0 on this, so it does not fail the gate; do not add
+  `exports`/types. attw exits 0 on this, so it does not fail the gate; do not add
   library types just to satisfy it.
 
 ## Bundle-size gate — size-limit
@@ -127,7 +127,7 @@ the **trigger** (when to run it).
   heavy import. Bumping a ceiling is a deliberate act — do it in the same PR that adds the weight, with
   a note on why.
 - **Supply-chain note:** size-limit 13.0.1 is in `minimumReleaseAgeExclude` (it was one day old at
-  adoption; decision-log ID-077). It is a devDependency by a high-reputation author, so this is
+  adoption). It is a devDependency by a high-reputation author, so this is
   accepted — but prefer an already-aged version for any future bump.
 
 ## End-to-end release smoke — Verdaccio + zx
@@ -136,7 +136,7 @@ the **trigger** (when to run it).
   exact `@irohalabs/iroha` artifact to a throwaway **Verdaccio** registry, installs it globally into a
   clean prefix, and runs `iroha --version` / `init` / `doctor` against a fresh git repo. It exercises
   the real publish → `npm install -g` → run path — native `@libsql/client`, `bin` resolution, bundled
-  runtime assets — that the in-tree `test:package` (decision-log ID-038) cannot, because that never
+  runtime assets — that the in-tree `test:package` cannot, because that never
   leaves the workspace. Everything is created in a temp dir and torn down in a `finally`.
 - **Trigger:** run it before a release, or after changing `build-release.ts` / the plugin's packaging.
   It needs **network** (Verdaccio proxies dependencies to npmjs) and a free port **4873**; it is a

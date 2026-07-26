@@ -23,12 +23,12 @@ export interface WithDashboardRepositoryInput {
  * `withMcpRepository` it surfaces `NOT_INITIALIZED` for a missing `.iroha/` and
  * never migrates implicitly; unlike it, no HMAC salt is ensured because the
  * dashboard authenticates with its own launch-token/cookie exchange
- * (dashboard-api.md §3), not the MCP `ist_` session token.
+ * (contracts/dashboard-api.md §3), not the MCP `ist_` session token.
  *
  * A fresh connection per request keeps the model simple and leak-free (a
  * crashed request cannot strand a shared handle); for a single local reviewer
  * the per-request open cost is well within the dashboard latency budget
- * (vertical-slice.md §7: initial API response <= 500ms).
+ * (the dashboard's 500ms initial-response budget).
  */
 async function openRunClose<T>(
   repo: ResolvedRepository,

@@ -26,7 +26,7 @@ import { runStatusTone } from "@/lib/status.js";
 
 const PLATFORMS: readonly SessionPlatformFilter[] = ["claude_code", "codex"];
 
-/** Session list with platform/date filters and cursor pagination (dashboard-api.md §6). No per-person metric (FR-108). */
+/** Session list with platform/date filters and cursor pagination (contracts/dashboard-api.md §6). No per-person metric (FR-108). */
 export function Sessions() {
   const { t } = useI18n();
   // "" means all platforms; the date inputs are bare YYYY-MM-DD (treated as UTC days).

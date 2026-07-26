@@ -5,7 +5,7 @@ import { mapLibsqlError } from "../errors.js";
 // `session_tokens` (migrations/002_session_tokens.sql). A SessionStart hook
 // issues a 256-bit token to the agent; only its salt-keyed HMAC-SHA-256 digest
 // is stored here, bound to one repository / Agent Session / Session Run /
-// platform (implementation/design.md §9, mcp-contract.md §5). The MCP server
+// platform (implementation/design.md §9, contracts/mcp.md §5). The MCP server
 // reads and verifies it; this package exposes the write and read-back surface.
 
 export type SessionTokenPlatform = "claude_code" | "codex";
@@ -91,7 +91,7 @@ export async function getSessionToken(
 
 /**
  * Slides the idle-expiry window on a successful verification: a token "expires
- * 24 hours after last use" (mcp-contract.md §5), so each verified MCP call bumps
+ * 24 hours after last use" (contracts/mcp.md §5), so each verified MCP call bumps
  * `last_used_at` to now and `expires_at` to now + 24h. Updating a non-existent
  * token is a no-op (0 rows) rather than an error — the caller has already
  * confirmed the row exists.

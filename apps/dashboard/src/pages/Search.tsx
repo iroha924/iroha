@@ -31,7 +31,7 @@ const KNOWLEDGE_TYPES = [
   "review_learning",
 ] as const;
 
-/** Natural-language search over approved knowledge (dashboard-api.md §6; FTS/hybrid via the API). */
+/** Natural-language search over approved knowledge (contracts/dashboard-api.md §6; FTS/hybrid via the API). */
 export function Search() {
   const { t } = useI18n();
   const [input, setInput] = useState("");

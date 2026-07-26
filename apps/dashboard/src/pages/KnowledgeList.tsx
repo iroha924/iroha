@@ -27,7 +27,7 @@ const KNOWLEDGE_TYPES = [
   "review_learning",
 ] as const;
 
-/** Approved-knowledge list with status/type filters and cursor pagination (dashboard-api.md §6). */
+/** Approved-knowledge list with status/type filters and cursor pagination (contracts/dashboard-api.md §6). */
 export function KnowledgeList() {
   const { t } = useI18n();
   const [statuses, setStatuses] = useState<KnowledgeStatusFilter[]>([]);

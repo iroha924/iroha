@@ -43,7 +43,7 @@ export function successEnvelope<T>(
 /**
  * Maps a domain error onto the wire failure envelope. Only the typed `code`,
  * the redaction-safe `message`, and `retryable` are exposed — never the error's
- * `cause`, stack, SQL, or `details` (mcp-contract.md §4). The session token and
+ * `cause`, stack, SQL, or `details` (contracts/mcp.md §4). The session token and
  * any absolute path are already kept out of `IrohaError.message` by
  * construction (typescript-conventions.md / the secure-subprocess rules).
  */

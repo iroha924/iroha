@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import type { RandomSource } from "@iroha/core";
 
-/** The HttpOnly session cookie name (dashboard-api.md §3). */
+/** The HttpOnly session cookie name (contracts/dashboard-api.md §3). */
 export const SESSION_COOKIE = "iroha_session";
 
 function base64url(bytes: Uint8Array): string {
@@ -27,10 +27,10 @@ export interface Auth {
 }
 
 /**
- * The dashboard's cookie-session authority (dashboard-api.md §3). A 256-bit
+ * The dashboard's cookie-session authority (contracts/dashboard-api.md §3). A 256-bit
  * launch token is exchanged exactly once for a random opaque session cookie
  * bound to this process; the exchange is single-use so a replay of the launch
- * token (dashboard-api.md §10 "auth exchange and replay rejection") is refused.
+ * token (contracts/dashboard-api.md §10 "auth exchange and replay rejection") is refused.
  * All state is in-memory and dies with the process — the cookie is never
  * persisted and is rotated on each dashboard start.
  */

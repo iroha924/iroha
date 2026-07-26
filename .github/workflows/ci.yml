@@ -1,5 +1,5 @@
 # WP-00 CI matrix skeleton.
-# Tier 1 mapping (docs/product/implementation/compatibility.md §6), verified against
+# Tier 1 mapping (docs/contracts/compatibility.md §6), verified against
 # https://github.com/actions/runner-images (2026-07-18):
 #   macos-14        -> macOS 14 arm64 (GitHub flags this image "Deprecated"; still GA today.
 #                       Re-check runner-images before it is removed.)
@@ -11,14 +11,13 @@
 #   intentionally NOT covered here: it requires a paid spending limit on
 #   this GitHub account (confirmed by an actual failed run: "recent account
 #   payments have failed or your spending limit needs to be increased").
-#   See implementation/decision-log.md ID-021.
 #
 #   windows-2025 was removed from this matrix and Windows moved from Tier 1
 #   to Tier 2 in compatibility.md §6: a native libSQL WAL-mode file lock can
 #   outlive db.close() on Windows for an unbounded time (confirmed both by
 #   this repo's own CI reproduction and by matching reports against other
 #   Node SQLite bindings), so single-invocation retry budgets cannot make
-#   Windows CI reliably green. See implementation/decision-log.md ID-026(14).
+#   Windows CI reliably green. See .claude/rules/windows-ci-compat.md.
 name: CI
 
 on:

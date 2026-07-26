@@ -7,6 +7,7 @@ export * from "./commands.js";
 export * from "./dashboard/index.js";
 export * from "./docs-scan.js";
 export * from "./doctor.js";
+export * from "./event-log.js";
 export * from "./hooks/context.js";
 export * from "./hooks/dispatch.js";
 export * from "./hooks/guardrail.js";

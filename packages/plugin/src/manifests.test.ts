@@ -48,7 +48,7 @@ describe("manifest generators produce schema-valid output", () => {
 });
 
 /**
- * Every platform event name in hooks-contract.md §3. A name the adapter
+ * Every platform event name in contracts/hooks.md §3. A name the adapter
  * understands but the manifest does not subscribe is a hook that can never fire
  * in an installed plugin — the defect this list exists to catch.
  */
@@ -106,7 +106,7 @@ describe("hook coverage", () => {
     for (const event of understood) {
       expect(codex[event], `Codex manifest does not subscribe ${event}`).toBeDefined();
     }
-    // Codex has no SessionEnd (hooks-contract.md §3); subscribing it would
+    // Codex has no SessionEnd (contracts/hooks.md §3); subscribing it would
     // register a handler for an event that never arrives.
     expect(Object.keys(codex)).not.toContain("SessionEnd");
   });

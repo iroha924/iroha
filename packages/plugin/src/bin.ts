@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 /**
  * The published `iroha` binary (`@irohalabs/iroha`), the single entrypoint the
- * plugin manifests drive (decision-log ID-038, Option A). This file is a thin,
+ * plugin manifests drive (Option A). This file is a thin,
  * import-light loader on purpose: it statically imports only `metadata.ts` (plain
  * constants) and pulls the heavy dispatch graph in via a dynamic `import()`, so a
  * failure while loading that graph is a rejected promise this `.catch` can see
  * rather than a fatal ESM module-load crash before any of our code runs.
  *
  * That distinction is load-bearing for the hook's fail-open invariant (CLAUDE.md;
- * hooks-contract.md §2/§7): a transitive dependency (`rc-config-loader`, via
+ * contracts/hooks.md §2/§7): a transitive dependency (`rc-config-loader`, via
  * `secretlint`) calls `process.cwd()` at module top level, which throws `ENOENT`
  * when the agent's working directory has been removed mid-session — and that
  * throw happens during import, before `dispatch.ts` executes. Isolating the heavy

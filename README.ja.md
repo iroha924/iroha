@@ -158,7 +158,7 @@ forge:
 
 ## 開発に参加する
 
-コントリビュート、大歓迎です！開発環境とワークフローは [CONTRIBUTING.md](./CONTRIBUTING.md) を見てください。製品仕様の全体は [docs/product/](./docs/product/) にあります。
+コントリビュート、大歓迎です！開発環境とワークフローは [CONTRIBUTING.md](./CONTRIBUTING.md) を見てください。製品仕様の全体は [docs/](./docs/) にあります。
 
 ## セキュリティ
 

@@ -6,7 +6,7 @@ import type { Database } from "./connection.js";
 import { mapLibsqlError } from "./errors.js";
 
 /**
- * implementation/database-schema.md §4 says migration files are named
+ * contracts/database.md §4 says migration files are named
  * `<four-digit>_<name>.sql`, but the actual `migrations/001_initial.sql` uses
  * a 3-digit prefix. Rather than picking a side of that prose/filename
  * disagreement, this accepts any digit-count numeric prefix.
@@ -120,7 +120,7 @@ async function copySidecarIfExists(
 
 /**
  * Flushes WAL content into the main database file (implementation/
- * database-schema.md §3 keeps journal_mode=WAL on), then copies it next to
+ * contracts/database.md §3 keeps journal_mode=WAL on), then copies it next to
  * itself with a timestamp suffix. A missing source file (a brand-new,
  * not-yet-migrated database) has nothing to preserve, so it is a no-op.
  *
@@ -169,7 +169,7 @@ export interface AppliedMigrationResult {
 export interface RunMigrationsOptions {
   /**
    * Skips the pre-migration backup — for a brand-new sibling database
-   * created by `sync --rebuild`, per implementation/database-schema.md §4
+   * created by `sync --rebuild`, per contracts/database.md §4
    * ("unless it is being rebuilt from scratch"). Defaults to `false`.
    */
   skipBackup?: boolean;

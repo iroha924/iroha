@@ -104,7 +104,7 @@ async function getEngine(): Promise<Awaited<ReturnType<typeof createEngine>>> {
 
 /**
  * Scans `content` for secrets before it is written to a canonical file
- * (canonical-schema.md §11 step 2, WP-04 acceptance criteria: "no raw
+ * (contracts/canonical.md §11 step 2, WP-04 acceptance criteria: "no raw
  * prompt/secret fixture reaches canonical output"). Reports findings
  * rather than silently redacting content — a canonical document requires
  * human approval, and rewriting approved content without a fresh review

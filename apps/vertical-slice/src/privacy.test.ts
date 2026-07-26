@@ -15,7 +15,7 @@ import { buildSliceRepo, cleanupSliceRepo, type SliceRepo } from "./helpers/slic
 
 // Distinctive, non-secret-shaped markers seeded into the raw prompt and the raw
 // edit body. Neither may reach any persisted or agent/human-facing artifact —
-// only their HMAC digests are stored (hooks-contract.md §10, vertical-slice.md §6).
+// only their HMAC digests are stored (contracts/hooks.md §10).
 const RAW_PROMPT_MARKER = "RAW-PROMPT-PRIVACY-MARKER-abc123";
 const RAW_PATCH_MARKER = "RAW-PATCH-PRIVACY-MARKER-def456";
 const SESSION_TOKEN_RE = /ist_[A-Za-z0-9_-]{43}/;
@@ -44,6 +44,18 @@ async function irohaFiles(canonicalDir: string): Promise<{ path: string; content
     }
   }
   return out;
+}
+
+/** Rows of one table, as `{ column: value }` objects. */
+async function tableRows(dbPath: string, table: string): Promise<Record<string, unknown>[]> {
+  const opened = await openDatabase(dbPath);
+  if (!opened.ok) throw new Error(`db open failed: ${opened.error.code}`);
+  try {
+    const result = await opened.value.execute(`SELECT * FROM "${table}"`);
+    return result.rows as unknown as Record<string, unknown>[];
+  } finally {
+    await closeDatabase(opened.value);
+  }
 }
 
 /** Every string cell across every real table (schema-driven, so no column is missed). */
@@ -190,7 +202,7 @@ afterAll(async () => {
   }
 });
 
-describe("Cross-artifact privacy scan (vertical-slice.md §6)", () => {
+describe("Cross-artifact privacy scan", () => {
   it("keeps raw prompt/patch, the session token, and absolute paths out of canonical files", async () => {
     const files = await irohaFiles(repo.resolved.irohaCanonicalDir);
     expect(files.length).toBeGreaterThan(0);
@@ -212,6 +224,57 @@ describe("Cross-artifact privacy scan (vertical-slice.md §6)", () => {
     expect(joined).not.toContain(SECRET_NEEDLE);
     // Tokens are stored only as `hmac-sha256:` digests, never as `ist_` plaintext.
     expect(SESSION_TOKEN_RE.test(joined)).toBe(false);
+  });
+
+  it("writes diagnostics rows carrying only the whitelisted columns", async () => {
+    // The DB-wide scan above covers `event_log` only if rows exist — without this
+    // the hooks/MCP calls in `beforeAll` could stop logging and the scan would
+    // still pass, vacuously. Assert the rows are there, and that each one holds
+    // only the fields contracts/hooks.md §10 permits.
+    // Only failures are recorded, and the slice's happy path has none — so the
+    // scan above covers `event_log` vacuously here. Assert the column whitelist
+    // against the schema instead, which holds whether or not rows exist.
+    const rows = await tableRows(repo.resolved.dbPath, "event_log");
+
+    const allowed = new Set([
+      "id",
+      "repository_id",
+      "session_id",
+      "turn_id",
+      "event_type",
+      "adapter",
+      "duration_ms",
+      "outcome",
+      "error_code",
+      "occurred_at",
+    ]);
+    for (const row of rows) {
+      expect(Object.keys(row).filter((key) => !allowed.has(key))).toEqual([]);
+    }
+
+    // The hooks driven in `beforeAll` deliberately write nothing (contracts/hooks.md
+    // §10): a diagnostics INSERT there can outlast the platform's hook deadline.
+    const eventTypes = new Set(rows.map((row) => String(row.event_type)));
+    expect([...eventTypes].some((type) => type.startsWith("hook."))).toBe(false);
+    expect(eventTypes.has("guardrail.denied")).toBe(false);
+    // Every `adapter` present is an identifier fixed in this repository — never a
+    // value from the request.
+    const fixedAdapters = new Set([
+      "github",
+      "create_checkpoint",
+      "get_active_rules",
+      "get_context",
+      "get_relations",
+      "get_session_state",
+      "link_entities",
+      "propose_knowledge",
+      "search",
+    ]);
+    for (const row of rows) {
+      if (row.adapter !== null) {
+        expect(fixedAdapters.has(String(row.adapter))).toBe(true);
+      }
+    }
   });
 
   it("keeps the raw prompt/patch and the redacted secret out of MCP responses", async () => {
