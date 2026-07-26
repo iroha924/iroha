@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card.js";
 import { type Locale, useI18n } from "@/i18n/index.js";
 import { cn } from "@/lib/utils";
 import { CheckpointDetail } from "@/pages/CheckpointDetail.js";
+import { Digest } from "@/pages/Digest.js";
 import { Doctor } from "@/pages/Doctor.js";
 import { Graph } from "@/pages/Graph.js";
 import { KnowledgeDetail } from "@/pages/KnowledgeDetail.js";
@@ -107,7 +108,8 @@ export function App() {
           <div className="flex items-center gap-8">
             <img src="/iroha-lockup-horizontal.svg" alt="iroha" className="h-6 w-auto" />
             <nav className="flex items-center gap-6">
-              <NavItem to="/" label={t("nav.overview")} />
+              <NavItem to="/" label={t("nav.digest")} />
+              <NavItem to="/overview" label={t("nav.overview")} />
               <NavItem to="/sessions" label={t("nav.sessions")} />
               <NavItem to="/review" label={t("nav.review")} />
               <NavItem to="/knowledge" label={t("nav.knowledge")} />
@@ -126,7 +128,10 @@ export function App() {
       </header>
       <main className="mx-auto max-w-[1120px] px-6 py-10">
         <Routes>
-          <Route path="/" element={<Overview />} />
+          {/* The Digest is the front page; Overview keeps the non-period view of
+              standing state (pending pressure, totals, recent sessions). */}
+          <Route path="/" element={<Digest />} />
+          <Route path="/overview" element={<Overview />} />
           <Route path="/sessions" element={<Sessions />} />
           <Route path="/sessions/:id" element={<SessionDetail />} />
           <Route path="/sessions/:id/runs/:runId" element={<RunDetail />} />

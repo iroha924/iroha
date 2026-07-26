@@ -220,7 +220,7 @@ test("approve a fixture candidate, write canonical, and read it as approved know
   await expect(page.getByText(DECISION_TITLE).first()).toBeVisible();
 
   // The strict `style-src 'self'` header (no nonce) must have refused nothing across
-  // the journey (Overview → Review → Review detail → Knowledge → Knowledge detail) —
+  // the journey (Digest → Review → Review detail → Knowledge → Knowledge detail) —
   // guarding that no shadcn/Base UI component injects a runtime `<style>` (Base UI runs
   // with `disableStyleElements` and the chart is color-less). If a future component must
   // inject one, this gate fails first and a nonce is added back via an ADR.

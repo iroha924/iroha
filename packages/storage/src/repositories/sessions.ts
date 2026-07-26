@@ -519,6 +519,12 @@ export interface InsertToolEventInput {
   status: ToolEventStatus;
   durationMs?: number;
   occurredAt: string;
+  /**
+   * The Rule that denied this tool use, when `status` is `'denied'`. Set on the
+   * insert the hook already performs, which is why a Guardrail denial gains an
+   * attribution without the hook gaining a write (migrations/005).
+   */
+  deniedByRuleId?: string;
 }
 
 function rowToToolEvent(row: Record<string, unknown>): ToolEventRow {
@@ -545,8 +551,8 @@ export async function insertToolEvent(
   try {
     await db.execute({
       sql: `INSERT INTO tool_events
-        (id, turn_id, external_tool_use_id, tool_name, phase, target_kind, target_summary, input_digest, response_digest, status, duration_ms, occurred_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (id, turn_id, external_tool_use_id, tool_name, phase, target_kind, target_summary, input_digest, response_digest, status, duration_ms, occurred_at, denied_by_rule_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         input.id,
         input.turnId,
@@ -560,6 +566,7 @@ export async function insertToolEvent(
         input.status,
         input.durationMs ?? null,
         input.occurredAt,
+        input.deniedByRuleId ?? null,
       ],
     });
     return ok(undefined);

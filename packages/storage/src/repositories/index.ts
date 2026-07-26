@@ -1,5 +1,6 @@
 export * from "./dashboard.js";
 export * from "./development.js";
+export * from "./digest.js";
 export * from "./graph-search.js";
 export * from "./identity.js";
 export * from "./knowledge.js";

@@ -142,12 +142,6 @@ async function pruneDistToRuntime(distDir: string, entry: string): Promise<void>
 }
 
 /**
- * Write the complete publishable package into `destDir`, replacing any previous
- * contents. Reuses `assembleArchive` for the plugin config + skills, then adds
- * the runtime `dist/` (pruned to the `bin.mjs` closure), `LICENSE`, `README.md`,
- * and the generated `package.json`.
- */
-/**
  * Rewrites the README's repo-relative links and images to absolute GitHub URLs.
  *
  * The repo copy keeps them relative so they follow whichever branch or fork is
@@ -157,7 +151,7 @@ async function pruneDistToRuntime(distDir: string, entry: string): Promise<void>
  * page, not the file); everything else to the blob view, which redirects to the
  * tree view for a directory.
  */
-export function absolutizeRepoLinks(markdown: string): string {
+function absolutizeRepoLinks(markdown: string): string {
   const blob = `${PLUGIN_REPOSITORY}/blob/main`;
   const raw = `${PLUGIN_REPOSITORY.replace("https://github.com/", "https://raw.githubusercontent.com/")}/main`;
   return markdown
@@ -166,6 +160,12 @@ export function absolutizeRepoLinks(markdown: string): string {
     .replace(/\]\((?!https?:|#)\.?\/?([^)]+)\)/g, `](${blob}/$1)`);
 }
 
+/**
+ * Write the complete publishable package into `destDir`, replacing any previous
+ * contents. Reuses `assembleArchive` for the plugin config + skills, then adds
+ * the runtime `dist/` (pruned to the `bin.mjs` closure), `LICENSE`, `README.md`,
+ * and the generated `package.json`.
+ */
 export async function assembleRelease(destDir: string): Promise<void> {
   await assembleArchive(destDir); // manifests, hook/MCP config, skills (removes destDir first)
   await cp(join(PLUGIN_DIR, "dist"), join(destDir, "dist"), { recursive: true });

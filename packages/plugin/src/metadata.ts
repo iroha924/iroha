@@ -100,4 +100,12 @@ export const HOOK_EVENTS: readonly HookEventSpec[] = [
  * both Claude (`/iroha:<name>`) and Codex (`$<name>`; Codex documents no richer
  * frontmatter and no plugin namespace — the CLI is the reliable fallback).
  */
-export const SKILL_NAMES = ["init", "sync", "search", "checkpoint", "dashboard", "doctor"] as const;
+export const SKILL_NAMES = [
+  "init",
+  "sync",
+  "search",
+  "checkpoint",
+  "dashboard",
+  "doctor",
+  "digest",
+] as const;

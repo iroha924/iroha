@@ -18,6 +18,7 @@ export * from "./hooks/run-hook.js";
 export * from "./hooks/session-token.js";
 export * from "./init-repository.js";
 export * from "./mcp/create-checkpoint.js";
+export * from "./mcp/digest.js";
 export * from "./mcp/facade.js";
 export * from "./mcp/get-active-rules.js";
 export * from "./mcp/get-context.js";

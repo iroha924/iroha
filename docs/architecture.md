@@ -279,7 +279,8 @@ Forge failureはcanonical/Git syncを失敗させない。GitHubはP1、GitLab�
 
 Initial UI:
 
-- Overview
+- Digest（front page `/`）
+- Overview（`/overview`）
 - Sessions / Runs / Turns / Checkpoints
 - Candidate Review Queue
 - Knowledge
@@ -288,6 +289,12 @@ Initial UI:
 - Settings / Doctor
 
 raw conversation endpoint、個人ranking、生産性scoreは作らない。Realtimeは不要で、mutation後invalidateとvisible pageの5秒pollingだけを使用する。WebSocket/SSEは使わない。
+
+### Digest（ADR-016）
+
+front pageは期間（default 1 week、`local_settings`の`digest.period`で変更可）のeditorial digestである。数値はrequestごとにDBから再計算され、canonicalにもGitにも一切残らない。**prose composerは開発者自身のClaude Code / Codex session**（`/iroha:digest` skill → `get_digest_data` / `save_digest_prose`）であり、irohaのprocessが外部LLMを呼ぶことはない — 「no external LLM call without a new ADR」invariantに対する非違反をここに明記する（"iroha generates editorial prose"は逆に読まれやすいため）。
+
+数値とproseの境界は**fact-ID seam**である。agentはfact idを`{{factId}}`で参照するだけで、数値を書き込むfieldを持たない。renderer側がirohaの値を代入するため、捏造された数値はproseとして表現不能である。防げないのは「正しい数値と矛盾するprose」であり、そのため数値をauthoritativeとして描画し、proseには"unreviewed"を明示する。合成されたadherence scoreは提示しない（advisory ruleの多数はmachine-observableな痕跡を持たないため）。
 
 ## 14. Privacy and security
 
@@ -354,5 +361,6 @@ end-to-endの受け入れは `apps/vertical-slice` と `apps/e2e` のテスト�
 | ADR-013 | No cloud、no daemon、no realtime | Accepted |
 | ADR-014 | No transcript core dependency、no surveillance | Accepted |
 | ADR-015 | scoped npm `@irohalabs/iroha` | Accepted |
+| ADR-016 | Digestのprose composerは開発者自身のagent session。irohaは外部LLMを呼ばない | Accepted |
 
 Public licenseの選択だけは初回release前のdecision gateであり、local implementationを止めない。

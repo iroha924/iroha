@@ -383,6 +383,73 @@ interface LinkEntitiesInput {
 
 Self-relations are rejected except `RELATED_TO`. Unknown entity IDs are rejected; tools do not invent placeholder entities.
 
+### 6.9 `get_digest_data`
+
+Purpose: return one Digest period's aggregate facts so an agent can compose the period's prose.
+
+Annotations: read-only, idempotent.
+
+Input:
+
+```ts
+interface GetDigestDataInput {
+  unit?: "week" | "month";          // default: the stored `digest.period`
+  offset?: number;                  // integer 0..520; 0 is the current period
+}
+```
+
+No session token, matching the other read-only tools: it exposes aggregate counts already
+derivable from the tools an agent has, and requiring a token would stop the composing skill from
+running outside a live Run.
+
+The response carries the period's identity, the aggregates, the same aggregates for the previous
+period, any correlations iroha computed, the composed prose if the period already has one, and a
+flat `facts` array of `{ id, value, label }`.
+
+**Aggregates only, and person-less by construction.** The payload has no field named or typed as
+actor, author, email, or session owner anywhere in it, so per-person narration is not something
+the agent could produce — the data never arrives. Free text appearing in a fact comes only from an
+already-approved canonical entity's title or summary, never from a prompt, a transcript, or raw
+tool input.
+
+### 6.10 `save_digest_prose`
+
+Purpose: store the composed prose for one Digest period.
+
+Annotations: local-write, idempotent, non-canonical and never committed to Git.
+
+Input:
+
+```ts
+interface SaveDigestProseInput {
+  sessionToken: string;
+  unit?: "week" | "month";
+  offset?: number;
+  prose: {
+    headline: string;               // 1..200
+    standfirst: string;             // 1..500
+    sections: {                     // 1..4
+      slot: "stumbles" | "codebase" | "wins" | "teaching";
+      heading: string;              // 1..120
+      body: string;                 // 1..2000
+    }[];
+  };
+}
+```
+
+**There is no field for a number.** To state a figure the prose references a fact id as
+`{{factId}}`, and the renderer substitutes iroha's own value — so a fabricated figure is not
+expressible. A reference to an id the period did not issue is rejected as `INVALID_INPUT` with the
+offending ids in `details.unknownFactIds`. An id that later disappears renders as an em dash, not
+a stale number.
+
+Gates, in order: session token, shape, fact references, then a secret scan of every free-text
+field before the write. Recomposing a period overwrites its previous issue — the numbers are
+recomputed on every read, so an older narration of the same period is stale rather than history.
+
+What the seam cannot prevent is prose that contradicts a correct number; the dashboard therefore
+renders numbers as authoritative and labels the prose unreviewed.
+
 ## 7. Knowledge proposal contract
 
 ```ts

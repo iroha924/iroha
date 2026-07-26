@@ -78,7 +78,7 @@ describe("Guardrail flow", () => {
     if (!db.ok) throw new Error("db open failed");
     try {
       const events = await db.value.execute(
-        "SELECT tool_name, target_kind, target_summary, input_digest, response_digest FROM tool_events WHERE status = 'denied'",
+        "SELECT tool_name, target_kind, target_summary, input_digest, response_digest, denied_by_rule_id FROM tool_events WHERE status = 'denied'",
       );
       const denialPaths = events.rows.map((row) => String(row.target_summary));
       expect(denialPaths).toContain(GENERATED_FILE);
@@ -86,6 +86,14 @@ describe("Guardrail flow", () => {
         Object.values(row).map((value) => (value === null ? "" : String(value))),
       );
       expect(cells.some((cell) => cell.includes(marker))).toBe(false);
+
+      // Every denial names the Rule that produced it, on the row the hook
+      // already wrote — the attribution the Digest groups its local metric by.
+      // Without it a denial count carries no lesson.
+      expect(events.rows.length).toBeGreaterThan(0);
+      expect(events.rows.map((row) => String(row.denied_by_rule_id))).toEqual(
+        events.rows.map(() => guardRule.id),
+      );
     } finally {
       await closeDatabase(db.value);
     }

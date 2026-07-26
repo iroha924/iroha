@@ -125,6 +125,8 @@ describe("built binary — MCP surface", () => {
         "create_checkpoint",
         "propose_knowledge",
         "link_entities",
+        "get_digest_data",
+        "save_digest_prose",
       ]) {
         expect(names, `missing tool ${expected}`).toContain(expected);
       }

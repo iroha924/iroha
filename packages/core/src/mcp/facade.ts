@@ -27,5 +27,12 @@ export {
   proposalSchema,
   SystemClock,
 } from "@iroha/domain";
-export type { CandidateType, EntityType, RelationDirection, RelationType } from "@iroha/storage";
+export type {
+  CandidateType,
+  DigestKnowledgeRef,
+  DigestList,
+  EntityType,
+  RelationDirection,
+  RelationType,
+} from "@iroha/storage";
 export { ENTITY_TYPES, RELATION_TYPES } from "@iroha/storage";

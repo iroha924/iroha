@@ -10,6 +10,7 @@ import {
   getBootstrap,
   getCandidateDetail,
   getCheckpointDetail,
+  getDigest,
   getEntityRelations,
   getKnowledgeDetail,
   getOverview,
@@ -172,6 +173,17 @@ const knowledgeQuery = z.object({
 });
 const relationsQuery = z.object({ limit: queryParam("Max relations to return") });
 const eventsQuery = z.object({ limit: queryParam("Max events to return (1-100, default 30)") });
+const digestQuery = z.object({
+  unit: queryParam("week | month; defaults to this developer's stored preference"),
+  offset: queryParam("0 (default) is the current period; higher values are back issues", "1"),
+});
+
+/**
+ * How far back a back issue may be requested. Any calendar period exists, so the
+ * only thing an unbounded offset buys is an absurd date from a typo; ten years of
+ * weeks is well past the point where a local index still holds the data.
+ */
+const MAX_DIGEST_OFFSET = 520;
 
 // The anti-CSRF marker every state-changing request must carry (contracts/dashboard-api.md
 // §3). Documented on each mutation so a client generated from `/api/doc` sends it
@@ -470,6 +482,30 @@ export function createApp(config: AppConfig) {
       responses: RESPONSES,
     }),
     (c) => respond(c, getOverview(useCaseCtx)),
+  );
+
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/v1/digest",
+      tags: ["digest"],
+      summary: "Editorial digest for one anchored calendar period",
+      description:
+        "Deterministic period facts plus the composed prose, if any. Numbers are computed on request, so the payload is always current and a period with no prose renders from templated copy rather than being blank. `unit` and `offset` are lenient: an unknown unit or an out-of-range offset is ignored, not rejected.",
+      request: { query: digestQuery },
+      responses: RESPONSES,
+    }),
+    (c) => {
+      const q = c.req.valid("query");
+      return respond(
+        c,
+        getDigest({
+          ...useCaseCtx,
+          ...enumOpt<"week" | "month">("unit", firstOf(q.unit), ["week", "month"]),
+          ...intOpt("offset", firstOf(q.offset), 0, MAX_DIGEST_OFFSET),
+        }),
+      );
+    },
   );
 
   app.openapi(
@@ -1049,6 +1085,22 @@ function numOpt(key: string, value: string | undefined): Record<string, number> 
   if (value === undefined) return {};
   const n = Number(value);
   return Number.isFinite(n) ? { [key]: n } : {};
+}
+
+/**
+ * Like `numOpt`, but keeps only an integer within `[min, max]`. Anything else is
+ * dropped rather than rejected, which is the query convention here — the caller
+ * then sees the default, not a 400.
+ */
+function intOpt(
+  key: string,
+  value: string | undefined,
+  min: number,
+  max: number,
+): Record<string, number> {
+  if (value === undefined) return {};
+  const n = Number(value);
+  return Number.isInteger(n) && n >= min && n <= max ? { [key]: n } : {};
 }
 
 function enumOpt<T extends string>(
