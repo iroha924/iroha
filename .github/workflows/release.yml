@@ -10,7 +10,7 @@
 # produce the expected tarball (see release-pack.test.ts). The npm-publish and
 # GitHub-Release steps are gated behind `publish: true` and cannot be exercised
 # in CI (no real registry publish) — they run for the first time at a real,
-# human-authorized release (decision-log ID-040, ci-discipline).
+# human-authorized release (ci-discipline).
 name: Release
 
 on:

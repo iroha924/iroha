@@ -19,7 +19,6 @@
 | Dashboard/API | [Dashboard/API Contract](./implementation/dashboard-api.md) |
 | End-to-end受け入れ | [First Vertical Slice](./implementation/vertical-slice.md) |
 | 実装順序 | [Implementation Plan](./implementation/implementation-plan.md) |
-| 確定判断 | [Decision Log](./implementation/decision-log.md) |
 | Machine contract | [schemas/](./schemas/) / [migration v1](./migrations/001_initial.sql) |
 
 矛盾がある場合は、machine contract、責務別contract、本書、requirements、backgroundの順に優先する。仕様を変更する場合は、Decision Logと影響するcontract・fixtureを同じ変更で更新する。

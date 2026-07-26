@@ -170,7 +170,7 @@ function buildCommon(input: BuildCanonicalInput): CommonFrontmatter {
  * Builds the `CanonicalDocument` for an approved candidate from its
  * `KnowledgeProposal` payload plus approval metadata. Type-specific
  * classification comes from the reviewer's `draft.classification` when set,
- * otherwise a deterministic default (decision-log WP-09 ADR). The result is not
+ * otherwise a deterministic default. The result is not
  * re-validated here — `writeCanonicalDocument` runs the authoritative Zod +
  * body-template + secret validation, so a proposal whose body is missing a
  * required section (or whose type-specific values are out of range) fails there

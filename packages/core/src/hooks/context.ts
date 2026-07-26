@@ -31,7 +31,7 @@ export interface SessionContextInput {
  * bounded to {@link MAX_CONTEXT_CHARS}.
  *
  * The "Applicable approved knowledge" section is built from approved Rules only
- * — a direct, lexical listing with no remote embedding (ID-014 forbids remote
+ * — a direct, lexical listing with no remote embedding (a hook makes no remote
  * calls in hooks). Full query-driven vector retrieval stays in the MCP `search`/
  * `get_context` tools, which the agent calls explicitly.
  */

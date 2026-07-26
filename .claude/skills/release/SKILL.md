@@ -10,7 +10,7 @@ allowed-tools: Bash(pnpm *) Bash(node -p *) Bash(npm view *) Bash(curl *) Read G
 iroha publishes to npm as **`@irohalabs/iroha`**. Publishing is **human-gated**: the
 `release.yml` workflow is `workflow_dispatch`-only and defaults to a dry run, and it
 authenticates with **OIDC trusted publishing** — there is no `NPM_TOKEN` and there must
-never be one (decision-log ID-071, which supersedes ID-040's token auth). This skill does
+never be one. This skill does
 the local preparation and verification; the actual publish is a human dispatching the workflow.
 
 ## Preconditions

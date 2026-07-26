@@ -24,7 +24,7 @@ When affected, also run and paste `pnpm test:contracts` / `test:integration` / `
 ## Links
 
 - Related issue:
-- Spec / ADR (a `docs/product/...` path, a `decision-log.md` ID):
+- Spec / ADR (a `docs/product/...` path):
 
 ## Risks and rollback
 

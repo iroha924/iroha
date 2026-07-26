@@ -3,7 +3,7 @@
  * `@iroha/mcp` and `@iroha/api` transport packages need. `compatibility.md` §4
  * lets each depend only on `@iroha/core` (biome-enforced), so those thin layers
  * receive their shared value/type vocabulary through this one facade — the same
- * pattern `@iroha/platform` uses to feed the adapters (decision-log ID-028(a)).
+ * pattern `@iroha/platform` uses to feed the adapters.
  * All cross-package re-exports live here so a duplicate `export *` elsewhere
  * cannot make a name ambiguous and silently drop it from `@iroha/core`.
  */

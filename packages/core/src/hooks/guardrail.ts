@@ -97,7 +97,7 @@ function isProtectedMutation(target: ToolTarget): boolean {
 /**
  * Evaluate approved Guardrails against a tool use (hooks-contract.md §6.3): deny
  * the first Guardrail whose protected `guard.paths` glob covers a written/deleted
- * file target. Tool-agnostic by design (decision-log ID-036): `guard.tools` is
+ * file target. Tool-agnostic by design: `guard.tools` is
  * retained as author intent but path protection keys on the target operation, so
  * no write tool can bypass it. Pure and deterministic; a rule whose spec fails to
  * parse, or which protects no paths, is skipped (fail-open).
@@ -178,7 +178,7 @@ export interface GuardrailPathViolation {
  * spec parsing and glob matching with the Hook path; the two can still differ on
  * their inputs (the Hook feeds realpath-resolved, repo-relative POSIX paths,
  * while a caller here supplies raw diff paths), so callers must pass normalized
- * repo-relative paths. `deny_commands` is not evaluated (ID-036).
+ * repo-relative paths. `deny_commands` is not evaluated.
  */
 export function guardrailPathViolations(
   rules: readonly ActiveRuleRow[],

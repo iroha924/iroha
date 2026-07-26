@@ -21,7 +21,7 @@ The iroha MCP server is the stable agent-facing API shared by Claude Code and Co
 - A missing/uninitialized repository returns a typed error; it does not initialize implicitly.
 
 Plugin config launches the stdio MCP server through the installed `iroha`
-binary (WP-11 Option A — see decision-log ID-038):
+binary (WP-11 Option A):
 
 ```text
 iroha __mcp
@@ -164,7 +164,7 @@ interface SearchData {
 
 `SourceRef` and `RelationPreview` are MCP *output* shapes — the server constructs
 them, they are never parsed from a request — so they intentionally have no
-`schemas/*.json` JSON Schema mirror (decision-log ID-032):
+`schemas/*.json` JSON Schema mirror:
 
 ```ts
 interface SourceRef {

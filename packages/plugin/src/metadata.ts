@@ -5,10 +5,10 @@
  * drift on name, version, or component wiring.
  */
 
-/** Product name; also the plugin identifier and the npm binary (ID-011). */
+/** Product name; also the plugin identifier and the npm binary. */
 export const PLUGIN_NAME = "iroha";
 
-/** Published npm package the marketplaces resolve the plugin from (ID-070). */
+/** Published npm package the marketplaces resolve the plugin from. */
 export const PUBLISHED_PACKAGE_NAME = "@irohalabs/iroha";
 
 /**
@@ -23,7 +23,7 @@ export const PLUGIN_DESCRIPTION = "Local-first Engineering Memory Graph for Clau
 /** Publisher (product invariant). */
 export const PLUGIN_AUTHOR = { name: "iroha labs" } as const;
 
-/** SPDX license id (decision-log ID-019). */
+/** SPDX license id. */
 export const PLUGIN_LICENSE = "Apache-2.0";
 
 /** Canonical source repository (also the homepage in the absence of a docs site). */
@@ -39,7 +39,7 @@ export const PLUGIN_KEYWORDS = [
 ] as const;
 
 /**
- * The installed npm binary the plugin drives (Option A, decision-log ID-038):
+ * The installed npm binary the plugin drives (Option A):
  * hooks and the MCP server run through `iroha`, which npm resolves together with
  * its native `@libsql/client` binding — the plugin archive ships no runtime `dist`.
  */

@@ -144,7 +144,7 @@ async function writeConfigAtomic(
  * durably writing a different random `repository_id` to `config.yaml`
  * independently, which would leave `config.yaml` and the winning DB row
  * permanently disagreeing (not self-correcting the way a plain retry fixes
- * ID-024(5)'s migration-insert race).
+ * the migration-insert race).
  */
 async function resolveOrRegisterRepository(
   db: Database,

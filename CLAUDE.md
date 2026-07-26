@@ -22,8 +22,7 @@ Before changing code, read these files under `<spec-root>` in order:
 9. `implementation/hooks-contract.md`
 10. `implementation/dashboard-api.md`
 11. `implementation/vertical-slice.md`
-12. `implementation/decision-log.md`
-13. `implementation/implementation-plan.md`
+12. `implementation/implementation-plan.md`
 
 Machine-readable contracts live under `<spec-root>/schemas/` and `<spec-root>/migrations/`. When prose and a machine-readable contract disagree, stop and report the conflict. Do not silently choose one.
 
@@ -87,7 +86,8 @@ If a specification leaves a detail open:
 
 1. prefer an existing invariant or accepted ADR;
 2. prefer a reversible implementation behind a port;
-3. record the assumption in `implementation/decision-log.md`;
+3. record the assumption where it takes effect — a comment at the code or config that embodies it,
+   or the relevant `.claude/rules/` file when it is a convention rather than one site;
 4. stop for human input only if the choice changes canonical data, security/privacy, public API, or distribution compatibility.
 
 Do not change an accepted ADR merely to simplify the current task.
@@ -112,10 +112,15 @@ Packages doing subprocess execution, credential/secret handling, or path/symlink
 - `.claude/rules/secure-subprocess-and-credentials.md` — path-scoped (`packages/*/src/**/*.ts`), auto-loads when Claude reads a matching file — env var allowlisting, never putting raw values in errors, locale-independent stderr parsing.
 - `.claude/rules/path-and-symlink-safety.md` — path-scoped (`packages/*/src/**/*.ts`), auto-loads when Claude reads a matching file — the `..`-before-symlink-resolution invariant and how to avoid re-breaking it.
 
-Before pushing a fix to one of these packages, run the `self-review` skill
-(`.claude/skills/self-review/`) — it exists specifically to catch a narrow fix that leaves the
-same defect at a sibling call site, or that trades one false-negative for another. It calls the
-`security-diff-reviewer` subagent for an independent, fresh-context adversarial pass. A
-`PreToolUse` hook on `git push` (`.claude/hooks/check-path-safety-diff.sh`) also flags any newly
-added `path.resolve`/`path.join`/`path.normalize` call in `*paths*.ts`/`*credential*.ts` files for
-manual approval — this is a deterministic backstop, not a substitute for the self-review pass.
+Those two path-scoped rules carry the thinking that must precede such a change; they auto-load
+when you open a matching file, so there is nothing to invoke.
+
+To review a change, run the `iroha-review` skill (`.claude/skills/iroha-review/`) — the repository's
+single review pipeline. It runs the deterministic gate, then launches fresh-context reviewers in
+parallel, and adds the `security-diff-reviewer` subagent when the diff touches `packages/git`,
+`packages/forge*`, or `packages/adapter-*` — the pass that catches a narrow fix leaving the same
+defect at a sibling call site, or trading one false-negative for another. Run it before pushing a
+fix to one of these packages. A `PreToolUse` hook on `git push`
+(`.claude/hooks/check-path-safety-diff.sh`) also flags any newly added
+`path.resolve`/`path.join`/`path.normalize` call in `*paths*.ts`/`*credential*.ts` files for manual
+approval — this is a deterministic backstop, not a substitute for the review pass.

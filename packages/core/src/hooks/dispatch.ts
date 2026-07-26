@@ -82,7 +82,7 @@ const MAX_BRANCH_CHARS = 200;
  * An iroha session token embedded anywhere in a string — `ist_` followed by 43
  * base64url characters, `sessionTokenSchema`'s shape without its anchors. The
  * shared `scanForSecrets` deliberately requires the token to be followed by a
- * non-token character (a canonical-write tradeoff, decision-log ID-050) so it
+ * non-token character (a canonical-write tradeoff) so it
  * does not over-reject prose, which means a token glued to a suffix
  * (`…ist_<43>-work`) passes it. For a branch name that leniency is wrong: the
  * value is short opaque provenance, dropping it costs only a `NULL` (the same as

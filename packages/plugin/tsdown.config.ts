@@ -6,11 +6,11 @@ export default defineConfig({
   platform: "node",
   dts: true,
   // Bundle the private `@iroha/*` workspace packages into the published binary
-  // (only `@irohalabs/iroha` is published — ID-011), and keep every npm
+  // (only `@irohalabs/iroha` is published), and keep every npm
   // dependency external. The npm deps are declared in this package's
   // `dependencies`, so `npm install` resolves them — including the native
   // `@libsql/client` binding, which cannot be inlined into a single `.mjs`
-  // (decision-log ID-038, Option A).
+  // (Option A, the bundled-binary distribution strategy).
   deps: {
     alwaysBundle: [/^@iroha\//],
   },

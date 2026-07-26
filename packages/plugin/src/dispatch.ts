@@ -3,7 +3,7 @@
  * `bin.ts` so that a failure while *loading* it (e.g. a transitive dependency
  * calling `process.cwd()` at module top level when the agent's working directory
  * has been deleted) is a catchable rejection rather than an uncatchable ESM
- * module-load crash. Routes the three entry modes (decision-log ID-038):
+ * module-load crash. Routes the three entry modes:
  *
  *   - `iroha __mcp`         → the stdio MCP server
  *   - `iroha __hook <plat>` → one hook invocation for `claude` or `codex`

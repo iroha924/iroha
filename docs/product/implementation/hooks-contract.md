@@ -11,7 +11,7 @@ Hooks provide low-latency lifecycle observation, context injection, and approved
 ## 2. Entrypoint
 
 One entrypoint serves both platforms, invoked through the installed `iroha`
-binary (WP-11 Option A — see decision-log ID-038; the native `@libsql/client`
+binary (WP-11 Option A; the native `@libsql/client`
 binding cannot be inlined into a standalone plugin `.mjs`, so the plugin archive
 ships no runtime `dist` and the hook shares the npm-installed binary):
 

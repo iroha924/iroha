@@ -70,7 +70,7 @@ function provenanceFor(
 
 /**
  * The human approval transaction (canonical-schema.md §12 / design.md §10 /
- * decision-log ID-025(2)) — the higher layer that composes
+ * — the higher layer that composes
  * `writeCanonicalDocument` (steps 3-7) with the storage/git steps
  * `@iroha/canonical` cannot reach. Fixed order:
  *
@@ -145,9 +145,9 @@ export async function approveCandidate(
         return built;
       }
 
-      // Cross-process double-approval guard (ID-065's deterministic id makes two
+      // Cross-process double-approval guard (the deterministic canonical id makes two
       // processes approving the same candidate target the same path; in-process
-      // locking does not serialize across processes — ID-022 lineage). If that
+      // locking does not serialize across processes). If that
       // file already exists and the candidate is no longer pending, another
       // approval already committed it — abort instead of overwriting it. A
       // same-process retry after a crash (candidate still pending) still overwrites

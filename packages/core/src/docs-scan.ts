@@ -24,7 +24,7 @@ import { parse as parseYaml } from "yaml";
  * from `CLAUDE.md`, `AGENTS.md`, `.claude/rules/**\/*.md`, and user-selected
  * docs." "User-selected docs" needs an interactive doc-picker this
  * non-interactive CLI flag does not have — recorded as an accepted scope
- * cut in decision-log.md ID-026, not implemented here.
+ * cut from scope, not implemented here.
  */
 const ROOT_DOC_FILENAMES = ["AGENTS.md", "CLAUDE.md"];
 const RULES_SUBDIRECTORY = join(".claude", "rules");

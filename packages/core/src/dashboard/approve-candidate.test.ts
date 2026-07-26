@@ -18,7 +18,7 @@ import { removeTempDir } from "../test-helpers/tmp-repo.js";
 import { approveCandidate } from "./approve-candidate.js";
 import { buildCanonicalDocumentFromCandidate } from "./build-canonical.js";
 
-/** The absolute path the deterministic id (ID-065) will target for this candidate. */
+/** The absolute path the deterministic id will target for this candidate. */
 function canonicalPathFor(
   repoDir: string,
   repositoryId: McpTestRepo["repositoryId"],
@@ -115,9 +115,9 @@ describe("approveCandidate", () => {
     // The cross-process guard aborts only when the file exists AND the candidate is
     // no longer pending. A same-process retry after a crash (file already written,
     // candidate still pending) must proceed and overwrite its own file — the
-    // idempotent-retry behavior ID-065 exists for. (The abort branch is reachable
+    // idempotent-retry behavior the deterministic id exists for. (The abort branch is reachable
     // only via a concurrent cross-process commit between the reload and the guard,
-    // which is not deterministically unit-testable — same class as ID-064's note.)
+    // which is not deterministically unit-testable — the same class as the write-mutex note.)
     repo = await setupMcpRepo(random);
     const { candidateId, revisionToken } = await seedCandidate(
       repo.dbPath,

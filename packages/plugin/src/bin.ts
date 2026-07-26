@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * The published `iroha` binary (`@irohalabs/iroha`), the single entrypoint the
- * plugin manifests drive (decision-log ID-038, Option A). This file is a thin,
+ * plugin manifests drive (Option A). This file is a thin,
  * import-light loader on purpose: it statically imports only `metadata.ts` (plain
  * constants) and pulls the heavy dispatch graph in via a dynamic `import()`, so a
  * failure while loading that graph is a rejected promise this `.catch` can see

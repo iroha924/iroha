@@ -34,7 +34,6 @@ WP-00で、`CLAUDE.md`と`AGENTS.md`以外の仕様を`docs/product/`へ配置�
 | [implementation/hooks-contract.md](./implementation/hooks-contract.md) | platform Hook contract |
 | [implementation/dashboard-api.md](./implementation/dashboard-api.md) | Human UI/local API/auth |
 | [implementation/vertical-slice.md](./implementation/vertical-slice.md) | 最初のE2E受け入れfixture |
-| [implementation/decision-log.md](./implementation/decision-log.md) | 確定判断と変更protocol |
 | [implementation/implementation-plan.md](./implementation/implementation-plan.md) | WP-00〜WP-12の実装順序 |
 | [schemas/](../../schemas/) | JSON Schema machine contracts（リポジトリルート） |
 | [migrations/001_initial.sql](../../migrations/001_initial.sql) | executable libSQL migration（リポジトリルート） |

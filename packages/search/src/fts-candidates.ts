@@ -89,7 +89,7 @@ function hasNaturalLanguageRun(tokens: readonly string[]): boolean {
  * be reinterpreted as a query operator — the only operator in the output is
  * the `AND`/`OR` this function chooses between the quoted phrases.
  *
- * Operator routing (see the hybrid-search research recorded in decision-log):
+ * Operator routing:
  * FTS5's implicit multi-word AND requires *every* word to appear, which drops
  * to zero recall for long natural-language and cross-lingual queries. So a
  * multi-word natural-language query is joined with `OR` (any word, BM25-ranked,

@@ -185,7 +185,7 @@ describe("syncCanonicalToDatabase", () => {
     }
   });
 
-  it("projects approved rules and decisions into knowledge_items (WP-10, ID-033)", async () => {
+  it("projects approved rules and decisions into knowledge_items", async () => {
     await setup();
     if (!db || !canonicalDir) return;
     const advisoryId = makeTypedId("rul", CLOCK, new CryptoRandomSource());

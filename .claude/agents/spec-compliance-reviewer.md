@@ -17,7 +17,6 @@ Read, in this order, whichever of these actually bears on the changed files (ski
 - `docs/product/implementation/implementation-plan.md` for the work package (WP-NN) whose deliverables/acceptance criteria match the changed paths, and its exact acceptance bullet list.
 - `docs/product/implementation/canonical-schema.md`, `database-schema.md`, `mcp-contract.md`, `hooks-contract.md`, `dashboard-api.md`, `vertical-slice.md`, `compatibility.md` — whichever governs the touched package.
 - `docs/product/design.md` for cross-cutting ADRs (numbered `ADR-NNN`) and the numbered invariants tables.
-- `docs/product/implementation/decision-log.md` for accepted decisions that might already answer a question the diff seems to reopen.
 - `schemas/*.json` and `migrations/*.sql` are the machine-readable contracts — when prose and one of these disagree, that is itself a finding worth surfacing (don't silently pick a side).
 
 ## Step 2 — Check against the product invariants (CLAUDE.md)
@@ -52,7 +51,7 @@ For whichever WP's deliverables the diff touches, walk its acceptance-criteria b
 
 - Is each criterion actually exercised by a test in the diff, or only claimed?
 - Does the diff implement something the WP's deliverables list doesn't ask for (scope creep — check it isn't secretly a different WP's job, e.g. embedding/ranking logic appearing in a WP-03 storage change when that's WP-08's job)?
-- Does the diff silently reinterpret an accepted decision-log entry or ADR instead of following it?
+- Does the diff silently reinterpret an ADR, or a constraint documented at the site it governs, instead of following it?
 
 ## Step 5 — Verify, don't assume
 

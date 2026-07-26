@@ -6,7 +6,7 @@
  * validator" (WP-11 acceptance); the `claude`/`codex` CLIs may additionally
  * validate when present, but they are not required to be installed in CI.
  *
- * Under Option A (decision-log ID-038) hooks and MCP invoke the npm-installed
+ * Under Option A hooks and MCP invoke the npm-installed
  * `iroha` binary rather than `node ${CLAUDE_PLUGIN_ROOT}/dist/*.mjs`: the native
  * `@libsql/client` binding cannot be inlined into a standalone plugin `.mjs`, so
  * the archive carries only manifests, hook/MCP config, and skills.
@@ -235,7 +235,7 @@ export const codexMcpConfigSchema = z.strictObject({
 // --- Repository marketplaces -----------------------------------------------
 //
 // Hosted from the repository (compatibility.md §13). Both resolve the plugin
-// from the published npm package (Option A, ID-038): npm carries the `iroha`
+// from the published npm package (Option A): npm carries the `iroha`
 // binary, its native `@libsql/client`, and the plugin config, so an `npm` source
 // installs everything the manifests reference. No `version` is pinned on the
 // plugin entry — the npm package's own version applies — so these files need no

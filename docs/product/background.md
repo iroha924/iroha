@@ -203,6 +203,5 @@ Embedding API、GitHub/GitLab API、Hookの一部が利用できなくても、G
 - [Hook Contract](./implementation/hooks-contract.md)
 - [Dashboard/API Contract](./implementation/dashboard-api.md)
 - [First Vertical Slice](./implementation/vertical-slice.md)
-- [Implementation Decision Log](./implementation/decision-log.md)
 
 実装を止める未確定事項はない。公開ライセンスの選択と外部公開操作だけは、初回リリース前の人間判断ゲートとして残す。

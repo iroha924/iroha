@@ -395,7 +395,7 @@ async function buildRelationsForEntities(
  * result cap with provenance (`sources`), a bounded relation preview, and a
  * human-readable `whyRelevant`. `paths`/`symbols`/`issueRefs` act as scope hints
  * (they boost, never exclude); `statuses`/`entityTypes`/`labels`/date/authority
- * are hard filters (decision-log records this split).
+ * are hard filters.
  */
 export async function rankCandidates(
   db: Executor,

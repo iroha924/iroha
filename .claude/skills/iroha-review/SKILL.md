@@ -1,14 +1,16 @@
 ---
 name: iroha-review
 description: |
-  iroha-specific whole-project self-review. Targets committed changes (default: everything since the merge-base with main), reviewing them through a multi-stage pipeline: deterministic checks (lint/typecheck/test/build/secret grep) → launch multiple fresh-context reviewers (security-reviewer / spec-compliance-reviewer / adversarial-reviewer) in parallel → reproduce-and-verify HIGH/CRITICAL findings with finding-validator. Can be invoked at any time, with or without a PR. If the working tree has uncommitted changes, use AskUserQuestion to confirm whether to include them. Zero side effects (no commit, push, or state writes), fail-open (this skill itself does not block the merge; it only reports findings). Invoked by "self-review this", "review this", or "/iroha-review". Distinct from the existing `self-review` skill, which is narrowed to security-sensitive packages such as packages/git (pre-push only, specialized for 4-pattern regression checks) — this skill is for the whole repository, at any time.
+  The self-review pipeline for this repository — the only one. Targets committed changes (default: everything since the merge-base with main), reviewing them through a multi-stage pipeline: deterministic checks (lint/typecheck/test/build/secret grep) → launch fresh-context reviewers (security-reviewer / spec-compliance-reviewer / adversarial-reviewer, plus security-diff-reviewer when the diff touches packages/git, packages/forge*, or packages/adapter-*) in parallel → reproduce-and-verify HIGH/CRITICAL findings with finding-validator. Can be invoked at any time, with or without a PR, and is what to run before pushing a fix to a security-sensitive package. If the working tree has uncommitted changes, use AskUserQuestion to confirm whether to include them. Zero side effects (no commit, push, or state writes), fail-open (this skill itself does not block the merge; it only reports findings). Invoked by "self-review this", "review this", or "/iroha-review". Not for reviewing a GitHub pull request — use `/review` for that; this reviews the local branch's diff and needs no PR.
 user-invocable: true
-allowed-tools: Bash(git rev-parse *) Bash(git symbolic-ref *) Bash(git show-ref *) Bash(git merge-base *) Bash(git diff *) Bash(git status *) Bash(pnpm lint) Bash(pnpm lint:packages) Bash(pnpm knip) Bash(pnpm typecheck) Bash(pnpm test) Bash(pnpm build) Bash(grep *) Read Grep Glob AskUserQuestion Agent(security-reviewer) Agent(spec-compliance-reviewer) Agent(adversarial-reviewer) Agent(finding-validator) ReportFindings
+allowed-tools: Bash(git rev-parse *) Bash(git symbolic-ref *) Bash(git show-ref *) Bash(git merge-base *) Bash(git diff *) Bash(git status *) Bash(pnpm lint) Bash(pnpm lint:packages) Bash(pnpm knip) Bash(pnpm typecheck) Bash(pnpm test) Bash(pnpm build) Bash(grep *) Read Grep Glob AskUserQuestion Agent(security-reviewer) Agent(spec-compliance-reviewer) Agent(adversarial-reviewer) Agent(security-diff-reviewer) Agent(finding-validator) ReportFindings
 ---
 
 # iroha-review — whole-project self-review
 
-A review pipeline that is broader than `self-review` (which is limited to packages/git and the like, pre-push only), targets the entire iroha monorepo, and can be invoked at any time. It is designed on the basis of the state of the art as of July 2026 (independent review by each specialist agent → per-finding adjudication is the most effective way to suppress false positives) and of `~/.claude/rules/code-review-triage.md` (verification by reproduction).
+The one review pipeline for this repository: it targets the entire iroha monorepo, can be invoked at any time, and deepens itself for a security-sensitive diff rather than deferring to a second skill (Step 3). It is designed on the basis of the state of the art as of July 2026 (independent review by each specialist agent → per-finding adjudication is the most effective way to suppress false positives) and of `~/.claude/rules/code-review-triage.md` (verification by reproduction).
+
+The *thinking* that belongs before a security-sensitive change — what a pattern change newly lets through, whether a fix generalizes to sibling call sites, which platform behavior a hand-rolled replacement drops, whether the value can simply be left out — lives in the path-scoped rules, which auto-load whenever you open a matching file: `.claude/rules/secure-subprocess-and-credentials.md` and `.claude/rules/path-and-symlink-safety.md`. This skill is the mechanical pass that runs after the change is written; it does not restate those rules.
 
 ## Approach
 
@@ -81,6 +83,22 @@ Agent(adversarial-reviewer, prompt: "<diff> <changed files>")
 
 The three have independent perspectives (security / spec & invariant compliance / correctness & edge cases), so they may be launched in parallel (three Agent calls in a single message).
 
+### Add `security-diff-reviewer` when the diff touches a security-sensitive package
+
+When any changed path matches `packages/git/`, `packages/forge*/`, or `packages/adapter-*/`, launch a fourth reviewer in the same message:
+
+```text
+Agent(security-diff-reviewer, prompt: "<diff> <changed files>")
+```
+
+`security-reviewer` covers OWASP-class defects across the whole monorepo; `security-diff-reviewer` is narrower and deeper, specialized for the four regression patterns these packages have actually produced (see `.claude/rules/secure-subprocess-and-credentials.md` and `path-and-symlink-safety.md`): a narrow fix that leaves the same defect at a sibling call site, a pattern change that trades one false-negative for another, code violating an invariant it declared in the same sitting, and dropped platform behavior when hand-rolling around an OS-native function. Skip it for a diff outside those packages — it has nothing to add there.
+
+Verify the match against the actual changed-file list rather than assuming; a diff can reach these packages through a file you did not expect:
+
+```bash
+echo "$committed_files" | grep -E "^packages/(git|forge[^/]*|adapter-[^/]*)/"
+```
+
 ## Step 4 — Verify HIGH/CRITICAL findings (adjudication)
 
 Of the candidate findings gathered in Step 3, have `finding-validator` independently verify the HIGH/CRITICAL ones, one at a time. MEDIUM/LOW may be skipped (even in 2026-era practice, verifying every finding has poor cost-effectiveness, and narrowing to the high-severity ones is standard).
@@ -121,7 +139,7 @@ In addition to the `ReportFindings` output, state the following explicitly in th
 - **Exits with "not a git repository"** — the current directory is not under git. Run from the root of the iroha repository (or a directory under it).
 - **Exits with "cannot resolve base ref"** — none of `origin/HEAD`, `main`, or `master` can be found. Create a local main branch, or set origin/HEAD with `git remote set-head origin -a`, then re-run.
 - **Exits immediately with "no diff"** — the current HEAD is the same as the base ref (usually main) or older than it. Check whether the changes you want to review are committed on a different branch / in an unpushed state.
-- **spec-compliance-reviewer flagged a discrepancy with decision-log.md or schemas/, but it is unclear which is correct** — do not adopt either on your own; present the contradiction as-is to the user (`~/.claude/rules/investigate-before-asking.md`).
+- **spec-compliance-reviewer flagged a discrepancy with the spec or schemas/, but it is unclear which is correct** — do not adopt either on your own; present the contradiction as-is to the user (`~/.claude/rules/investigate-before-asking.md`).
 - **finding-validator keeps returning `unsure`** — the tools needed for verification (specific OS-dependent behavior, access to an external service, etc.) are likely absent in this environment. Report it as `unsure`, and note which tools/environment would be needed to verify it.
 
 ## Usage examples

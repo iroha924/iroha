@@ -16,8 +16,8 @@ reason = "react-router GHSA-qwww-vcr4-c8h2 is RSC-mode-only; the dashboard is a 
 
 # The next four are all transitive dependencies of **verdaccio** — a
 # devDependency that only backs the local `pnpm release:smoke` registry
-# (decision-log ID-084). verdaccio is never in the published `@irohalabs/iroha`
-# artifact (bin-only, ID-038) and is never run in CI (release:smoke is
+# (see `.claude/rules/dev-tooling.md`). verdaccio is never in the published
+# `@irohalabs/iroha` artifact (bin-only) and is never run in CI (release:smoke is
 # local-only), and even locally it is a loopback registry serving our own
 # artifact + an npmjs proxy — none of these DoS/bounds bugs take attacker input.
 # So they are unreachable in anything shipped or CI-run. Re-evaluate at expiry

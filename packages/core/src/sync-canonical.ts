@@ -37,7 +37,7 @@ import { recordEvent } from "./event-log.js";
 /**
  * database-schema.md §6: approved canonical = 100 is the only documented tier. A
  * superseded/archived document must not tie current knowledge in ranking, so it is
- * tiered below (decision-log ID-048): `superseded = 70`, `archived = 60`. Both stay
+ * tiered below: `superseded = 70`, `archived = 60`. Both stay
  * **at or above** the `DEFAULT_MINIMUM_AUTHORITY` floor (60) on purpose — dropping
  * a status below it would exclude those rows only *after* the top-N FTS/vector
  * candidate cap, so a burst of low-authority matches could starve the candidate set
@@ -80,12 +80,12 @@ export interface SyncCanonicalResult {
  * entity, `canonical_documents` row, `search_documents` row, and an enqueued
  * embedding job — at an authority tiered by lifecycle status (`authorityForStatus`,
  * `source_kind = 'canonical'`). Exported so
- * the WP-09 approval transaction (design.md §10 / ID-025(2)) reuses the exact
+ * the approval transaction (design.md §10) reuses the exact
  * same import path `sync --rebuild` uses, guaranteeing that approving a
  * candidate and rebuilding from `.iroha/` produce byte-identical DB rows
  * (`path`/`hash` must be `computeCanonicalPath`/the file SHA-256, as the
  * canonical scan produces). It also projects every knowledge-type document
- * into `knowledge_items` (WP-10, closing decision-log ID-033), so approved
+ * into `knowledge_items`, so approved
  * Rules/Decisions are visible to `listApprovedRulesForRepository` (SessionStart
  * context, MCP `get_active_rules`) and PreToolUse guardrail evaluation — for
  * both `sync`/`--rebuild` and the approval transaction, keeping them equivalent.
@@ -193,7 +193,7 @@ export async function importCanonicalDocument(
   }
   if (storedSearch.value !== null) {
     // Queue this (re-)indexed document for embedding. Offline-safe: this only
-    // enqueues work — no embedding provider is called here (ID-014 forbids
+    // enqueues work — no embedding provider is called here (a hook makes no
     // remote calls in hooks, and sync stays usable with no network/key). The
     // worker (`runEmbeddingSync`) drains the queue during `iroha sync` when
     // embedding is enabled and a key is present, and otherwise leaves jobs

@@ -68,8 +68,8 @@ function applies(scope: McpRuleScope, paths: string[], symbols: string[]): boole
  * Returns the approved Rules/Guardrails applicable to the requested targets
  * (mcp-contract.md §6.3), distinguishing advisory from guardrail enforcement.
  * Raw guard specs are not returned (they are only for the local Hook adapter),
- * and guardrail *evaluation* is deferred until a guard-spec schema exists
- * (decision-log ID-024(6)/ID-028(l)). Scope matching uses simplified prefix
+ * and guardrail *evaluation* is deferred until a guard-spec schema exists.
+ * Scope matching uses simplified prefix
  * globbing — surfaced as a tool warning when paths/symbols are supplied.
  */
 export async function mcpGetActiveRules(
