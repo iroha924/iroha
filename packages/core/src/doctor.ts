@@ -10,6 +10,7 @@ import {
   ok,
   type RandomSource,
   type Result,
+  SystemClock,
 } from "@iroha/domain";
 import { resolveGitLocation, resolveGitPath } from "@iroha/git";
 import {
@@ -21,6 +22,7 @@ import {
 } from "@iroha/storage";
 import { classifyGuardSpec } from "./hooks/guardrail.js";
 import { resolveInitializedRepository } from "./resolve-repository.js";
+import { readRetentionStatus } from "./retention.js";
 import { readSchemaVersion } from "./schema-version.js";
 
 export type DoctorCheckStatus = "ok" | "warning" | "error" | "blocked";
@@ -603,6 +605,49 @@ export async function checkMcpServer(root: string): Promise<DoctorCheckResult> {
  * command that itself crashes on a missing optional tool defeats its own
  * purpose.
  */
+/**
+ * Reports the local event-data retention window and the row counts it governs,
+ * so the setting has a visible effect (FR-111). Always `ok` status: retention
+ * being off is a valid choice, not a fault — the counts are what tell an operator
+ * whether the local index is growing beyond what they want to keep.
+ */
+async function checkRetention(cwd: string): Promise<DoctorCheckResult> {
+  const resolved = await resolveInitializedRepository(cwd);
+  if (!resolved.ok) {
+    return { name: "retention", status: "warning", message: resolved.error.message };
+  }
+  const opened = await openDatabase(resolved.value.dbPath);
+  if (!opened.ok) {
+    return { name: "retention", status: "warning", message: opened.error.message };
+  }
+  try {
+    const status = await readRetentionStatus(
+      opened.value,
+      resolved.value.repositoryId,
+      new SystemClock(),
+    );
+    if (!status.ok) {
+      return { name: "retention", status: "warning", message: status.error.message };
+    }
+    const { days, counts } = status.value;
+    const rows = `${counts.sessions} sessions, ${counts.runs} runs, ${counts.turns} turns, ${counts.toolEvents} tool events, ${counts.eventLogRows} diagnostics rows`;
+    if (days === null) {
+      return {
+        name: "retention",
+        status: "ok",
+        message: `local event data kept indefinitely (${rows}) — set a window in Settings to prune it`,
+      };
+    }
+    return {
+      name: "retention",
+      status: "ok",
+      message: `local event data kept ${days} days (${rows}; ${counts.prunableSessions} sessions prunable at next sync)`,
+    };
+  } finally {
+    await closeDatabase(opened.value);
+  }
+}
+
 export async function runDoctor(cwd: string): Promise<Result<DoctorReport, IrohaError>> {
   const random = new CryptoRandomSource();
   const checks: DoctorCheckResult[] = [];
@@ -632,6 +677,7 @@ export async function runDoctor(cwd: string): Promise<Result<DoctorReport, Iroha
   checks.push(await checkGuardrails(cwd));
   checks.push(...(await checkProviders(irohaCanonicalDir)));
   checks.push(await checkForge(cwd));
+  checks.push(await checkRetention(cwd));
 
   return ok({ checks });
 }

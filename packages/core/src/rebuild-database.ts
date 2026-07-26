@@ -15,11 +15,13 @@ import {
   type Database,
   getEmbeddingVectorByContentHash,
   insertRepository,
+  listLocalSettings,
   listSearchDocumentHashes,
   openDatabase,
   replaceDatabaseAtomically,
   runMigrations,
   upsertEmbedding,
+  upsertLocalSetting,
 } from "@iroha/storage";
 import { computeRootFingerprint } from "./init-repository.js";
 import { resolveInitializedRepository } from "./resolve-repository.js";
@@ -91,6 +93,60 @@ async function reuseEmbeddings(
         createdAt: now,
       });
     }
+  } finally {
+    await closeDatabase(primaryOpen.value);
+  }
+}
+
+/**
+ * Copies `local_settings` from the current database onto the fresh sibling.
+ *
+ * These are deliberate per-developer choices — the event-data retention window
+ * among them — and unlike everything else in this index they are not
+ * reconstructible from `.iroha/`. Without this, a routine `sync --rebuild` would
+ * silently reset a configured retention window to "keep forever", and the local
+ * event tables would start growing unbounded again with no indication why.
+ *
+ * Reaching the previous database is best-effort, for the same reasons as
+ * `reuseEmbeddings`: it being absent or unreadable is often the very reason a
+ * rebuild is running, and there is then nothing to carry. But once the settings
+ * have been read, **failing to write them is fatal**. `checkIntegrity` does not
+ * compare `local_settings`, so continuing would swap in a database that reports
+ * success while having dropped a setting the caller can no longer recover — the
+ * old database becomes the backup, and retention silently reverts to keeping
+ * everything.
+ */
+async function carryLocalSettings(
+  siblingDb: Database,
+  primaryDbPath: string,
+  repositoryId: TypedId<"repo">,
+): Promise<Result<void, IrohaError>> {
+  try {
+    await access(primaryDbPath);
+  } catch {
+    return ok(undefined);
+  }
+  const primaryOpen = await openDatabase(primaryDbPath);
+  if (!primaryOpen.ok) {
+    return ok(undefined);
+  }
+  try {
+    const settings = await listLocalSettings(primaryOpen.value, repositoryId);
+    if (!settings.ok) {
+      return ok(undefined);
+    }
+    for (const setting of settings.value) {
+      const written = await upsertLocalSetting(siblingDb, {
+        repositoryId,
+        key: setting.key,
+        valueJson: setting.valueJson,
+        updatedAt: setting.updatedAt,
+      });
+      if (!written.ok) {
+        return written;
+      }
+    }
+    return ok(undefined);
   } finally {
     await closeDatabase(primaryOpen.value);
   }
@@ -182,6 +238,12 @@ export async function rebuildDatabase(
   }
 
   await reuseEmbeddings(siblingDb, primaryDbPath, clock);
+  const carried = await carryLocalSettings(siblingDb, primaryDbPath, repositoryId);
+  if (!carried.ok) {
+    await closeDatabase(siblingDb);
+    await removeSiblingDatabase(siblingDbPath);
+    return carried;
+  }
 
   const integrityResult = await checkIntegrity(siblingDb);
   if (!integrityResult.ok) {

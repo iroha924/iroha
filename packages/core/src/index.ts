@@ -31,5 +31,6 @@ export * from "./mcp/verify-session-token.js";
 export * from "./mcp/with-repository.js";
 export * from "./rebuild-database.js";
 export * from "./resolve-repository.js";
+export * from "./retention.js";
 export * from "./schema-version.js";
 export * from "./sync-canonical.js";

@@ -305,3 +305,88 @@ Initial release thresholds:
 - approved applicable Rule Recall@10 = 1.00 for the Guardrail fixture set.
 
 Ranking changes require before/after metrics. Do not tune solely on anecdotal examples.
+
+## 15. Local event-data retention
+
+The local index otherwise grows without bound: `agent_sessions`, `session_runs`, `turns`,
+`tool_events`, and `event_log` are append-only. Retention (FR-111) bounds them.
+
+- **Configured per developer, not shared.** The window lives in `local_settings` under
+  `retention.local_events` as `{"days": <1-3650>}`, or `{"days": null}` to keep everything.
+  It is deliberately *not* in `.iroha/config.yaml`: that file is Git-tracked, and a retention
+  window there would impose one developer's disk and privacy preference on the whole team,
+  while the data being bounded is local-only and rebuildable.
+- **Off unless set.** An absent row and `{"days": null}` are the same state. An upgrade never
+  starts deleting history on its own.
+- **Runs during `iroha sync`**, after canonical and forge work, and is non-fatal — a pruning
+  failure reports an outcome rather than failing a sync that already succeeded. There is no
+  daemon and no scheduler. `iroha sync` reports what it deleted; `iroha doctor` reports the
+  window, the current row counts, and how many sessions the next sync would prune.
+- **Survives `sync --rebuild`.** The rebuild copies `local_settings` onto the fresh sibling
+  (`carryLocalSettings`). Everything else in this index is reconstructible from `.iroha/`; a
+  retention window is not, and losing it would silently reset pruning to "keep forever".
+
+Pruning deletes an aged session through `entities` (the session row is the *child* of its
+entity, so deleting `agent_sessions` directly would orphan the entity), which cascades to its
+runs, turns, tool events, relations, and search documents. Its checkpoint entities are deleted
+first, for the same reason.
+
+**One write transaction per session**, not one for the whole sweep, and both the session's
+eligibility *and* the retention policy itself are re-checked inside that transaction. Three
+things matter here:
+
+- Selection and deletion must be atomic, because hooks and MCP tools write concurrently — a
+  session selected as eligible could otherwise gain a checkpoint, a pending candidate, or an
+  imported canonical row before its delete ran, and be deleted anyway.
+- The transaction must stay short, because §10 of `hooks.md` records that a hook's write waits
+  on libSQL's 2500 ms `busy_timeout` while another process holds the write lock (7932 ms
+  measured on a PreToolUse denial against a 0.5 s budget, after which the platform kills the
+  hook and an applicable Guardrail deny is lost). A sweep-wide transaction would hold that lock
+  across a whole backlog.
+
+- Diagnostics rows are deleted in bounded batches for the same reason: one unbounded `DELETE`
+  over an accumulated backlog has no lock bound at all.
+
+The policy is re-read inside each delete transaction and compared against what the sweep was
+authorized under, so a change committed on another connection cannot land between the check and
+the delete. Once it stops matching, the sweep stops — including the diagnostics prune, which
+would otherwise still run with the superseded cutoff. Whatever was already deleted was deleted
+under the window in force at the time.
+
+A session is eligible only when all of the following hold. Each exclusion exists because the
+cascade would otherwise reach data this contract protects:
+
+1. `last_seen_at` is before the cutoff, **and** no run, turn, tool event, or checkpoint under
+   the session is newer than it. `last_seen_at` alone is not sufficient: it advances only on
+   `SESSION_STARTED` (the dispatcher touches it in `handleSessionStart`, not in
+   `resolveSessionId`), so a session running longer than the window carries a stale value, and
+   trusting it would delete a live session's activity on the first sync after it closes;
+2. it has no `session_runs` row with `status = 'active'`;
+3. neither the session nor any of its checkpoints has a `canonical_documents` row —
+   `canonical_documents.entity_id` cascades from `entities`, so pruning an approved session
+   would delete the index row for Git-tracked team knowledge;
+4. no other session names it in `parent_session_id` — that column is `ON DELETE SET NULL`, so
+   pruning a parent would leave its children alive but permanently parentless; the child ages
+   out first and the parent becomes eligible on a later sweep;
+5. no `candidates` row with `status = 'pending'` reaches it by either route — directly through
+   `source_session_id`, or through `source_checkpoint_id` pointing at one of its checkpoints
+   (`propose_knowledge` accepts any existing checkpoint id, so a pending candidate can
+   reference this session's checkpoint while its own `source_session_id` is null). Both columns
+   are `ON DELETE SET NULL`, so pruning would not delete the candidate — it would silently
+   strip the provenance of something awaiting review.
+
+`event_log` is pruned by its own `occurred_at`, not with its session: `event_log.session_id`
+is `ON DELETE SET NULL`, so those rows survive a session delete and would otherwise be the
+one table retention never bounds.
+
+**Not yet in scope**, both recorded rather than left implied:
+
+- §7's "rejected candidates are retained locally for audit until retention cleanup" is not
+  implemented here. `candidates` rows are never deleted by retention, only protected from
+  provenance loss while pending. Pruning them needs its own eligibility rules (a rejection is
+  an audit record).
+- A retention change committed *during* a `sync --rebuild` can be lost: the rebuild snapshots
+  `local_settings`, and a write that lands against the old database after that snapshot but
+  before the swap goes to the file that then becomes the backup. Closing this needs the
+  repository-level rebuild serialization §12 calls for, or a final merge before the swap —
+  either is a change to the rebuild sequence, not to retention.

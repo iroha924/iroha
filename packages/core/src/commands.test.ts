@@ -100,8 +100,12 @@ describe("run* command wrappers", () => {
 
       const syncResult = await runSync(repoDir, MIGRATIONS_DIR);
       expect(syncResult.ok).toBe(true);
-      if (syncResult.ok) {
+      if (syncResult.ok && !syncResult.value.rebuilt) {
         expect(syncResult.value.rebuilt).toBe(false);
+        // `iroha sync` is retention's only scheduled moment (there is no daemon),
+        // so it must reach the retention step — reporting "disabled" until a
+        // window is set, never being absent.
+        expect(syncResult.value.retention).toEqual({ status: "disabled", days: null });
       }
 
       const rebuildResult = await runSync(repoDir, MIGRATIONS_DIR, { rebuild: true });

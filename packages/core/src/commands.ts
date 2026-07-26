@@ -16,6 +16,7 @@ import {
 import { type McpSearchData, type McpSearchFilters, mcpSearch } from "./mcp/search.js";
 import { type RebuildDatabaseResult, rebuildDatabase } from "./rebuild-database.js";
 import { type ResolvedRepository, resolveInitializedRepository } from "./resolve-repository.js";
+import { applyRetention, type RetentionOutcome } from "./retention.js";
 import { type SyncCanonicalResult, syncCanonicalToDatabase } from "./sync-canonical.js";
 
 /**
@@ -82,6 +83,7 @@ export type RunSyncResult =
       sync: SyncCanonicalResult;
       embedding: RunEmbeddingSyncResult;
       forge: ForgeSyncOutcome;
+      retention: RetentionOutcome;
     };
 
 /** `iroha sync` / `iroha sync --rebuild`. */
@@ -161,11 +163,16 @@ export async function runSync(
     // outage, or even a DB write error yields an outcome here — never an `err`
     // that would fail the sync the canonical/embedding work already completed.
     const forge = await syncForge(opened.value, cwd, resolvedResult.value, clock);
+    // Retention runs last and is non-fatal for the same reason forge is: this is
+    // the scheduled moment a no-daemon design gets, and a pruning failure must
+    // not fail the canonical sync that already succeeded.
+    const retention = await applyRetention(opened.value, resolvedResult.value.repositoryId, clock);
     return ok({
       rebuilt: false,
       sync: syncResult.value,
       embedding: embeddingResult.value,
       forge,
+      retention,
     });
   } finally {
     await closeDatabase(opened.value);

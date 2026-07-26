@@ -45,6 +45,16 @@ function SettingRow({
   );
 }
 
+/**
+ * `local_settings` key for the retention window, mirroring
+ * `RETENTION_SETTING_KEY` in `@iroha/core` (the SPA depends on the API's
+ * generated types only, never on core).
+ */
+const RETENTION_SETTING_KEY = "retention.local_events";
+
+/** Offered windows; the API accepts any 1-3650 day value. */
+const RETENTION_CHOICES = [30, 90, 180, 365] as const;
+
 /** Shared config editor + redacted local status (contracts/dashboard-api.md §6/§8). */
 export function Settings() {
   const { t } = useI18n();
@@ -56,6 +66,17 @@ export function Settings() {
   useEffect(() => {
     if (q.data !== undefined) setConfig(q.data.shared);
   }, [q.data]);
+
+  const saveRetention = useMutation({
+    mutationFn: (days: number | null) => api.updateLocalSetting(RETENTION_SETTING_KEY, { days }),
+    onSuccess: () => {
+      setNotice(t("common.saved"));
+      void queryClient.invalidateQueries({ queryKey: ["settings"] });
+      // The Doctor page reports the window and the row counts it governs.
+      void queryClient.invalidateQueries({ queryKey: ["doctor"] });
+    },
+    onError: () => setNotice(t("common.error")),
+  });
 
   const save = useMutation({
     mutationFn: () => {
@@ -140,6 +161,38 @@ export function Settings() {
                 setConfig({ ...config, forge: { ...config.forge, enabled: checked } })
               }
             />
+          </SettingRow>
+
+          <SettingRow
+            htmlFor="cfg-retention"
+            label={t("settings.retention")}
+            hint={t("settings.retentionHint")}
+          >
+            {/* Saved on change, unlike the shared config above: this is a single
+                local key, not part of the config.yaml the Save button rewrites.
+                Disabled while a save is in flight — two overlapping upserts would
+                let completion order decide the stored window, so picking a short
+                window and then "Forever" could leave the short one persisted and a
+                later sync would delete history the final choice meant to keep. */}
+            <Select
+              disabled={saveRetention.isPending}
+              value={local.retentionDays === null ? "forever" : String(local.retentionDays)}
+              onValueChange={(value) =>
+                saveRetention.mutate(value === "forever" ? null : Number(value))
+              }
+            >
+              <SelectTrigger id="cfg-retention" className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="forever">{t("settings.retentionForever")}</SelectItem>
+                {RETENTION_CHOICES.map((days) => (
+                  <SelectItem key={days} value={String(days)}>
+                    {t("settings.retentionDays").replace("{days}", String(days))}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </SettingRow>
         </CardContent>
       </Card>
