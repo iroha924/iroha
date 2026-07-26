@@ -135,9 +135,9 @@ describe("hook coverage", () => {
   // Both platforms nest the event map under `hooks`. Asserting the events are
   // *reachable* is not enough — an unwrapped map has them reachable too, just one
   // level up, and Claude Code rejects the whole file on that schema error and
-  // loads no hook at all. Every published version through 0.3.0 shipped that
-  // shape, because the surrounding tests only ever read the builder's own output.
-  // So assert the negative: an event name at the top level is the defect itself.
+  // loads no hook at all. `claudeHooksSchema` cannot catch it either: a schema
+  // living beside the builder it validates only detects drift between the two.
+  // Hence the negative — an event name at the top level is the defect itself.
   it.each([
     ["Claude", () => buildClaudeHooks()],
     ["Codex", () => buildCodexHooks()],
