@@ -1,7 +1,12 @@
 import type { Clock, IrohaError, RandomSource, Result } from "@iroha/domain";
 import { ensureRepositorySalt } from "@iroha/git";
 import { closeDatabase, type Database, openDatabase } from "@iroha/storage";
-import { type McpToolName, outcomeForErrorCode, recordEvent } from "../event-log.js";
+import {
+  isRecordableFailure,
+  type McpToolName,
+  outcomeForErrorCode,
+  recordEvent,
+} from "../event-log.js";
 import { type ResolvedRepository, resolveInitializedRepository } from "../resolve-repository.js";
 
 export interface McpRepositoryContext {
@@ -72,7 +77,7 @@ export async function withMcpRepository<T>(
       clock: input.clock,
       random: input.random,
     });
-    if (input.tool !== null && !result.ok) {
+    if (input.tool !== null && !result.ok && isRecordableFailure(result.error.code)) {
       await recordEvent(db, repo.repositoryId, input, {
         eventType: "mcp.tool_call",
         adapter: input.tool,

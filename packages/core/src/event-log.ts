@@ -68,6 +68,24 @@ const MALFUNCTION_CODES: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Error codes an unauthenticated caller can produce at will. They are excluded
+ * from `event_log` because the table is append-only with no retention (FR-111,
+ * issue #127): recording them would let anything that can reach the MCP stdio
+ * boundary grow the file by replaying a bad token. Losing them costs little —
+ * an expired token is an access-control event, not a malfunction, and the agent
+ * is told directly in the tool's error envelope.
+ */
+const UNAUTHENTICATED_CODES: ReadonlySet<string> = new Set([
+  "INVALID_SESSION_TOKEN",
+  "SESSION_EXPIRED",
+]);
+
+/** Whether a failure with this code is worth a diagnostics row at all. */
+export function isRecordableFailure(code: string): boolean {
+  return !UNAUTHENTICATED_CODES.has(code);
+}
+
+/**
  * Severity for a failed operation. Keeps the red `failure` badge for something
  * actually broken, so an expired token or an unknown id reads as `warning` —
  * the same split the API makes on 4xx vs 5xx, so the two producers agree in one

@@ -6,7 +6,12 @@ import {
   listEventLogByRepository,
 } from "@iroha/storage";
 import { afterEach, describe, expect, it } from "vitest";
-import { outcomeForErrorCode, recordEvent, recordEventForRepository } from "./event-log.js";
+import {
+  isRecordableFailure,
+  outcomeForErrorCode,
+  recordEvent,
+  recordEventForRepository,
+} from "./event-log.js";
 import { openMigratedTestDb, removeTempDir } from "./test-helpers/tmp-db.js";
 
 const CLOCK = new FixedClock(new Date("2026-01-01T00:00:00.000Z"));
@@ -111,6 +116,18 @@ describe("recordEvent", () => {
     expect(first.value.map((row) => row.id)).toEqual(second.value.map((row) => row.id));
     const ids = first.value.map((row) => row.id);
     expect(ids).toEqual([...ids].sort().reverse());
+  });
+});
+
+describe("isRecordableFailure", () => {
+  it("drops the failures an unauthenticated caller can produce at will", () => {
+    // `event_log` is append-only with no retention, so a code anyone can trigger
+    // by replaying a bad token must not be a way to grow the file.
+    expect(isRecordableFailure("INVALID_SESSION_TOKEN")).toBe(false);
+    expect(isRecordableFailure("SESSION_EXPIRED")).toBe(false);
+    expect(isRecordableFailure("NOT_FOUND")).toBe(true);
+    expect(isRecordableFailure("INTERNAL_ERROR")).toBe(true);
+    expect(isRecordableFailure("DB_UNAVAILABLE")).toBe(true);
   });
 });
 

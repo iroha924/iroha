@@ -19,6 +19,7 @@ import {
   getSyncStatus,
   graphPath,
   graphQuery,
+  isRecordableFailure,
   listCandidateQueue,
   listDashboardSessions,
   listDiagnosticsEvents,
@@ -345,6 +346,9 @@ export function createApp(config: AppConfig) {
       return;
     }
     const errorCode = c.get("errorCode");
+    if (errorCode !== undefined && !isRecordableFailure(errorCode)) {
+      return;
+    }
     await recordEventForRepository({
       cwd,
       clock,
