@@ -99,9 +99,17 @@ the **trigger** (when to run it).
   For an optional local check after editing, run the validator **pinned to at least the major**
   (Renovate publishes several releases a day, so a bare `renovate` would run an unvetted same-day
   build): `npx --yes --package renovate@43 renovate-config-validator .github/renovate.json`.
-- **One-time human setup (outside the repo):** the Renovate **GitHub App must be installed** on the
-  repo/org for the config to take effect — unlike Dependabot, which is GitHub-native. Until then the
-  config is valid but inert.
+- **It is installed and running.** The GitHub App is on this repo (it is not GitHub-native like
+  Dependabot, so it needed a one-time install — that is done). Its **Dependency Dashboard is issue
+  #121**, kept up to date by the bot: read that first to see what is queued rather than guessing.
+- **Nothing appears between Mondays, and that is not a fault.** The schedule is `before 9am on
+  monday` (Asia/Tokyo), so mid-week the dashboard lists updates under *Awaiting Schedule* and no PR
+  exists yet. Before concluding Renovate "missed" an update, open #121 — the entry is usually there,
+  waiting. A dashboard checkbox forces one out immediately when you need it sooner.
+- **It reports versions, not urgency.** It will offer a bump, never tell you that staying put is a
+  problem. A deprecation warning in a workflow run (e.g. an action still on the Node 20 runtime) is
+  yours to notice and act on; Renovate would have offered the same bump as a routine major, with no
+  signal that it mattered.
 
 ## Published-package validation — publint + attw
 
