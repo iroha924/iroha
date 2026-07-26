@@ -170,7 +170,10 @@ async function pruneAll(
   let sessions = 0;
   let checkpoints = 0;
   for (const id of candidates.value) {
-    const result = await pruneSession(db, REPO, cutoff, id);
+    const result = await pruneSession(db, REPO, cutoff, id, {
+      key: "retention.local_events",
+      expectedValueJson: null,
+    });
     if (!result.ok) {
       throw new Error(`prune failed: ${result.error.message}`);
     }
@@ -238,6 +241,80 @@ describe("retention pruning", () => {
       args: [sessionId],
     });
     expect(Number(entities.rows[0]?.n)).toBe(0);
+  });
+
+  it("declines to delete when the policy no longer matches the guard", async () => {
+    const database = await open();
+    const { sessionId } = await seedSession(database, "guard", OLD);
+    await database.execute({
+      sql: `INSERT INTO local_settings (repository_id, key, value_json, updated_at)
+            VALUES (?, 'retention.local_events', ?, ?)`,
+      args: [REPO, JSON.stringify({ days: 90 }), OLD],
+    });
+
+    // The sweep planned against an absent row; the stored policy has since become
+    // a 90-day window. The delete must decline rather than act on the superseded
+    // plan — the guard is read inside the same transaction as the eligibility
+    // check, so a change on another connection cannot slip between them.
+    const declined = await pruneSession(database, REPO, CUTOFF, sessionId, {
+      key: "retention.local_events",
+      expectedValueJson: null,
+    });
+    expect(declined.ok && declined.value).toBeNull();
+    const kept = await getAgentSessionById(database, sessionId);
+    expect(kept.ok && kept.value).not.toBeNull();
+
+    // With a guard matching what is stored, the same session is deleted.
+    const accepted = await pruneSession(database, REPO, CUTOFF, sessionId, {
+      key: "retention.local_events",
+      expectedValueJson: JSON.stringify({ days: 90 }),
+    });
+    expect(accepted.ok && accepted.value).not.toBeNull();
+  });
+
+  it("keeps an aged parent while a child session still references it", async () => {
+    const database = await open();
+    const { sessionId: parentId } = await seedSession(database, "parent", OLD);
+    const { sessionId: childId } = await seedSession(database, "child", RECENT);
+    // `agent_sessions.parent_session_id` is ON DELETE SET NULL, so pruning the
+    // parent would leave the child alive but permanently unparented.
+    await database.execute({
+      sql: "UPDATE agent_sessions SET parent_session_id = ? WHERE id = ?",
+      args: [parentId, childId],
+    });
+
+    const pruned = await pruneAll(database, CUTOFF);
+    expect(pruned.sessions).toBe(0);
+    const rows = await database.execute({
+      sql: "SELECT parent_session_id FROM agent_sessions WHERE id = ?",
+      args: [childId],
+    });
+    expect(rows.rows[0]?.parent_session_id).toBe(parentId);
+  });
+
+  it("prunes a diagnostics backlog larger than one batch", async () => {
+    const database = await open();
+    // A single unbounded DELETE would hold the writer lock for the whole backlog,
+    // which `hooks.md` §10 measures as long enough to get a PreToolUse hook killed
+    // and lose its Guardrail deny. The batch bound is 500, so 1200 rows exercise
+    // the loop across several statements.
+    const values: string[] = [];
+    const args: string[] = [];
+    for (let i = 0; i < 1200; i += 1) {
+      values.push("(?, ?, 'api.request', 'failure', ?)");
+      // Zero-padded: `pad` right-fills with "0", so `b1` and `b10` would collide.
+      args.push(logId(`b${String(i).padStart(4, "0")}`), REPO, OLD);
+    }
+    await database.execute({
+      sql: `INSERT INTO event_log (id, repository_id, event_type, outcome, occurred_at)
+            VALUES ${values.join(",")}`,
+      args,
+    });
+
+    const pruned = await pruneEventLog(database, REPO, CUTOFF);
+    expect(pruned.ok && pruned.value).toBe(1200);
+    const counts = await countLocalEventData(database, REPO, null);
+    expect(counts.ok && counts.value.eventLogRows).toBe(0);
   });
 
   it("keeps a session still inside the window", async () => {

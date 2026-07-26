@@ -20,7 +20,12 @@
  *    existing `sourceCheckpointId`, so a pending candidate can reference this
  *    session's checkpoint while its own `source_session_id` is null or points
  *    elsewhere.
- * 3. **Age is measured from actual activity, not `last_seen_at` alone.**
+ * 3. **A session that another session still points at is kept.**
+ *    `agent_sessions.parent_session_id` is `ON DELETE SET NULL`, so pruning a
+ *    parent leaves its children alive but permanently unparented. A session with
+ *    any child is excluded; the child ages out first, and the parent becomes
+ *    eligible on a later sweep.
+ * 4. **Age is measured from actual activity, not `last_seen_at` alone.**
  *    `last_seen_at` advances only on `SESSION_STARTED` (the hook dispatcher
  *    touches it in `handleSessionStart`, not in `resolveSessionId`), so a
  *    session that has been running for longer than the window still carries a
@@ -79,6 +84,10 @@ const ELIGIBLE_PREDICATE = `
       SELECT 1 FROM candidates cand
       JOIN checkpoints c ON c.id = cand.source_checkpoint_id
       WHERE c.session_id = s.id AND cand.status = 'pending'
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM agent_sessions child
+      WHERE child.parent_session_id = s.id
     )`;
 
 /** `(repository_id, cutoff)` plus the six repeated `cutoff` binds. */
@@ -115,6 +124,18 @@ export interface PrunedSession {
 }
 
 /**
+ * The policy this sweep was authorized under, re-read inside each delete
+ * transaction. Compared as opaque JSON: this layer does not interpret the
+ * setting, it only refuses to delete once the stored value stops matching what
+ * the caller planned against. `expectedValueJson` is `null` when the caller
+ * planned against an absent row.
+ */
+export interface RetentionPolicyGuard {
+  key: string;
+  expectedValueJson: string | null;
+}
+
+/**
  * Deletes one aged session, re-checking its eligibility inside the same write
  * transaction. Returns `null` when the session no longer qualifies — a hook or
  * MCP tool may have written to it since it was listed.
@@ -138,9 +159,23 @@ export async function pruneSession(
   repositoryId: TypedId<"repo">,
   cutoff: string,
   sessionId: string,
+  policy: RetentionPolicyGuard,
 ): Promise<Result<PrunedSession | null, IrohaError>> {
   return withTransaction(db, "write", async (tx) => {
     try {
+      // The guard is read in the same transaction as the eligibility check, so a
+      // policy change committed on another connection cannot slip between the two
+      // and let this session be deleted under a window the user has replaced.
+      const guard = await tx.execute({
+        sql: "SELECT value_json FROM local_settings WHERE repository_id = ? AND key = ?",
+        args: [repositoryId, policy.key],
+      });
+      const storedJson = guard.rows[0]?.value_json;
+      const current = storedJson === undefined || storedJson === null ? null : String(storedJson);
+      if (current !== policy.expectedValueJson) {
+        return ok(null);
+      }
+
       const stillEligible = await tx.execute({
         sql: `SELECT 1 FROM agent_sessions s
               WHERE s.id = ? AND ${ELIGIBLE_PREDICATE}`,
@@ -165,24 +200,50 @@ export async function pruneSession(
 }
 
 /**
- * Deletes diagnostics rows older than `cutoff`.
+ * Rows deleted per `pruneEventLog` statement. Bounded for the same reason the
+ * session sweep is one transaction per session: a single unbounded `DELETE`
+ * across an accumulated backlog holds the writer lock for as long as it takes,
+ * which is exactly the condition `hooks.md` §10 measures at 7932 ms on a
+ * PreToolUse denial — long enough for the platform to kill the hook and lose an
+ * applicable Guardrail deny.
+ */
+const EVENT_LOG_DELETE_BATCH = 500;
+
+/**
+ * Deletes diagnostics rows older than `cutoff`, in bounded batches, returning the
+ * total removed.
  *
  * Pruned by its own timestamp rather than with its session: `event_log`'s
  * `session_id` is `ON DELETE SET NULL`, so those rows survive a session delete
- * and would otherwise be the one table retention never bounds. A single
- * statement, so it needs no explicit transaction.
+ * and would otherwise be the one table retention never bounds.
+ *
+ * Each batch is its own autocommit statement, so the writer lock is released
+ * between them and a concurrent hook waits at most one batch.
  */
 export async function pruneEventLog(
   db: Executor,
   repositoryId: TypedId<"repo">,
   cutoff: string,
 ): Promise<Result<number, IrohaError>> {
+  let total = 0;
   try {
-    const deleted = await db.execute({
-      sql: "DELETE FROM event_log WHERE repository_id = ? AND occurred_at < ?",
-      args: [repositoryId, cutoff],
-    });
-    return ok(Number(deleted.rowsAffected));
+    for (;;) {
+      // `DELETE ... LIMIT` needs a compile-time SQLite option that is not
+      // guaranteed here, so the bound is applied by a subquery instead.
+      const deleted = await db.execute({
+        sql: `DELETE FROM event_log WHERE id IN (
+                SELECT id FROM event_log
+                WHERE repository_id = ? AND occurred_at < ?
+                LIMIT ${EVENT_LOG_DELETE_BATCH}
+              )`,
+        args: [repositoryId, cutoff],
+      });
+      const removed = Number(deleted.rowsAffected);
+      total += removed;
+      if (removed < EVENT_LOG_DELETE_BATCH) {
+        return ok(total);
+      }
+    }
   } catch (cause) {
     return err(mapLibsqlError(cause, "Failed to prune event log"));
   }

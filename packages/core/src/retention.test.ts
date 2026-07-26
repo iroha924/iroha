@@ -4,6 +4,7 @@ import {
   type Database,
   insertAgentSession,
   insertEntity,
+  insertEventLog,
   insertRepository,
   upsertLocalSetting,
 } from "@iroha/storage";
@@ -97,14 +98,18 @@ describe("readRetentionSetting", () => {
   it("reads an absent row as retention off", async () => {
     const db = await seededDb();
     const setting = await readRetentionSetting(db, REPO);
-    expect(setting.ok && setting.value).toEqual({ days: null });
+    expect(setting.ok && setting.value.setting).toEqual({ days: null });
+    expect(setting.ok && setting.value.rawJson).toBeNull();
   });
 
   it("reads a stored window", async () => {
     const db = await seededDb();
     await storeSetting(db, JSON.stringify({ days: 90 }));
     const setting = await readRetentionSetting(db, REPO);
-    expect(setting.ok && setting.value).toEqual({ days: 90 });
+    expect(setting.ok && setting.value.setting).toEqual({ days: 90 });
+    // The raw JSON comes out of the same read, so a sweep's guard and its cutoff
+    // can never be derived from two different reads.
+    expect(setting.ok && setting.value.rawJson).toBe(JSON.stringify({ days: 90 }));
   });
 
   it("rejects a stored value that is not valid JSON", async () => {
@@ -152,31 +157,36 @@ describe("applyRetention", () => {
     expect(outcome.pruned?.sessions).toBe(1);
   });
 
-  it("stops mid-sweep when the window changes underneath it", async () => {
+  it("deletes nothing further once the window is turned off underneath it", async () => {
     const db = await seededDb();
     await seedAgedSession(db, "one");
     await seedAgedSession(db, "two");
     await storeSetting(db, JSON.stringify({ days: 30 }));
+    const logged = await insertEventLog(db, {
+      id: "log_00000000000000000000000001" as TypedId<"log">,
+      repositoryId: REPO,
+      eventType: "api.request",
+      outcome: "failure",
+      occurredAt: OLD,
+    });
+    expect(logged.ok).toBe(true);
 
-    // Simulate the dashboard committing a change while a sync is finishing: the
-    // window is widened after the candidate list was taken. Nothing further may
-    // be deleted under the old, shorter window.
+    // Simulate the dashboard turning retention off while a sync is finishing: the
+    // change lands after the candidate list was taken. `pruneSession` reads the
+    // guard inside its own write transaction, so it declines; the sweep must then
+    // also skip the diagnostics prune, which would otherwise still run with the
+    // superseded cutoff.
     // `Database["execute"]` is overloaded, so its `Parameters` resolve to `never`.
     // Every caller in this package passes the `{sql, args}` form, so the spy is
     // typed to that shape rather than to the overload set.
     type Execute = (statement: { sql: string; args: unknown[] }) => Promise<unknown>;
     const target = db as unknown as { execute: Execute };
     const original = target.execute.bind(db);
-    let calls = 0;
+    let changed = false;
     target.execute = async (statement) => {
-      if (!statement.sql.includes("FROM local_settings")) {
-        return original(statement);
-      }
-      calls += 1;
       const result = await original(statement);
-      // Change it *after* the second read (the first loop iteration), so that
-      // iteration proceeds under the old window and the next one sees the new.
-      if (calls === 2) {
+      if (!changed && statement.sql.includes("FROM agent_sessions s")) {
+        changed = true;
         await original({
           sql: "UPDATE local_settings SET value_json = ? WHERE key = ?",
           args: [JSON.stringify({ days: null }), RETENTION_SETTING_KEY],
@@ -189,11 +199,12 @@ describe("applyRetention", () => {
     target.execute = original;
 
     expect(outcome.status).toBe("pruned");
-    // The first session is deleted under the window in force at the time; the
-    // second is not, because by then the user had turned retention off.
-    expect(outcome.pruned?.sessions).toBe(1);
+    expect(outcome.pruned).toEqual({ sessions: 0, checkpoints: 0, eventLogRows: 0 });
     const remaining = await readRetentionStatus(db, REPO, CLOCK);
-    expect(remaining.ok && remaining.value.counts.sessions).toBe(1);
+    expect(remaining.ok).toBe(true);
+    if (!remaining.ok) return;
+    expect(remaining.value.counts.sessions).toBe(2);
+    expect(remaining.value.counts.eventLogRows).toBe(1);
   });
 
   it("reports failed rather than throwing when the setting is unreadable", async () => {

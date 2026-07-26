@@ -45,7 +45,7 @@ export async function getSettings(
         local: {
           embeddingKeyPresent:
             process.env[ctx.repo.config.search.embedding.api_key_env] !== undefined,
-          retentionDays: retention.ok ? retention.value.days : null,
+          retentionDays: retention.ok ? retention.value.setting.days : null,
         },
       });
     },

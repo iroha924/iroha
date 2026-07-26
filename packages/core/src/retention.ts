@@ -43,6 +43,17 @@ export type RetentionSetting = z.infer<typeof retentionSettingSchema>;
 
 export const RETENTION_DISABLED: RetentionSetting = { days: null };
 
+export interface RetentionSettingRead {
+  setting: RetentionSetting;
+  /**
+   * The stored JSON exactly as written, or `null` for an absent row. Carried out
+   * of the same read as `setting` so a sweep's guard and its cutoff can never come
+   * from two different reads — which would let a change between them produce a
+   * guard that matches while the cutoff belongs to the superseded window.
+   */
+  rawJson: string | null;
+}
+
 /**
  * Reads the retention window. A malformed or unparseable stored value is an
  * error, not a silent fallback to "keep everything": the value governs deletion,
@@ -51,13 +62,13 @@ export const RETENTION_DISABLED: RetentionSetting = { days: null };
 export async function readRetentionSetting(
   db: Executor,
   repositoryId: TypedId<"repo">,
-): Promise<Result<RetentionSetting, IrohaError>> {
+): Promise<Result<RetentionSettingRead, IrohaError>> {
   const row = await getLocalSetting(db, repositoryId, RETENTION_SETTING_KEY);
   if (!row.ok) {
     return row;
   }
   if (row.value === null) {
-    return ok(RETENTION_DISABLED);
+    return ok({ setting: RETENTION_DISABLED, rawJson: null });
   }
   let parsed: unknown;
   try {
@@ -75,7 +86,7 @@ export async function readRetentionSetting(
       new IrohaErrorClass("INVALID_INPUT", `Stored ${RETENTION_SETTING_KEY} is not a valid window`),
     );
   }
-  return ok(validated.data);
+  return ok({ setting: validated.data, rawJson: row.value.valueJson });
 }
 
 /** The ISO-8601 instant `days` before now, or `null` when retention is off. */
@@ -115,8 +126,8 @@ export async function applyRetention(
   if (!setting.ok) {
     return { status: "failed", days: null, errorCode: setting.error.code };
   }
-  const days = setting.value.days;
-  const cutoff = retentionCutoff(setting.value, clock);
+  const days = setting.value.setting.days;
+  const cutoff = retentionCutoff(setting.value.setting, clock);
   if (cutoff === null) {
     return { status: "disabled", days: null };
   }
@@ -126,34 +137,43 @@ export async function applyRetention(
     return { status: "failed", days, errorCode: candidates.error.code };
   }
 
+  // The policy this sweep is authorized under. `pruneSession` re-reads it inside
+  // its own write transaction and refuses to delete once it stops matching, so a
+  // change committed on the dashboard's connection cannot land between the check
+  // and the delete. Everything already deleted was deleted under the window in
+  // force at the time, which is the intended behavior.
+  const guard = { key: RETENTION_SETTING_KEY, expectedValueJson: setting.value.rawJson };
+
   const pruned: PruneCounts = { sessions: 0, checkpoints: 0, eventLogRows: 0 };
+  let policyChanged = false;
   for (const sessionId of candidates.value) {
-    // Re-read the window between sessions. The dashboard can commit a retention
-    // change while a sync is finishing, and a user who has just widened the
-    // window — or turned pruning off — must not have more history deleted under
-    // the old one. Whatever was already deleted was deleted under the window in
-    // force at the time, which is the intended behavior.
-    const current = await readRetentionSetting(db, repositoryId);
-    if (!current.ok || current.value.days !== days) {
-      break;
-    }
-    const result = await pruneSession(db, repositoryId, cutoff, sessionId);
+    const result = await pruneSession(db, repositoryId, cutoff, sessionId, guard);
     if (!result.ok) {
       return { status: "failed", days, errorCode: result.error.code };
     }
-    // `null` means a hook or MCP tool wrote to the session after it was listed,
-    // so it no longer qualifies — skip it, do not count it.
     if (result.value !== null) {
       pruned.sessions += 1;
       pruned.checkpoints += result.value.checkpoints;
+      continue;
+    }
+    // `null` means the transaction declined: either the policy no longer matches,
+    // or a hook/MCP write made this session ineligible. Distinguish them, because
+    // a policy change must stop the whole sweep — including the diagnostics prune
+    // below — while an ineligible session only means skip this one.
+    const current = await readRetentionSetting(db, repositoryId);
+    if (!current.ok || current.value.setting.days !== days) {
+      policyChanged = true;
+      break;
     }
   }
 
-  const eventLogRows = await pruneEventLog(db, repositoryId, cutoff);
-  if (!eventLogRows.ok) {
-    return { status: "failed", days, errorCode: eventLogRows.error.code };
+  if (!policyChanged) {
+    const eventLogRows = await pruneEventLog(db, repositoryId, cutoff);
+    if (!eventLogRows.ok) {
+      return { status: "failed", days, errorCode: eventLogRows.error.code };
+    }
+    pruned.eventLogRows = eventLogRows.value;
   }
-  pruned.eventLogRows = eventLogRows.value;
 
   return { status: "pruned", days, pruned };
 }
@@ -173,9 +193,13 @@ export async function readRetentionStatus(
   if (!setting.ok) {
     return setting;
   }
-  const counts = await countLocalEventData(db, repositoryId, retentionCutoff(setting.value, clock));
+  const counts = await countLocalEventData(
+    db,
+    repositoryId,
+    retentionCutoff(setting.value.setting, clock),
+  );
   if (!counts.ok) {
     return counts;
   }
-  return ok({ days: setting.value.days, counts: counts.value });
+  return ok({ days: setting.value.setting.days, counts: counts.value });
 }

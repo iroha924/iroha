@@ -331,8 +331,9 @@ entity, so deleting `agent_sessions` directly would orphan the entity), which ca
 runs, turns, tool events, relations, and search documents. Its checkpoint entities are deleted
 first, for the same reason.
 
-**One write transaction per session**, not one for the whole sweep, and each session's
-eligibility is re-checked inside its own transaction. Both halves matter:
+**One write transaction per session**, not one for the whole sweep, and both the session's
+eligibility *and* the retention policy itself are re-checked inside that transaction. Three
+things matter here:
 
 - Selection and deletion must be atomic, because hooks and MCP tools write concurrently — a
   session selected as eligible could otherwise gain a checkpoint, a pending candidate, or an
@@ -343,8 +344,14 @@ eligibility is re-checked inside its own transaction. Both halves matter:
   hook and an applicable Guardrail deny is lost). A sweep-wide transaction would hold that lock
   across a whole backlog.
 
-The window is also re-read between sessions, so a developer who widens it — or turns pruning
-off — while a sync is finishing does not have further history removed under the old one.
+- Diagnostics rows are deleted in bounded batches for the same reason: one unbounded `DELETE`
+  over an accumulated backlog has no lock bound at all.
+
+The policy is re-read inside each delete transaction and compared against what the sweep was
+authorized under, so a change committed on another connection cannot land between the check and
+the delete. Once it stops matching, the sweep stops — including the diagnostics prune, which
+would otherwise still run with the superseded cutoff. Whatever was already deleted was deleted
+under the window in force at the time.
 
 A session is eligible only when all of the following hold. Each exclusion exists because the
 cascade would otherwise reach data this contract protects:
@@ -358,7 +365,10 @@ cascade would otherwise reach data this contract protects:
 3. neither the session nor any of its checkpoints has a `canonical_documents` row —
    `canonical_documents.entity_id` cascades from `entities`, so pruning an approved session
    would delete the index row for Git-tracked team knowledge;
-4. no `candidates` row with `status = 'pending'` reaches it by either route — directly through
+4. no other session names it in `parent_session_id` — that column is `ON DELETE SET NULL`, so
+   pruning a parent would leave its children alive but permanently unparented; the child ages
+   out first and the parent becomes eligible on a later sweep;
+5. no `candidates` row with `status = 'pending'` reaches it by either route — directly through
    `source_session_id`, or through `source_checkpoint_id` pointing at one of its checkpoints
    (`propose_knowledge` accepts any existing checkpoint id, so a pending candidate can
    reference this session's checkpoint while its own `source_session_id` is null). Both columns
