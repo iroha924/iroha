@@ -47,6 +47,20 @@ const rawPostToolUse = rawCommon.extend({
   tool_use_id: z.string().optional(),
   duration_ms: z.number().int().min(0).optional(),
 });
+/**
+ * `PostToolUseFailure` carries the same tool identity as `PostToolUse`, minus the
+ * response. The published docs do not spell out a complete schema for it, so only
+ * the three fields they do document for tool events are read; `rawCommon` is a
+ * non-strict `z.object`, so anything else Claude sends is ignored rather than
+ * rejected. No error text is captured — the normalized payload has no field for it,
+ * and raw tool output must never be logged (CLAUDE.md).
+ */
+const rawPostToolUseFailure = rawCommon.extend({
+  tool_name: z.string().min(1),
+  tool_input: rawToolInput,
+  tool_use_id: z.string().optional(),
+  duration_ms: z.number().int().min(0).optional(),
+});
 const rawPreCompact = rawCommon.extend({ trigger: z.enum(["manual", "auto"]) });
 const rawPostCompact = rawCommon.extend({
   trigger: z.enum(["manual", "auto"]),
@@ -238,6 +252,26 @@ export function parseClaudeEvent(
         ctx,
       );
     }
+    case "PostToolUseFailure": {
+      const r = rawPostToolUseFailure.safeParse(raw);
+      if (!r.success) return invalid("invalid PostToolUseFailure input");
+      return finalize(
+        {
+          ...baseEvent(r.data, ctx),
+          kind: "TOOL_FAILED",
+          payload: {
+            toolName: r.data.tool_name,
+            ...(r.data.tool_use_id === undefined ? {} : { toolUseId: r.data.tool_use_id }),
+            phase: "failure",
+            targets: extractClaudeTargets(r.data.tool_name, r.data.tool_input),
+            inputDigest: ctx.digest(JSON.stringify(r.data.tool_input)),
+            status: "failed",
+            ...(r.data.duration_ms === undefined ? {} : { durationMs: r.data.duration_ms }),
+          },
+        },
+        ctx,
+      );
+    }
     case "PreCompact": {
       const r = rawPreCompact.safeParse(raw);
       if (!r.success) return invalid("invalid PreCompact input");
@@ -295,7 +329,7 @@ export function parseClaudeEvent(
     }
     default:
       // Recognized transport, but not a P0 event iroha maps in v0.1
-      // (PermissionRequest, SubagentStart/Stop, PostToolUseFailure, ...).
+      // (PermissionRequest, SubagentStart/Stop, StopFailure, ...).
       return ok(null);
   }
 }

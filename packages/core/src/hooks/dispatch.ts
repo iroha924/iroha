@@ -460,8 +460,14 @@ function isMeaningfulMutation(targets: readonly ToolTarget[]): boolean {
   );
 }
 
-async function handleToolCompleted(
-  event: EventOf<"TOOL_COMPLETED">,
+/**
+ * Records the settled outcome of a tool call. Shared by the success and failure
+ * paths, which differ only in the phase/status pair they persist — and in that only
+ * a success can make a Turn checkpoint-worthy, since a tool that failed changed
+ * nothing.
+ */
+async function handleToolSettled(
+  event: EventOf<"TOOL_COMPLETED"> | EventOf<"TOOL_FAILED">,
   ctx: HookDispatchContext,
 ): Promise<HookOutput> {
   const sessionId = await resolveSessionId(ctx, event.platform, event.platformSessionId);
@@ -472,6 +478,7 @@ async function handleToolCompleted(
   if (turn === null) {
     return noOutput;
   }
+  const succeeded = event.kind === "TOOL_COMPLETED";
   const targets = await resolveTargets(event.payload.targets, ctx.repo.gitLocation.root, ctx.cwd);
   const primary = targets[0];
   await insertToolEvent(ctx.db, {
@@ -481,19 +488,19 @@ async function handleToolCompleted(
       ? {}
       : { externalToolUseId: event.payload.toolUseId }),
     toolName: event.payload.toolName,
-    phase: "post",
+    phase: succeeded ? "post" : "failure",
     ...(primary === undefined ? {} : { targetKind: primary.kind as ToolEventTargetKind }),
     ...(primary === undefined ? {} : { targetSummary: primary.value }),
     ...(event.payload.inputDigest === undefined ? {} : { inputDigest: event.payload.inputDigest }),
     ...(event.payload.responseDigest === undefined
       ? {}
       : { responseDigest: event.payload.responseDigest }),
-    status: "succeeded",
+    status: succeeded ? "succeeded" : "failed",
     ...(event.payload.durationMs === undefined ? {} : { durationMs: event.payload.durationMs }),
     occurredAt: event.occurredAt,
   });
 
-  if (isMeaningfulMutation(targets) && turn.checkpointState === "not_required") {
+  if (succeeded && isMeaningfulMutation(targets) && turn.checkpointState === "not_required") {
     await updateTurnCheckpointState(ctx.db, turn.id, "pending");
   }
   return noOutput;
@@ -602,7 +609,8 @@ export async function dispatchHookEvent(
     case "TOOL_STARTED":
       return handleToolStarted(event, ctx);
     case "TOOL_COMPLETED":
-      return handleToolCompleted(event, ctx);
+    case "TOOL_FAILED":
+      return handleToolSettled(event, ctx);
     case "TURN_STOPPED":
       return handleStop(event, ctx);
     case "SESSION_ENDED":
