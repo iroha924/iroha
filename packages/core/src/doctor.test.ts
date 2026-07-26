@@ -60,6 +60,23 @@ describe("runDoctor", () => {
     expect(byName.get("forge-provider")?.message).toBe("disabled");
   });
 
+  it("reports the retention window and the row counts it governs", async () => {
+    repoDir = await createTempGitRepo();
+    const init = await initRepository(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR);
+    expect(init.ok).toBe(true);
+
+    const result = await runDoctor(repoDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const retention = result.value.checks.find((c) => c.name === "retention");
+    // Retention being off is a valid choice, not a fault — but the counts have to
+    // be visible, or the setting has no observable effect (FR-111).
+    expect(retention?.status).toBe("ok");
+    expect(retention?.message).toContain("indefinitely");
+    expect(retention?.message).toContain("0 sessions");
+  });
+
   it("reports an error when run outside any Git repository", async () => {
     bareDir = await mkdtemp(join(tmpdir(), "iroha-doctor-no-git-"));
 
