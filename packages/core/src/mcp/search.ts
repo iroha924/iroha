@@ -53,6 +53,12 @@ export interface McpSearchInput {
   clock: Clock;
   random: RandomSource;
   query: string;
+  /**
+   * Set to `"search"` only by the MCP tool. The CLI and the dashboard API share
+   * this use case and leave it unset, so their calls are not recorded as MCP
+   * tool calls.
+   */
+  tool?: "search" | undefined;
   repositoryPath?: string | undefined;
   mode?: SearchMode | undefined;
   limit?: number | undefined;
@@ -80,7 +86,7 @@ export async function mcpSearch(input: McpSearchInput): Promise<Result<McpSearch
       cwd: input.repositoryPath ?? input.cwd,
       clock: input.clock,
       random: input.random,
-      tool: "search",
+      tool: input.tool ?? null,
     },
     async (ctx) => {
       // Clamp both bounds: the MCP/API transports reject `limit < 1` at their Zod

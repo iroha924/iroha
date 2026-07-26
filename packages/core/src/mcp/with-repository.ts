@@ -17,8 +17,13 @@ export interface WithMcpRepositoryInput {
   cwd: string;
   clock: Clock;
   random: RandomSource;
-  /** The tool this request is serving, recorded on its `event_log` row. */
-  tool: McpToolName;
+  /**
+   * The MCP tool this request is serving, or `null` when a shared use case was
+   * invoked from somewhere that is not the MCP boundary (the CLI, the dashboard
+   * API). `null` records nothing — attributing a CLI search to `mcp.tool_call`
+   * would make the diagnostics timeline claim an MCP call that never happened.
+   */
+  tool: McpToolName | null;
 }
 
 /**
@@ -64,13 +69,15 @@ export async function withMcpRepository<T>(
       clock: input.clock,
       random: input.random,
     });
-    await recordEvent(db, repo.repositoryId, input, {
-      eventType: "mcp.tool_call",
-      adapter: input.tool,
-      outcome: result.ok ? "success" : outcomeForErrorCode(result.error.code),
-      durationMs: Math.round(performance.now() - startedAt),
-      ...(result.ok ? {} : { errorCode: result.error.code }),
-    });
+    if (input.tool !== null) {
+      await recordEvent(db, repo.repositoryId, input, {
+        eventType: "mcp.tool_call",
+        adapter: input.tool,
+        outcome: result.ok ? "success" : outcomeForErrorCode(result.error.code),
+        durationMs: Math.round(performance.now() - startedAt),
+        ...(result.ok ? {} : { errorCode: result.error.code }),
+      });
+    }
     return result;
   } finally {
     await closeDatabase(db);

@@ -31,6 +31,7 @@ export const searchTool = defineTool({
   inputSchema: searchInputSchema,
   handler: (input, ctx) =>
     mcpSearch({
+      tool: "search",
       cwd: ctx.cwd,
       clock: ctx.clock,
       random: ctx.random,

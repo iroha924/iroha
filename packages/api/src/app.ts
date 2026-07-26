@@ -316,27 +316,32 @@ export function createApp(config: AppConfig) {
   app.use("/api/v1/*", requireCookie);
   app.use("/api/auth/logout", requireCookie);
 
-  // One `event_log` row per API request, for the Doctor page's diagnostics list.
-  // Registered *after* the auth and anti-CSRF guards so a rejected request costs
-  // no repository resolution and no write: before this endpoint existed a 401 did
-  // zero I/O, and `event_log` has no pruning, so logging outside the guards would
-  // hand any caller that reaches the loopback port an unauthenticated disk-write.
+  // One `event_log` row per **failed** API request, for the Doctor page's
+  // diagnostics list.
   //
-  // A successful read is not recorded. The SPA polls several pages every 5s
-  // (contracts/dashboard-api.md §7), which fills the whole list with `GET /api/v1/overview`
-  // within minutes and hides the rows worth reading — measured: 50 of 50 rows
-  // after ~4 minutes on one focused tab. Mutations and failures are what a
-  // diagnostics list is for, and they are not periodic.
+  // Scoped to `/api/v1/*` and registered *after* `requireCookie`, so only an
+  // authenticated request can ever write a row. `/api/auth/exchange` is
+  // deliberately outside both: it is the unauthenticated entry point, and
+  // logging it would hand anything that reaches the loopback port a write into
+  // an unpruned table. Before this endpoint existed a rejected request did zero
+  // I/O; that stays true.
+  //
+  // Only failures are recorded. A success — a poll, a search, an approval —
+  // either repeats every 5s (contracts/dashboard-api.md §7; measured at 50 of 50
+  // rows within ~4 minutes on one focused tab) or is already durably recorded as
+  // canonical data. What a diagnostics list is read for is what went wrong, and
+  // that is not periodic. It also means the record cannot be inflated by ordinary
+  // use, whatever HTTP method an endpoint happens to use.
   //
   // `adapter` is the matched route pattern in the router's own `:id` form, never
   // the concrete URL, so no id, query value, or path from the request is recorded.
   // 4xx is a `warning` — a rejected request is the client's problem, not a
   // malfunction; only 5xx is a `failure`.
-  app.use("/api/*", async (c, next) => {
+  app.use("/api/v1/*", async (c, next) => {
     const startedAt = performance.now();
     await next();
     const status = c.res.status;
-    if (status < 400 && (c.req.method === "GET" || c.req.method === "HEAD")) {
+    if (status < 400) {
       return;
     }
     const errorCode = c.get("errorCode");

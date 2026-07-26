@@ -569,7 +569,7 @@ describe("dashboard API", () => {
     expect(doc.paths["/api/doc"]).toBeUndefined();
   });
 
-  it("records a mutation and a failure, but not a successful read", async () => {
+  it("records a failure but never a success, and keeps the concrete URL out", async () => {
     const repo = await setupApiRepo();
     dir = repo.dir;
     const { app } = makeApp(repo.dir);
@@ -582,6 +582,8 @@ describe("dashboard API", () => {
       actor: { provider: "git", displayName: "Example Reviewer" },
     });
     expect(approved.status).toBe(200);
+    const search = await post(app, "/api/v1/search", cookie, { query: "libSQL" });
+    expect(search.status).toBe(200);
     const missing = await get(app, "/api/v1/knowledge/kno_01JQZ0000000000000000000", cookie);
     expect(missing.status).toBe(404);
 
@@ -598,22 +600,19 @@ describe("dashboard API", () => {
     };
     const adapters = body.data.events.map((e) => e.adapter);
 
-    // A successful read is not recorded: the SPA polls several pages every 5s,
-    // which would fill the whole list and hide the rows worth reading.
+    // No success is recorded, whatever the method — a poll, a POST search, and
+    // an approval would each otherwise displace the rows worth reading.
     expect(adapters).not.toContain("GET /api/v1/overview");
     expect(adapters).not.toContain("GET /api/v1/events");
+    expect(adapters).not.toContain("POST /api/v1/search");
+    expect(adapters).not.toContain("POST /api/v1/candidates/:id/approve");
 
     // Hono reports the route pattern in its own `:param` form, not OpenAPI's `{param}`.
-    const mutation = body.data.events.find(
-      (e) => e.adapter === "POST /api/v1/candidates/:id/approve",
-    );
-    expect(mutation?.eventType).toBe("api.request");
-    expect(mutation?.outcome).toBe("success");
-    expect(mutation?.durationMs).not.toBeNull();
-
     const failed = body.data.events.find((e) => e.adapter === "GET /api/v1/knowledge/:id");
+    expect(failed?.eventType).toBe("api.request");
     expect(failed?.outcome).toBe("warning");
     expect(failed?.errorCode).toBe("NOT_FOUND");
+    expect(failed?.durationMs).not.toBeNull();
 
     // The concrete URL never reaches the row — only the matched route pattern.
     expect(body.data.events.every((e) => e.adapter === null || !e.adapter.includes("?"))).toBe(
@@ -638,6 +637,14 @@ describe("dashboard API", () => {
       body: "{}",
     });
     expect(csrf.status).toBe(403);
+    // The token exchange is the unauthenticated entry point and sits outside the
+    // middleware entirely, so a wrong-token 401 cannot write either.
+    const badToken = await app.request("/api/auth/exchange", {
+      method: "POST",
+      headers: CSRF,
+      body: JSON.stringify({ token: "wrong-token-0000000000000000" }),
+    });
+    expect(badToken.status).toBe(401);
     expect(await eventLogCount(repo.dbPath)).toBe(before);
   });
 

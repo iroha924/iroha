@@ -328,7 +328,10 @@ export async function syncCanonicalToDatabase(
     { clock, random },
     {
       eventType: "sync.canonical",
-      outcome: result.ok ? "success" : "failure",
+      // A sync that parsed every document reports success; one that skipped a
+      // malformed document still returns `ok` (it records a divergence marker
+      // rather than aborting), and that must read as a warning, not health.
+      outcome: result.ok ? (result.value.scanErrors > 0 ? "warning" : "success") : "failure",
       durationMs: Math.round(performance.now() - startedAt),
       ...(result.ok ? {} : { errorCode: result.error.code }),
     },
