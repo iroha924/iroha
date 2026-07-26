@@ -133,6 +133,21 @@ describe("tarball contents", () => {
     }
   });
 
+  it("publishes a README with no link that only resolves inside the repository", async () => {
+    // None of the files the repo README points at are in the tarball, so a
+    // relative path here would only render if npm chose to rewrite it.
+    const readme = await readFile(join(releaseDir, "README.md"), "utf8");
+    expect(readme).not.toMatch(/<img\s+src="(?!https?:)/);
+    expect(readme).not.toMatch(/href="(?!https?:|#)/);
+    expect(readme).not.toMatch(/\]\((?!https?:|#)/);
+    expect(readme).toContain(
+      "https://raw.githubusercontent.com/iroha924/iroha/main/apps/dashboard/public/iroha-lockup-horizontal.svg",
+    );
+    expect(readme).toContain("https://github.com/iroha924/iroha/blob/main/CONTRIBUTING.md");
+    // An already-absolute URL must survive untouched, not gain a prefix.
+    expect(readme).toContain('<img src="https://img.shields.io/npm/v/@irohalabs/iroha');
+  });
+
   it("excludes source, tests, tooling, type declarations, and node_modules", () => {
     for (const path of tarballPaths) {
       expect(path, `leaked source/test: ${path}`).not.toMatch(/\.test\.|\/src\/|node_modules/);

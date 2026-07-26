@@ -1,3 +1,5 @@
+<!-- Keep links and images relative so they follow the branch or fork being viewed; `build-release.ts` rewrites them to absolute URLs for the npm copy. -->
+
 <p align="center">
   <img src="apps/dashboard/public/iroha-lockup-horizontal.svg" alt="iroha" width="320">
 </p>
@@ -158,7 +160,7 @@ Two other settings worth knowing:
 
 ## Contributing
 
-Contributions are very welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the development setup and workflow. The full product specification lives in [docs/](./docs/).
+Contributions are very welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the development setup and workflow. The architecture overview and the contracts it is built against live in [docs/](./docs/).
 
 ## Security
 
