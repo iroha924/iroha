@@ -117,6 +117,9 @@ catalogs:
     ajv-formats:
       specifier: 3.0.1
       version: 3.0.1
+    ansis:
+      specifier: 4.3.1
+      version: 4.3.1
     class-variance-authority:
       specifier: 0.7.1
       version: 0.7.1
@@ -198,6 +201,9 @@ catalogs:
     size-limit:
       specifier: 13.0.1
       version: 13.0.1
+    string-width:
+      specifier: 8.2.2
+      version: 8.2.2
     tailwind-merge:
       specifier: 3.6.0
       version: 3.6.0
@@ -610,9 +616,15 @@ importers:
       '@iroha/core':
         specifier: workspace:*
         version: link:../core
+      ansis:
+        specifier: 'catalog:'
+        version: 4.3.1
       gunshi:
         specifier: 'catalog:'
         version: 0.37.1
+      string-width:
+        specifier: 'catalog:'
+        version: 8.2.2
     devDependencies:
       '@biomejs/biome':
         specifier: 'catalog:'
@@ -931,6 +943,9 @@ importers:
       '@secretlint/secretlint-rule-preset-recommend':
         specifier: 'catalog:'
         version: 13.0.2
+      ansis:
+        specifier: 'catalog:'
+        version: 4.3.1
       gunshi:
         specifier: 'catalog:'
         version: 0.37.1
@@ -949,6 +964,9 @@ importers:
       secretlint:
         specifier: 'catalog:'
         version: 13.0.2
+      string-width:
+        specifier: 'catalog:'
+        version: 8.2.2
       unist-util-visit:
         specifier: 'catalog:'
         version: 5.1.0

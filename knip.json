@@ -26,12 +26,14 @@
         "@secretlint/node",
         "@secretlint/secretlint-rule-pattern",
         "@secretlint/secretlint-rule-preset-recommend",
+        "ansis",
         "gunshi",
         "hono",
         "mdast-util-from-markdown",
         "mdast-util-to-string",
         "picomatch",
         "secretlint",
+        "string-width",
         "unist-util-visit"
       ]
     }

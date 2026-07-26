@@ -197,4 +197,56 @@ describe("runCli", () => {
     await runCli(["dashboard"]);
     expect(process.exitCode).toBe(1);
   });
+
+  // Every command still answers a parseable envelope on `--json` after the human
+  // branch was restyled. The structural guarantee that styling cannot reach this
+  // output is `output.test.ts`'s "never invokes the text formatter in JSON mode" —
+  // scanning for escape sequences here would pass trivially, since colour is off
+  // in a non-TTY test process regardless.
+  it("still answers a parseable envelope on --json for every command", async () => {
+    repoDir = await createTempGitRepo();
+    process.chdir(repoDir);
+    await runCli(["init", "--json"]);
+
+    for (const argv of [
+      ["init", "--json"],
+      ["doctor", "--json"],
+      ["sync", "--json"],
+      ["search", "--json", "anything"],
+    ]) {
+      const stdout = captureStdout();
+      await runCli(argv);
+      stdout.restore();
+      const text = stdout.text();
+
+      expect(JSON.parse(text).ok, argv.join(" ")).toBe(true);
+    }
+  });
+
+  // gunshi rejects with an `AggregateError` after the validation errors have
+  // already been rendered. Left to propagate, the published binary's loader
+  // reports it as `iroha failed to start:` with nothing after it — an
+  // `AggregateError` has no message of its own — so a mistyped flag reads as a
+  // crash.
+  it("exits 1 without throwing when an argument is invalid, and says why", async () => {
+    repoDir = await createTempGitRepo();
+    process.chdir(repoDir);
+    // gunshi writes the rendered errors through `console.log`, not
+    // `process.stdout.write` — measured — so the stdout helper above sees nothing here.
+    const logged: string[] = [];
+    const log = vi.spyOn(console, "log").mockImplementation((...parts: unknown[]) => {
+      logged.push(parts.map(String).join(" "));
+    });
+
+    await expect(runCli(["search", "--mode=nonsense", "q"])).resolves.toBeUndefined();
+    log.mockRestore();
+    const text = logged.join("\n");
+
+    expect(process.exitCode).toBe(1);
+    // The load-bearing property is that the user was told something: asserting only
+    // the exit code stays green if the renderer regresses to an empty string, which
+    // is the silent-crash failure the catch exists to prevent.
+    expect(text).toContain("Invalid argument");
+    expect(text).toContain("--mode");
+  });
 });

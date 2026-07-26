@@ -22,7 +22,9 @@
   "dependencies": {
     "@iroha/api": "workspace:*",
     "@iroha/core": "workspace:*",
-    "gunshi": "catalog:"
+    "ansis": "catalog:",
+    "gunshi": "catalog:",
+    "string-width": "catalog:"
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",

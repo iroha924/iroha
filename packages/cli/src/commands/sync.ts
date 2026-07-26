@@ -2,61 +2,15 @@ import { type RunSyncResult, runSync } from "@iroha/core";
 import { define } from "gunshi";
 import { MIGRATIONS_DIR } from "../context.js";
 import { printError, printSuccess } from "../output.js";
+import { type GlyphStatus, row, statusGlyph, title } from "../render.js";
 
-function formatSync(data: RunSyncResult): string {
-  if (data.rebuilt) {
-    const { backupPath } = data.rebuild;
-    return [
-      backupPath === null
-        ? "Built the local database from canonical data (no previous database to back up)."
-        : `Rebuilt the local database (backup at ${backupPath}).`,
-      formatSyncCounts(data.rebuild.sync),
-    ].join("\n");
-  }
-  const lines = [formatSyncCounts(data.sync)];
-  const embedding = data.embedding;
-  if (embedding.skipped === null && embedding.processed + embedding.failed + embedding.dead > 0) {
-    lines.push(
-      `Embeddings: ${embedding.processed} embedded, ${embedding.failed} retrying, ${embedding.dead} dead-lettered.`,
-    );
-  }
-  // Forge is non-fatal, so its outcome only surfaces here (never as a sync error).
-  // "disabled" (the default) prints nothing to keep the common case quiet.
-  const forge = data.forge;
-  if (forge.status === "skipped") {
-    lines.push(`Forge: skipped (${forge.reason}).`);
-  } else if (forge.status === "error") {
-    lines.push(`Forge: sync failed (${forge.errorCode}) — will retry on the next sync.`);
-  } else if (forge.status === "synced") {
-    lines.push(
-      `Forge: ${forge.issues} issue(s), ${forge.pullRequests} PR(s), ${forge.reviewComments} review comment(s), ${forge.relations} relation(s).`,
-    );
-    if (forge.reviewLearnings > 0) {
-      lines.push(
-        `Forge: ${forge.reviewLearnings} recurring review learning(s) proposed for approval.`,
-      );
-    }
-    if (forge.truncated) {
-      lines.push(
-        "Forge sync was truncated — older history was not fetched; raise the page bound or re-run. See dirty markers.",
-      );
-    }
-  }
-  // Retention is non-fatal for the same reason forge is. "disabled" (the default)
-  // and a run that pruned nothing both print nothing; a deletion is always
-  // reported, since this is the only place a user sees local history removed.
-  const retention = data.retention;
-  if (retention.status === "failed") {
-    lines.push(`Retention: pruning failed (${retention.errorCode}) — will retry on the next sync.`);
-  } else if (retention.pruned !== undefined) {
-    const { sessions, checkpoints, eventLogRows, digestIssues } = retention.pruned;
-    if (sessions + checkpoints + eventLogRows + digestIssues > 0) {
-      lines.push(
-        `Retention: pruned ${sessions} session(s), ${checkpoints} checkpoint(s), ${eventLogRows} diagnostics row(s), and ${digestIssues} digest issue(s) older than ${retention.days} days.`,
-      );
-    }
-  }
-  return lines.join("\n");
+/**
+ * A glyph-led line: the outcome first, the sentence after, wrapped under the
+ * sentence's own indent. Hand-assembling it left `Rebuilt the local database
+ * (backup at <absolute path>)` as a single 165-column line.
+ */
+function note(status: GlyphStatus, text: string): string {
+  return row(statusGlyph(status), "", text, 0);
 }
 
 function formatSyncCounts(sync: {
@@ -66,19 +20,119 @@ function formatSyncCounts(sync: {
   deleted: number;
   scanErrors: number;
   unresolvedRelations: number;
-}): string {
+}): string[] {
   const lines = [
-    `+${sync.added} added, ${sync.changed} changed, ${sync.unchanged} unchanged, ${sync.deleted} deleted.`,
+    note(
+      "ok",
+      [
+        `+${sync.added} added`,
+        `${sync.changed} changed`,
+        `${sync.unchanged} unchanged`,
+        `${sync.deleted} deleted`,
+      ].join(" · "),
+    ),
   ];
   if (sync.scanErrors > 0) {
-    lines.push(`${sync.scanErrors} file(s) failed to parse — see dirty markers.`);
+    lines.push(note("error", `${sync.scanErrors} file(s) failed to parse — see dirty markers.`));
   }
   if (sync.unresolvedRelations > 0) {
     lines.push(
-      `${sync.unresolvedRelations} relation(s) could not be resolved — see dirty markers.`,
+      note(
+        "warning",
+        `${sync.unresolvedRelations} relation(s) could not be resolved — see dirty markers.`,
+      ),
     );
   }
-  return lines.join("\n");
+  return lines;
+}
+
+function formatSync(data: RunSyncResult): string {
+  const heading = [title("iroha sync"), ""];
+  if (data.rebuilt) {
+    const { backupPath } = data.rebuild;
+    return [
+      ...heading,
+      note(
+        "ok",
+        backupPath === null
+          ? "Built the local database from canonical data (no previous database to back up)."
+          : `Rebuilt the local database (backup at ${backupPath})`,
+      ),
+      ...formatSyncCounts(data.rebuild.sync),
+    ].join("\n");
+  }
+
+  const lines = formatSyncCounts(data.sync);
+  const embedding = data.embedding;
+  if (embedding.skipped === null && embedding.processed + embedding.failed + embedding.dead > 0) {
+    // A dead-lettered job is non-retryable or out of retry budget and writes a
+    // dirty marker, so the line must not claim success just because some jobs
+    // embedded. `failed` is still in flight, which is a warning, not an error.
+    const status: GlyphStatus =
+      embedding.dead > 0 ? "error" : embedding.failed > 0 ? "warning" : "ok";
+    lines.push(
+      note(
+        status,
+        `Embeddings: ${embedding.processed} embedded, ${embedding.failed} retrying, ${embedding.dead} dead-lettered.`,
+      ),
+    );
+  }
+  // Forge is non-fatal, so its outcome only surfaces here (never as a sync error).
+  // "disabled" (the default) prints nothing to keep the common case quiet.
+  const forge = data.forge;
+  if (forge.status === "skipped") {
+    lines.push(note("warning", `Forge: skipped (${forge.reason}).`));
+  } else if (forge.status === "error") {
+    lines.push(
+      note("error", `Forge: sync failed (${forge.errorCode}) — will retry on the next sync.`),
+    );
+  } else if (forge.status === "synced") {
+    lines.push(
+      note(
+        "ok",
+        `Forge: ${forge.issues} issue(s), ${forge.pullRequests} PR(s), ${forge.reviewComments} review comment(s), ${forge.relations} relation(s).`,
+      ),
+    );
+    if (forge.reviewLearnings > 0) {
+      lines.push(
+        note(
+          "ok",
+          `Forge: ${forge.reviewLearnings} recurring review learning(s) proposed for approval.`,
+        ),
+      );
+    }
+    if (forge.truncated) {
+      lines.push(
+        note(
+          "warning",
+          "Forge sync was truncated — older history was not fetched; raise the page bound or re-run. See dirty markers.",
+        ),
+      );
+    }
+  }
+  // Retention is non-fatal for the same reason forge is. "disabled" (the default)
+  // and a run that pruned nothing both print nothing; a deletion is always
+  // reported, since this is the only place a user sees local history removed.
+  const retention = data.retention;
+  if (retention.status === "failed") {
+    lines.push(
+      note(
+        "error",
+        `Retention: pruning failed (${retention.errorCode}) — will retry on the next sync.`,
+      ),
+    );
+  } else if (retention.pruned !== undefined) {
+    const { sessions, checkpoints, eventLogRows, digestIssues } = retention.pruned;
+    if (sessions + checkpoints + eventLogRows + digestIssues > 0) {
+      lines.push(
+        note(
+          "ok",
+          `Retention: pruned ${sessions} session(s), ${checkpoints} checkpoint(s), ${eventLogRows} diagnostics row(s), and ${digestIssues} digest issue(s) older than ${retention.days} days.`,
+        ),
+      );
+    }
+  }
+  return [...heading, ...lines].join("\n");
 }
 
 export const syncCommand = define({

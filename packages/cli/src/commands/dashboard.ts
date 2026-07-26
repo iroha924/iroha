@@ -5,6 +5,7 @@ import { resolveInitializedRepository } from "@iroha/core";
 import { define } from "gunshi";
 import { DASHBOARD_DIST } from "../context.js";
 import { printError } from "../output.js";
+import { muted, statusGlyph, title } from "../render.js";
 
 /** Best-effort open of the loopback URL in the default browser; never fails the command. */
 function openBrowser(url: string): void {
@@ -67,8 +68,9 @@ export const dashboardCommand = define({
     if (json) {
       process.stdout.write(`${JSON.stringify({ ok: true, url: server.url, port: server.port })}\n`);
     } else {
-      process.stdout.write(`iroha dashboard listening at ${server.url}\n`);
-      process.stdout.write("Press Ctrl+C to stop.\n");
+      process.stdout.write(`${title("iroha dashboard")}\n\n`);
+      process.stdout.write(`    ${statusGlyph("ok")}  listening at ${server.url}\n\n`);
+      process.stdout.write(`  ${muted("Press Ctrl+C to stop.")}\n`);
     }
 
     if (ctx.values["no-open"] !== true) {

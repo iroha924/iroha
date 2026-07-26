@@ -1,5 +1,43 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { printError } from "./output.js";
+import { printError, printSuccess } from "./output.js";
+
+describe("printSuccess", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /**
+   * `--json` is the machine contract — `scripts/release-smoke.mjs` parses `doctor
+   * --json`. Asserting the *absence of escape sequences* would prove nothing here,
+   * because colour is off in a non-TTY test process anyway; the guarantee worth
+   * holding is structural: in JSON mode the styled formatter is never reached.
+   */
+  it("never invokes the text formatter in JSON mode", () => {
+    vi.spyOn(process.stdout, "write").mockReturnValue(true);
+    const formatText = vi.fn(() => "styled");
+
+    printSuccess(true, { doctor: { checks: [] } }, formatText);
+
+    expect(formatText).not.toHaveBeenCalled();
+  });
+
+  it("serializes the data verbatim under an ok envelope in JSON mode", () => {
+    const stdout = vi.spyOn(process.stdout, "write").mockReturnValue(true);
+
+    printSuccess(true, { hits: [{ id: "dec_1" }] }, () => "styled");
+
+    const parsed = JSON.parse(stdout.mock.calls.map((call) => String(call[0])).join(""));
+    expect(parsed).toEqual({ ok: true, hits: [{ id: "dec_1" }] });
+  });
+
+  it("writes only the formatter's output in human mode", () => {
+    const stdout = vi.spyOn(process.stdout, "write").mockReturnValue(true);
+
+    printSuccess(false, { hits: [] }, () => "  ●●●  iroha search");
+
+    expect(stdout.mock.calls.map((call) => String(call[0])).join("")).toBe("  ●●●  iroha search\n");
+  });
+});
 
 describe("printError", () => {
   afterEach(() => {
