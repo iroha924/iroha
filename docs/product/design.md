@@ -21,7 +21,7 @@
 | 実装順序 | [Implementation Plan](./implementation/implementation-plan.md) |
 | Machine contract | [schemas/](./schemas/) / [migration v1](./migrations/001_initial.sql) |
 
-矛盾がある場合は、machine contract、責務別contract、本書、requirements、backgroundの順に優先する。仕様を変更する場合は、Decision Logと影響するcontract・fixtureを同じ変更で更新する。
+矛盾がある場合は、machine contract、責務別contract、本書、requirements、backgroundの順に優先する。仕様を変更する場合は、影響するcontract・fixtureを同じ変更で更新する。
 
 ## 2. アーキテクチャ概要
 
