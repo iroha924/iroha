@@ -1,6 +1,6 @@
 # CI review bots (Greptile / Codex): monitoring and response
 
-**Greptile is currently disabled for this repo**, so the only AI reviewer running on a PR is **OpenAI Codex**. The Greptile section below is kept for the day it is re-enabled — do not act on it while it is off (waiting for a "Greptile Review" check that will never appear stalls the whole post-push check). Codex is **invisible to CI**, so judging "the review passed" from `gh pr checks` alone sees nothing at all. After a push, do not report the work as done until you have actually seen both reviewers' verdicts (an extension of `~/.claude/rules/ci-discipline.md`, "see CI through to completion"). The discipline of reading every finding without skipping is [[code-review-triage]].
+**Greptile is currently disabled for this repo**, so the only AI reviewer running on a PR is **OpenAI Codex**. The Greptile section below is kept for the day it is re-enabled — do not act on it while it is off (waiting for a "Greptile Review" check that will never appear stalls the whole post-push check). Codex is **invisible to CI**, so judging "the review passed" from `gh pr checks` alone sees nothing at all. After a push, do not report the work as done until you have actually seen Codex's verdict (an extension of `~/.claude/rules/ci-discipline.md`, "see CI through to completion"). The discipline of reading every finding without skipping is [[code-review-triage]].
 
 ## Greptile (disabled — reference only)
 
