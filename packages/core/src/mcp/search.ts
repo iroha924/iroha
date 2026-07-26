@@ -65,7 +65,7 @@ const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 50;
 
 /**
- * `search` (mcp-contract.md §6.1): database-schema.md §9's hybrid retrieval over
+ * `search` (contracts/mcp.md §6.1): contracts/database.md §9's hybrid retrieval over
  * approved/verified entities. When embedding is configured and the query
  * embedding succeeds, the vector term joins the FTS RRF sum; otherwise the
  * request degrades to lexical (CLAUDE.md: "embedding failure must degrade to

@@ -10,7 +10,7 @@ import { err, IrohaError as IrohaErrorClass, makeDeterministicTypedId, ok } from
 import type { CandidateType } from "@iroha/storage";
 
 /**
- * A privacy-safe actor reference (canonical-schema.md §6 `created_by`/
+ * A privacy-safe actor reference (contracts/canonical.md §6 `created_by`/
  * `approved_by`). Matches `@iroha/domain`'s `actorRefSchema` shape.
  */
 export interface CanonicalActorRef {
@@ -21,7 +21,7 @@ export interface CanonicalActorRef {
 
 /**
  * The canonical type-specific classification a reviewer may set on a candidate
- * draft (dashboard-api.md §6 "editable ... metadata"). A `KnowledgeProposal`
+ * draft (contracts/dashboard-api.md §6 "editable ... metadata"). A `KnowledgeProposal`
  * carries none of these fields, so when the reviewer has not set them the
  * approval derives a deterministic default (see `resolveClassification`).
  */
@@ -49,7 +49,7 @@ export interface CandidateClassification {
  */
 export type CandidateDraft = KnowledgeProposal & { classification?: CandidateClassification };
 
-/** canonical-schema.md §5 relation types — the only `type` values a canonical `relations[]` edge may hold. */
+/** contracts/canonical.md §5 relation types — the only `type` values a canonical `relations[]` edge may hold. */
 const CANONICAL_RELATION_TYPES = new Set([
   "ADDRESSES",
   "IMPLEMENTED_IN",
@@ -174,7 +174,7 @@ function buildCommon(input: BuildCanonicalInput): CommonFrontmatter {
  * re-validated here — `writeCanonicalDocument` runs the authoritative Zod +
  * body-template + secret validation, so a proposal whose body is missing a
  * required section (or whose type-specific values are out of range) fails there
- * with `INVALID_INPUT`, matching dashboard-api.md §6 "approval is disabled
+ * with `INVALID_INPUT`, matching contracts/dashboard-api.md §6 "approval is disabled
  * until validation passes".
  */
 export function buildCanonicalDocumentFromCandidate(
@@ -281,7 +281,7 @@ export function buildCanonicalDocumentFromCandidate(
       });
     case "session_summary":
       // Session Summary approval is a separate publication unit
-      // (canonical-schema.md §8; "never auto-published in v0.1") and is not
+      // (contracts/canonical.md §8; "never auto-published in v0.1") and is not
       // reachable from the candidate review queue in WP-09.
       return err(
         new IrohaErrorClass(

@@ -15,7 +15,7 @@ import { buildSliceRepo, cleanupSliceRepo, type SliceRepo } from "./helpers/slic
 
 // Distinctive, non-secret-shaped markers seeded into the raw prompt and the raw
 // edit body. Neither may reach any persisted or agent/human-facing artifact —
-// only their HMAC digests are stored (hooks-contract.md §10, vertical-slice.md §6).
+// only their HMAC digests are stored (contracts/hooks.md §10).
 const RAW_PROMPT_MARKER = "RAW-PROMPT-PRIVACY-MARKER-abc123";
 const RAW_PATCH_MARKER = "RAW-PATCH-PRIVACY-MARKER-def456";
 const SESSION_TOKEN_RE = /ist_[A-Za-z0-9_-]{43}/;
@@ -202,7 +202,7 @@ afterAll(async () => {
   }
 });
 
-describe("Cross-artifact privacy scan (vertical-slice.md §6)", () => {
+describe("Cross-artifact privacy scan", () => {
   it("keeps raw prompt/patch, the session token, and absolute paths out of canonical files", async () => {
     const files = await irohaFiles(repo.resolved.irohaCanonicalDir);
     expect(files.length).toBeGreaterThan(0);
@@ -230,7 +230,7 @@ describe("Cross-artifact privacy scan (vertical-slice.md §6)", () => {
     // The DB-wide scan above covers `event_log` only if rows exist — without this
     // the hooks/MCP calls in `beforeAll` could stop logging and the scan would
     // still pass, vacuously. Assert the rows are there, and that each one holds
-    // only the fields hooks-contract.md §10 permits.
+    // only the fields contracts/hooks.md §10 permits.
     const rows = await tableRows(repo.resolved.dbPath, "event_log");
     expect(rows.length).toBeGreaterThan(0);
 
@@ -252,7 +252,7 @@ describe("Cross-artifact privacy scan (vertical-slice.md §6)", () => {
 
     // The MCP producer driven in `beforeAll` is represented, and every `adapter`
     // is an identifier fixed in this repository — never a value from the request.
-    // The hooks driven in `beforeAll` deliberately write nothing (hooks-contract.md
+    // The hooks driven in `beforeAll` deliberately write nothing (contracts/hooks.md
     // §10): a diagnostics INSERT there can outlast the platform's hook deadline.
     const eventTypes = new Set(rows.map((row) => String(row.event_type)));
     expect(eventTypes.has("mcp.tool_call")).toBe(true);

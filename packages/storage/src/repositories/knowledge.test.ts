@@ -218,7 +218,7 @@ describe("knowledge repositories", () => {
   });
 
   it("orders same-timestamp candidates deterministically by id, not arbitrarily", async () => {
-    // dashboard-api.md §4: "deterministic sort with ID tie-breaker" —
+    // contracts/dashboard-api.md §4: "deterministic sort with ID tie-breaker" —
     // several candidates can share created_at, e.g. one Checkpoint
     // producing multiple proposals at once.
     const opened = await openMigratedTestDb();
@@ -388,7 +388,7 @@ describe("knowledge repositories", () => {
     });
     expect(approved.ok).toBe(true);
 
-    // dashboard-api.md describes PATCH /candidates/:id as editing a draft;
+    // contracts/dashboard-api.md describes PATCH /candidates/:id as editing a draft;
     // once approved, the payload must be fixed even with a fresh, correct
     // revision token.
     const result = await updateCandidatePayload(db, id, {

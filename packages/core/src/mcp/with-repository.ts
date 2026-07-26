@@ -23,7 +23,7 @@ export interface WithMcpRepositoryInput {
 
 /**
  * Resolves the initialized repository for an MCP request, opens its libSQL
- * database lazily, runs `fn`, and always closes the connection (mcp-contract.md
+ * database lazily, runs `fn`, and always closes the connection (contracts/mcp.md
  * §2). Unlike the Hook path, which is fail-open, MCP surfaces typed errors: a
  * missing or uninitialized repository returns `NOT_INITIALIZED` rather than
  * silently succeeding, and the server never migrates implicitly.

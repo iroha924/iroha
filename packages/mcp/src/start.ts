@@ -2,7 +2,7 @@ import { CryptoRandomSource, SystemClock } from "@iroha/core";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { buildServer } from "./server.js";
 
-/** mcp-contract.md §2: SIGINT/SIGTERM closes connections within 500ms. */
+/** contracts/mcp.md §2: SIGINT/SIGTERM closes connections within 500ms. */
 const SHUTDOWN_GRACE_MS = 500;
 
 /**

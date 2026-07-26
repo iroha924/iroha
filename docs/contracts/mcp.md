@@ -168,7 +168,7 @@ them, they are never parsed from a request — so they intentionally have no
 
 ```ts
 interface SourceRef {
-  // canonical-schema.md §5 source kinds
+  // contracts/canonical.md §5 source kinds
   type:
     | "session" | "checkpoint" | "issue" | "pull_request" | "review"
     | "commit" | "file" | "symbol" | "document" | "url";
@@ -178,7 +178,7 @@ interface SourceRef {
 }
 
 interface RelationPreview {
-  relationType: RelationType;              // canonical-schema.md §5 relation types
+  relationType: RelationType;              // contracts/canonical.md §5 relation types
   direction: "outgoing" | "incoming";
   entityId: string;
   title: string;
@@ -226,7 +226,7 @@ interface ContextData {
 }
 ```
 
-Ordering follows `database-schema.md` context-pack priority. Pending candidates are excluded.
+Ordering follows `contracts/database.md` context-pack priority. Pending candidates are excluded.
 
 ### 6.3 `get_active_rules`
 

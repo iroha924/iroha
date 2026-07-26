@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { type Clock, err, IrohaError, ok, type RandomSource, type Result } from "@iroha/domain";
 
 /**
- * implementation/database-schema.md §12 step 2: "create a sibling DB with a
+ * contracts/database.md §12 step 2: "create a sibling DB with a
  * random temporary name". Only builds the path — callers open/migrate it
  * themselves (`openDatabase`/`runMigrations` with `skipBackup: true`, since
  * a brand-new sibling has nothing yet worth backing up).
@@ -18,7 +18,7 @@ export interface ReplaceDatabaseResult {
    * Path of the timestamped backup of the previous database, or `null` when
    * there was no previous database to back up — a fresh clone that ran
    * `sync --rebuild` before any `iroha init` created `index.db` locally
-   * (requirements.md Scenario E). See `replaceDatabaseAtomically`.
+   * (the missing-database recovery path). See `replaceDatabaseAtomically`.
    */
   backupPath: string | null;
 }
@@ -31,7 +31,7 @@ const WAL_SUFFIXES = ["-wal", "-shm"] as const;
  * package's `closeDatabase()` returns, so a `rename()` immediately following a
  * close can transiently fail even though every caller has already closed its
  * connections per contract. This is the one rename on the product-required path
- * (database-schema.md §12 step 11), so it gets a real retry — but only a modest
+ * (contracts/database.md §12 step 11), so it gets a real retry — but only a modest
  * one: if the lock does not clear within a few seconds, surfacing a retryable
  * error to the caller is correct rather than chasing an ever-longer budget.
  */
@@ -73,7 +73,7 @@ async function renameSidecarIfExists(fromBase: string, toBase: string): Promise<
 }
 
 /**
- * implementation/database-schema.md §12 steps 11–12: atomically swaps the
+ * contracts/database.md §12 steps 11–12: atomically swaps the
  * rebuilt sibling database into place and retains the previous database as a
  * timestamped backup. Callers must close every connection to both
  * `primaryDbPath` and `siblingDbPath` first — this function only renames
@@ -88,7 +88,7 @@ async function renameSidecarIfExists(fromBase: string, toBase: string): Promise<
  * closing the connection truncates these files' content but does not delete
  * them.
  *
- * Bootstrap case (requirements.md Scenario E): when `primaryDbPath` does not
+ * Bootstrap case: when `primaryDbPath` does not
  * exist — a teammate who ran `sync --rebuild` on a fresh clone before any
  * `iroha init` created the git-ignored `index.db` locally — the move-aside
  * fails with `ENOENT`. There is then no current database to back up, so this

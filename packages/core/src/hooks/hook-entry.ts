@@ -1,7 +1,7 @@
 import { type Clock, CryptoRandomSource, type RandomSource, SystemClock } from "@iroha/domain";
 import { type HookInvocation, type HookPlatform, runHook } from "./run-hook.js";
 
-/** hooks-contract.md §2: at most 1 MiB of UTF-8 JSON is read from stdin. */
+/** contracts/hooks.md §2: at most 1 MiB of UTF-8 JSON is read from stdin. */
 export const MAX_STDIN_BYTES = 1024 * 1024;
 
 /** Maps the `<claude|codex>` entrypoint argument to a platform, or `null` if unknown. */
@@ -28,7 +28,7 @@ export interface HookEntryInput {
  * The logic behind `node hook.mjs <claude|codex>`: choose the platform, bound
  * and parse stdin, and run the hook. Unknown platform, oversize input, and
  * malformed JSON are all fail-open — they return no output rather than erroring,
- * so the hook never blocks the agent (hooks-contract.md §2). Returns the stdout
+ * so the hook never blocks the agent (contracts/hooks.md §2). Returns the stdout
  * string to write, or `undefined` for none.
  */
 export async function runHookEntry(input: HookEntryInput): Promise<string | undefined> {

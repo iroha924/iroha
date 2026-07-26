@@ -79,7 +79,7 @@ async function writeLocalConfig(
  * Ensures a per-repository HMAC salt exists under `<git-path iroha>/local-
  * config.json` (local-only, never committed — see design.md §6 "Local
  * data") and returns it. Hook adapters key prompt/tool digests with this
- * salt (hooks-contract.md §5, "repository-keyed HMAC-SHA-256") so digests
+ * salt (contracts/hooks.md §5, "repository-keyed HMAC-SHA-256") so digests
  * stay comparable across sessions on this machine. Unrelated fields already
  * present in the file are preserved.
  */
@@ -115,7 +115,7 @@ export async function ensureRepositorySalt(
     });
     return ok(salt);
   } catch (cause) {
-    // No `irohaDir` in message or details: mcp-contract.md §8 forbids
+    // No `irohaDir` in message or details: contracts/mcp.md §8 forbids
     // returning filesystem absolute paths to the model, and this error can
     // reach an MCP response as-is.
     return err(

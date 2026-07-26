@@ -64,7 +64,7 @@ describe("toRepoRelativePath", () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      // mcp-contract.md §8: filesystem absolute paths are never returned to
+      // contracts/mcp.md §8: filesystem absolute paths are never returned to
       // the model, and this error can reach an MCP response as-is.
       expect(result.error.message.includes(root)).toBe(false);
       expect(JSON.stringify(result.error.details ?? {}).includes(root)).toBe(false);

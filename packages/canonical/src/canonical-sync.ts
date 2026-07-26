@@ -42,13 +42,13 @@ export function diffCanonicalFiles(
 }
 
 export interface TombstoneReference {
-  /** The deleted document's id, derived from its former file basename (canonical-schema.md §4: basename must equal `<id>.md`). */
+  /** The deleted document's id, derived from its former file basename (contracts/canonical.md §4: basename must equal `<id>.md`). */
   deletedId: string;
   referencedBy: Array<{ path: string; id: string; relationType: string }>;
 }
 
 /**
- * canonical-schema.md §13: "A Git deletion is imported as a local tombstone
+ * contracts/canonical.md §13: "A Git deletion is imported as a local tombstone
  * and requires explicit reconciliation if another document still
  * references the ID." Surfaces exactly that — which deleted ids remain
  * referenced, and by what — for a caller to present to a human rather than

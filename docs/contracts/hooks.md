@@ -95,7 +95,7 @@ Codex command hooks require explicit user trust. `iroha doctor` must distinguish
 | `AGENT_STARTED` | `SubagentStart` | `SubagentStart` | P1 |
 | `AGENT_STOPPED` | `SubagentStop` | `SubagentStop` | P1 |
 | `TURN_STOPPED` | `Stop` | `Stop` | P0 |
-| `SESSION_ENDED` | `SessionEnd` | unavailable | P0, Claude only (FR-029) |
+| `SESSION_ENDED` | `SessionEnd` | unavailable | P0, Claude only |
 | `TOOL_FAILED` | `PostToolUseFailure` | derive from `PostToolUse` response | P1 |
 | `TURN_FAILED` | `StopFailure` | unavailable | Claude enhancement |
 | `INSTRUCTIONS_OBSERVED` | `InstructionsLoaded` | unavailable | Claude enhancement |

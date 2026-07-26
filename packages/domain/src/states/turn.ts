@@ -4,7 +4,7 @@ import { createTransitionValidator } from "./transition.js";
 
 /**
  * Matches migrations/001_initial.sql `turns.status` and
- * implementation/database-schema.md §7 "Turn".
+ * contracts/database.md §7 "Turn".
  */
 export type TurnStatus = "active" | "completed" | "failed" | "interrupted";
 
@@ -32,8 +32,8 @@ export function transitionTurnStatus(
 
 /**
  * Matches migrations/001_initial.sql `turns.checkpoint_state`. No transition
- * graph is documented in implementation/database-schema.md beyond the valid
- * values themselves, so only the type is exported here — hooks-contract.md
+ * graph is documented in contracts/database.md beyond the valid
+ * values themselves, so only the type is exported here — contracts/hooks.md
  * §6.6 owns how a Turn moves between these values.
  */
 export type CheckpointState = "not_required" | "pending" | "saved";

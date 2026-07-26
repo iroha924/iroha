@@ -114,7 +114,7 @@ export async function runSync(
     return opened;
   }
   try {
-    // Apply any pending migrations before syncing (database-schema.md §3: only
+    // Apply any pending migrations before syncing (contracts/database.md §3: only
     // init/sync/doctor --repair migrate — hooks never do). Without this, a DB
     // from an older build stays behind after `iroha sync` and a later hook that
     // needs a not-yet-created table would silently fail-open.

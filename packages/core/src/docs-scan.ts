@@ -20,7 +20,7 @@ import {
 import { parse as parseYaml } from "yaml";
 
 /**
- * canonical-schema.md §14: "`iroha init --scan` creates local candidates
+ * contracts/canonical.md §14: "`iroha init --scan` creates local candidates
  * from `CLAUDE.md`, `AGENTS.md`, `.claude/rules/**\/*.md`, and user-selected
  * docs." "User-selected docs" needs an interactive doc-picker this
  * non-interactive CLI flag does not have — recorded as an accepted scope
@@ -134,7 +134,7 @@ export interface ScanDocsIntoCandidatesResult {
 }
 
 /**
- * `iroha init --scan` (canonical-schema.md §14). Each imported candidate
+ * `iroha init --scan` (contracts/canonical.md §14). Each imported candidate
  * retains, per §14's list: source repository-relative path and content
  * hash (`source`), import timestamp (`imported_at`), line range (whole-file
  * — these docs are imported as one candidate each, not split into

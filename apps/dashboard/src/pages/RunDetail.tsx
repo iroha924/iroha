@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card.js";
 import { useI18n } from "@/i18n/index.js";
 import { runStatusTone } from "@/lib/status.js";
 
-/** Run detail: Turns and tool summaries (dashboard-api.md §6); digests only, never raw payloads. */
+/** Run detail: Turns and tool summaries (contracts/dashboard-api.md §6); digests only, never raw payloads. */
 export function RunDetail() {
   const { t } = useI18n();
   const { id = "", runId = "" } = useParams();

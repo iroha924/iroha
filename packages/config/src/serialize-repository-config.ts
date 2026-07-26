@@ -2,7 +2,7 @@ import { stringify } from "yaml";
 import type { RepositoryConfig } from "./schemas/repository-config.js";
 
 /**
- * Serializes `.iroha/config.yaml` deterministically in canonical-schema.md §9
+ * Serializes `.iroha/config.yaml` deterministically in contracts/canonical.md §9
  * field order. Every key is written explicitly rather than by spreading the
  * input, so an unexpected property can never leak into the committed shared
  * config and the output stays byte-stable across writes (a clean Git diff).

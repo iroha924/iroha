@@ -9,7 +9,7 @@ import { withDashboardRepository } from "./with-repository.js";
 export interface SettingsData {
   shared: RepositoryConfig;
   local: {
-    /** Presence only — the embedding API key value is never returned (NFR-005). */
+    /** Presence only — the embedding API key value is never returned. */
     embeddingKeyPresent: boolean;
   };
 }
@@ -48,7 +48,7 @@ export interface UpdateSharedConfigInput {
 /**
  * Safely rewrites `.iroha/config.yaml` (`PATCH /api/v1/settings/shared`). The
  * `repository_id` is immutable (it is generated once and committed,
- * canonical-schema.md §9), so a mismatch is rejected. The file is written to a
+ * contracts/canonical.md §9), so a mismatch is rejected. The file is written to a
  * sibling temp file and atomically renamed, so a crash never leaves a partial
  * shared config in the Git-tracked tree.
  */

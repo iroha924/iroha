@@ -1,5 +1,5 @@
 /**
- * Ranking-quality metrics for the search evaluation gate (database-schema.md §14).
+ * Ranking-quality metrics for the search evaluation gate (contracts/database.md §14).
  * All operate on a ranked list of entity ids and a set of relevant ids (binary
  * relevance). `@k` truncates the ranked list to its first `k` entries.
  */

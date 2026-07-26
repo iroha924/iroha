@@ -36,7 +36,7 @@ async function resolveGitRevParsePath(
   if (!result.ok) {
     const stderr = (result.error.details as { stderr?: string } | undefined)?.stderr;
     if (stderr !== undefined && NOT_A_REPOSITORY.test(stderr)) {
-      // No `cwd`/resolved-path values in message or details: mcp-contract.md
+      // No `cwd`/resolved-path values in message or details: contracts/mcp.md
       // §8 forbids returning filesystem absolute paths to the model, and
       // this error can reach an MCP response as-is.
       return err(

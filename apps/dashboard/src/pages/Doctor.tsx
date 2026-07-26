@@ -76,7 +76,7 @@ function RecentEvents() {
   );
 }
 
-/** Capability diagnostics + allowlisted repair (dashboard-api.md §6). */
+/** Capability diagnostics + allowlisted repair (contracts/dashboard-api.md §6). */
 export function Doctor() {
   const { t } = useI18n();
   const queryClient = useQueryClient();

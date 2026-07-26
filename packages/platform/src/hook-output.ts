@@ -1,6 +1,6 @@
 /**
  * Platform-independent description of what a hook wants to emit. Adapters render
- * it to each platform's concrete stdout JSON (hooks-contract.md §6/§9):
+ * it to each platform's concrete stdout JSON (contracts/hooks.md §6/§9):
  *
  * - `none` — a successful side-effect-only event; write nothing to stdout;
  * - `context` — bounded `additionalContext` injected at SessionStart/UserPromptSubmit;

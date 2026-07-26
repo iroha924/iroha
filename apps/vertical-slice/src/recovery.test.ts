@@ -35,7 +35,7 @@ afterAll(async () => {
   }
 });
 
-describe("Interruption and recovery (vertical-slice.md §5)", () => {
+describe("Interruption and recovery", () => {
   it("interrupts the stale run, keeps the session, and injects the last checkpoint + unresolved", async () => {
     const deps = { clock: repo.clock, random: repo.random };
     const ctx = { cwd: repo.repoDir, clock: repo.clock, random: repo.random };

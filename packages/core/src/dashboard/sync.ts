@@ -85,7 +85,7 @@ export interface RunDashboardSyncInput {
 /**
  * Reconciles the local DB with `.iroha/` canonical files (`POST /api/v1/sync`).
  * This is the non-rebuild canonical sync — it repairs the DB divergence a failed
- * approval records (FR-053) without needing migrations. Forge/Git sync remains
+ * approval records without needing migrations. Forge/Git sync remains
  * out of scope for v0.1's dashboard sync.
  */
 export async function runDashboardSync(

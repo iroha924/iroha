@@ -1,5 +1,5 @@
 /**
- * In-process, per-repository write serialization (canonical-schema.md §12 step 1:
+ * In-process, per-repository write serialization (contracts/canonical.md §12 step 1:
  * "acquire a per-repository canonical write lock"). The MCP server and the
  * dashboard each run as a single process that can have concurrent in-flight
  * writers — the dashboard serves concurrent HTTP requests, and the MCP SDK

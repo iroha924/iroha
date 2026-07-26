@@ -17,7 +17,7 @@ export interface McpCheckpointSummary {
 }
 
 /**
- * The caller's own local session state (mcp-contract.md §6.4). Excludes raw
+ * The caller's own local session state (contracts/mcp.md §6.4). Excludes raw
  * prompt and tool contents by construction — only structured lifecycle IDs,
  * the last Checkpoint's summary, and its recorded unresolved/reference items
  * are exposed.

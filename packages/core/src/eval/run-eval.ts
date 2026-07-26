@@ -73,7 +73,7 @@ async function rankedIdsFor(
 /**
  * Runs every fixture query through the real hybrid pipeline (with recorded query
  * vectors) and returns the aggregate ranking metrics plus the Guardrail-rule
- * recall (database-schema.md §14). Fully offline and deterministic.
+ * recall (contracts/database.md §14). Fully offline and deterministic.
  */
 export async function runEval(
   db: Database,

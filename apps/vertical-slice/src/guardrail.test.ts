@@ -31,7 +31,7 @@ const raw = (payload: unknown) => ({
 });
 const editOf = (file: string) => ({ file_path: file, old_string: "a", new_string: "b" });
 
-describe("Guardrail flow (vertical-slice.md §4)", () => {
+describe("Guardrail flow", () => {
   it("denies a write to a protected path by any write tool, and allows unrelated writes", async () => {
     await runHook(raw(claudeSessionStart(repo.repoDir, SESSION)), deps());
     await runHook(raw(claudePrompt(repo.repoDir, SESSION, "edit generated", "p1")), deps());

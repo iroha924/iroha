@@ -76,7 +76,7 @@ describe("initRepository", () => {
     expect(second.value.candidatesCreated).toBe(0);
   });
 
-  it("does not scan docs into candidates unless options.scan is set (canonical-schema.md §14: --scan only)", async () => {
+  it("does not scan docs into candidates unless options.scan is set (contracts/canonical.md §14: --scan only)", async () => {
     repoDir = await createTempGitRepo();
     await writeFile(join(repoDir, "AGENTS.md"), "# Agents\n\nFollow these rules.", "utf8");
 

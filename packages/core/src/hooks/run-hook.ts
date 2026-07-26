@@ -31,7 +31,7 @@ const ADAPTERS: Record<HookPlatform, HookAdapter> = {
   codex: codexHookAdapter,
 };
 
-// Half the §7 (hooks-contract.md) hook-timeout budget per event. Repository
+// Half the §7 (contracts/hooks.md) hook-timeout budget per event. Repository
 // resolution runs up to five `git rev-parse` calls; capping each at half the
 // budget bounds a hung `git` (stale mount, wedged fsmonitor) to well under the
 // platform's hook kill deadline — resolution short-circuits on the first
@@ -62,7 +62,7 @@ function resolutionGitTimeoutMs(raw: unknown): number {
  * Execute one hook invocation end to end: resolve the repository from `cwd`,
  * normalize the raw input, run the event use case, and return the platform
  * output. Outside an initialized repository it returns no output. Every internal
- * failure is fail-open (hooks-contract.md §2/§7): the hook never blocks the agent
+ * failure is fail-open (contracts/hooks.md §2/§7): the hook never blocks the agent
  * on an iroha error — it returns no output and lets the agent proceed.
  */
 export async function runHook(invocation: HookInvocation, deps: HookDeps): Promise<HookResult> {

@@ -1,5 +1,5 @@
 # WP-00 CI matrix skeleton.
-# Tier 1 mapping (docs/product/implementation/compatibility.md §6), verified against
+# Tier 1 mapping (docs/contracts/compatibility.md §6), verified against
 # https://github.com/actions/runner-images (2026-07-18):
 #   macos-14        -> macOS 14 arm64 (GitHub flags this image "Deprecated"; still GA today.
 #                       Re-check runner-images before it is removed.)

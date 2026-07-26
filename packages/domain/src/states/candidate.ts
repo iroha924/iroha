@@ -4,7 +4,7 @@ import { createTransitionValidator } from "./transition.js";
 
 /**
  * Matches migrations/001_initial.sql `candidates.status` and
- * implementation/database-schema.md §7 "Candidate".
+ * contracts/database.md §7 "Candidate".
  */
 export type CandidateStatus = "pending" | "approved" | "rejected" | "superseded";
 

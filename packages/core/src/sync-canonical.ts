@@ -35,7 +35,7 @@ import {
 import { recordEvent } from "./event-log.js";
 
 /**
- * database-schema.md §6: approved canonical = 100 is the only documented tier. A
+ * contracts/database.md §6: approved canonical = 100 is the only documented tier. A
  * superseded/archived document must not tie current knowledge in ranking, so it is
  * tiered below: `superseded = 70`, `archived = 60`. Both stay
  * **at or above** the `DEFAULT_MINIMUM_AUTHORITY` floor (60) on purpose — dropping
@@ -135,7 +135,7 @@ export async function importCanonicalDocument(
 
   // Project knowledge-type documents (every canonical type except
   // session_summary) into `knowledge_items`. A guardrail Rule carries its
-  // machine-evaluable guard spec (canonical-schema.md §7); every other item is
+  // machine-evaluable guard spec (contracts/canonical.md §7); every other item is
   // advisory. The Zod-validated canonical document guarantees a guardrail Rule
   // has a `guard` object, so the `guard !== undefined` check only satisfies the
   // type-checker (the advisory fallback is unreachable for a guardrail Rule).
@@ -197,7 +197,7 @@ export async function importCanonicalDocument(
     // remote calls in hooks, and sync stays usable with no network/key). The
     // worker (`runEmbeddingSync`) drains the queue during `iroha sync` when
     // embedding is enabled and a key is present, and otherwise leaves jobs
-    // pending (database-schema.md §12 step 9). Both plain `sync` and
+    // pending (contracts/database.md §12 step 9). Both plain `sync` and
     // `sync --rebuild` funnel through here, so one hook covers both.
     const enqueueResult = await enqueueEmbeddingJob(db, {
       id: makeTypedId("job", clock, random),
@@ -286,11 +286,11 @@ export async function insertCanonicalDocumentRelations(
 }
 
 /**
- * `iroha sync` (implementation-plan.md WP-05, requirements.md Scenario C):
+ * `iroha sync`:
  * scans `.iroha/`, diffs it against this local DB's current
  * `canonical_documents`, and applies the difference — upserting
  * added/changed entities, recording a `sync_required` tombstone marker for
- * deletions that remain referenced (canonical-schema.md §13), and a
+ * deletions that remain referenced (contracts/canonical.md §13), and a
  * `canonical_db_divergence` marker for any file that failed to parse/
  * validate (so one malformed document does not abort the whole sync).
  * Idempotent: re-running with no on-disk changes touches nothing (every

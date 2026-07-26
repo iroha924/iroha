@@ -4,7 +4,7 @@
 -- frontmatter (schemas/canonical-v1.schema.json `$defs.rule`), but the
 -- projection into `knowledge_items` (packages/core/src/sync-canonical.ts) had
 -- nowhere to put it, so `get_active_rules` could not return the severity the
--- MCP contract (mcp-contract.md §6.3) lists. Add a nullable `severity` column
+-- MCP contract (contracts/mcp.md §6.3) lists. Add a nullable `severity` column
 -- so a Rule's severity survives the projection; it stays NULL for every
 -- non-rule knowledge type (audit issue #30).
 --

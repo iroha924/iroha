@@ -55,20 +55,20 @@ export interface HookEventSpec {
   /** Platform lifecycle event name (identical string on Claude and Codex). */
   readonly event: string;
   /**
-   * Manifest hook timeout, in whole seconds. A ceiling ≥ the hooks-contract.md
+   * Manifest hook timeout, in whole seconds. A ceiling ≥ the contracts/hooks.md
    * §7 hook budget for the event (the internal p95 targets are far smaller); the
    * hook is fail-open on its own, so this only bounds a pathological hang.
    */
   readonly timeoutSeconds: number;
   /**
    * Subscribed on Claude only, because Codex has no such event
-   * (hooks-contract.md §3). Omitted means both platforms.
+   * (contracts/hooks.md §3). Omitted means both platforms.
    */
   readonly claudeOnly?: true;
 }
 
 /**
- * The hook events iroha subscribes to (hooks-contract.md §3). Every event
+ * The hook events iroha subscribes to (contracts/hooks.md §3). Every event
  * dispatches the same `iroha __hook <platform>` command; the hook discriminates
  * internally on the stdin `hook_event_name`.
  */
@@ -80,14 +80,14 @@ export const HOOK_EVENTS: readonly HookEventSpec[] = [
   { event: "PreCompact", timeoutSeconds: 1 },
   { event: "PostCompact", timeoutSeconds: 1 },
   { event: "Stop", timeoutSeconds: 2 },
-  // requirements.md FR-029 (P0): Claude's `SessionEnd` records Run end — status,
+  // Claude's `SessionEnd` records Run end — status,
   // the end HEAD sha, and closing a Turn left open. A Codex Run has no such
   // event and is instead repaired at its next SessionStart (§6.7).
   { event: "SessionEnd", timeoutSeconds: 2, claudeOnly: true },
 ];
 
 /**
- * Shared Skills (implementation-plan.md WP-11). Each is a `skills/<name>/SKILL.md`
+ * Shared Skills. Each is a `skills/<name>/SKILL.md`
  * with `name` + `description` frontmatter only, so the one directory is valid for
  * both Claude (`/iroha:<name>`) and Codex (`$<name>`; Codex documents no richer
  * frontmatter and no plugin namespace — the CLI is the reliable fallback).

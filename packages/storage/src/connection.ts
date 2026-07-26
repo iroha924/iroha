@@ -33,7 +33,7 @@ function mapOpenFailure(cause: unknown, fallbackMessage: string): IrohaError {
 }
 
 /**
- * Every new connection runs these in order (implementation/database-schema.md
+ * Every new connection runs these in order (contracts/database.md
  * §3). For a local `file:` URL `@libsql/client` keeps one native connection
  * per `Client`, so PRAGMAs set here stay in effect for every later
  * `execute()`/`transaction()` call on the same `Database` — they need not be
@@ -51,7 +51,7 @@ const INIT_PRAGMAS = [
  * Opens (creating if absent) the libSQL database at `path` and applies the
  * required connection PRAGMAs. Callers own `path` resolution — this
  * package never derives `.git`/`iroha` paths itself (that is `@iroha/git`'s
- * responsibility, per implementation/database-schema.md §2).
+ * responsibility, per contracts/database.md §2).
  */
 export async function openDatabase(path: string): Promise<Result<Database, IrohaError>> {
   try {

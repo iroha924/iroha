@@ -12,7 +12,7 @@ import {
 import { z } from "zod";
 
 // Raw Codex hook input shapes. Forward-compatible: `z.object` validates the
-// fields iroha relies on and *strips* unknown fields (hooks-contract.md §2).
+// fields iroha relies on and *strips* unknown fields (contracts/hooks.md §2).
 // Field names, enums, and event set are taken verbatim from the official Codex
 // hooks documentation (https://learn.chatgpt.com/docs/hooks). Differences from
 // Claude Code: `turn_id` instead of `prompt_id`, `model` is a common field, no
@@ -96,7 +96,7 @@ const APPLY_PATCH_MOVE = /^\*\*\* Move to: (.+)/;
  * Extract file targets from an apply_patch command by reading only its section
  * header lines, never the diff body — Codex expresses every edit as
  * `apply_patch`, and cross-platform Guardrail parity needs the touched paths
- * even though the patch content itself must not be stored (hooks-contract.md §8).
+ * even though the patch content itself must not be stored (contracts/hooks.md §8).
  */
 function extractApplyPatchTargets(command: string | undefined): ToolTarget[] {
   if (command === undefined) {

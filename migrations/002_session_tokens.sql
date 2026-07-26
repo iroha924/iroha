@@ -4,7 +4,7 @@
 -- returned to the agent in its context; the MCP server (a later work package)
 -- verifies it before accepting a local mutation. Only the salt-keyed
 -- HMAC-SHA-256 of the token is stored, so a leaked database never reveals a
--- usable token (implementation/design.md §9, implementation/mcp-contract.md §5).
+-- usable token (implementation/design.md §9, contracts/mcp.md §5).
 --
 -- This is disposable local operational state: it is bound to one repository /
 -- Agent Session / Session Run / platform, and `sync --rebuild` reconstructs the

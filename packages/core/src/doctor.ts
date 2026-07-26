@@ -209,7 +209,7 @@ async function checkStorageCapabilities(
 
 /**
  * Reports the active Guardrails and whether each is actually enforced at the
- * Hook layer (vertical-slice.md §4). A Guardrail that fails open at PreToolUse —
+ * Hook layer. A Guardrail that fails open at PreToolUse —
  * because its spec is unevaluable, or because it protects no paths (a
  * command/`deny_commands`-scoped guard the Hook cannot enforce) — is
  * surfaced as a `warning`, so a silent no-op never reads as healthy. Any internal
@@ -516,7 +516,7 @@ async function fileExists(path: string): Promise<boolean> {
 }
 
 /**
- * mcp-contract.md / compatibility.md §9: confirm the iroha MCP server is wired
+ * contracts/mcp.md / compatibility.md §9: confirm the iroha MCP server is wired
  * into the installed plugin. `@iroha/core` may not depend on `@iroha/mcp` (§4),
  * so this validates the *declaration* — the `iroha` server entry in the installed
  * `.mcp.json`/`mcp.codex.json` — rather than spawning the server; the server
@@ -598,7 +598,7 @@ export async function checkMcpServer(root: string): Promise<DoctorCheckResult> {
 }
 
 /**
- * `iroha doctor` (implementation-plan.md WP-05, compatibility.md §9).
+ * `iroha doctor` (contracts/compatibility.md §9).
  * Every check degrades to a report entry rather than aborting — a doctor
  * command that itself crashes on a missing optional tool defeats its own
  * purpose.

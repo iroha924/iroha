@@ -48,7 +48,7 @@ describe("mapLibsqlError", () => {
 
   it("never puts the raw LibsqlError message into its own message", () => {
     // A constraint error's raw message can include table/column identifiers;
-    // mcp-contract.md §4 forbids returning raw SQL to the model, so the
+    // contracts/mcp.md §4 forbids returning raw SQL to the model, so the
     // mapped error must carry its own generic message instead.
     const cause = new LibsqlError(
       "UNIQUE constraint failed: entities.id",

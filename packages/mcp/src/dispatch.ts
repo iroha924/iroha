@@ -5,7 +5,7 @@ import { failureEnvelope, type McpEnvelope, newTraceId, successEnvelope } from "
 import { TOOLS } from "./tools/index.js";
 import type { McpToolContext } from "./tools/types.js";
 
-/** mcp-contract.md §8: requests larger than 256 KiB are rejected. */
+/** contracts/mcp.md §8: requests larger than 256 KiB are rejected. */
 const MAX_REQUEST_BYTES = 256 * 1024;
 
 function toToolResult<T>(envelope: McpEnvelope<T>): CallToolResult {

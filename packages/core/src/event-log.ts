@@ -16,7 +16,7 @@ import { resolveInitializedRepository } from "./resolve-repository.js";
 export type EventLogEventType = "mcp.tool_call" | "api.request" | "sync.canonical" | "sync.forge";
 
 /**
- * The MCP tools (mcp-contract.md §3), as they appear in `event_log.adapter`.
+ * The MCP tools (contracts/mcp.md §3), as they appear in `event_log.adapter`.
  * Enumerated for the same reason as `EventLogEventType`: the column then holds
  * only names fixed in this repository, never a caller-supplied string.
  */
@@ -37,7 +37,7 @@ export interface RecordEventInput {
    * Which source produced the event, as an identifier fixed at the call site:
    * the tool name for MCP, the route pattern for an API request, the provider
    * for a forge sync. It widens `adapter` beyond the platform sense
-   * hooks-contract.md §10 gives it, which is what lets one column answer "which
+   * contracts/hooks.md §10 gives it, which is what lets one column answer "which
    * tool/endpoint" without a schema change. Never pass a value derived from a
    * prompt, a tool input, a path, or any other request content.
    */
@@ -84,7 +84,7 @@ export function outcomeForErrorCode(code: string): EventLogOutcome {
  * warned, or failed.
  *
  * Privacy is structural, not procedural: `RecordEventInput` admits only the
- * pre-approved fields of hooks-contract.md §10, so prompts, tool input/output,
+ * pre-approved fields of contracts/hooks.md §10, so prompts, tool input/output,
  * transcripts, and credentials have no parameter to travel through. That is the
  * inverse of a redact-after-logging denylist, which cannot strip what it does
  * not know about (`secure-subprocess-and-credentials.md`).

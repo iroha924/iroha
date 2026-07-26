@@ -14,7 +14,7 @@ import {
   type RelationType,
 } from "@iroha/storage";
 
-/** canonical-schema.md §5 source kinds. */
+/** contracts/canonical.md §5 source kinds. */
 type SourceKind =
   | "session"
   | "checkpoint"
@@ -40,7 +40,7 @@ const SOURCE_KINDS = new Set<string>([
   "url",
 ]);
 
-/** Provenance reference surfaced on a search result (mcp-contract.md §6.1). */
+/** Provenance reference surfaced on a search result (contracts/mcp.md §6.1). */
 export interface SourceRef {
   type: SourceKind;
   ref: string;
@@ -56,7 +56,7 @@ export interface RelationPreview {
   title: string;
 }
 
-/** database-schema.md §9's post-RRF scope/graph multipliers (authority + recency live in `searchHybrid`). */
+/** contracts/database.md §9's post-RRF scope/graph multipliers (authority + recency live in `searchHybrid`). */
 const SAME_SYMBOL_MULTIPLIER = 1.35;
 const SAME_PATH_MULTIPLIER = 1.25;
 const SAME_ISSUE_MULTIPLIER = 1.3;
@@ -65,7 +65,7 @@ const GRAPH_MAX_DEPTH = 3;
 const GRAPH_MAX_EDGES = 200;
 /** Bounded relation preview per result. */
 const MAX_RELATION_PREVIEWS = 6;
-/** mcp-contract.md §6.1: `includeBody` caps at 10 results / 30,000 characters. */
+/** contracts/mcp.md §6.1: `includeBody` caps at 10 results / 30,000 characters. */
 const INCLUDE_BODY_MAX_RESULTS = 10;
 const INCLUDE_BODY_MAX_CHARS = 30_000;
 
@@ -157,7 +157,7 @@ function parseSources(value: unknown): SourceRef[] {
 }
 
 /**
- * Simplified prefix globbing shared with `get_active_rules` (mcp-contract.md §6.3):
+ * Simplified prefix globbing shared with `get_active_rules` (contracts/mcp.md §6.3):
  * `src/x/**` and `src/x/*` match by prefix, a bare path matches itself or a child.
  * Full glob semantics remain deferred (surfaced as a tool warning there).
  *
@@ -390,7 +390,7 @@ async function buildRelationsForEntities(
 }
 
 /**
- * Applies database-schema.md §9's scope/graph boosts to `searchHybrid`'s
+ * Applies contracts/database.md §9's scope/graph boosts to `searchHybrid`'s
  * base-scored candidates, filters by the hard filters, then enriches the final
  * result cap with provenance (`sources`), a bounded relation preview, and a
  * human-readable `whyRelevant`. `paths`/`symbols`/`issueRefs` act as scope hints

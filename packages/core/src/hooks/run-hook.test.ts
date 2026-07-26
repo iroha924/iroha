@@ -317,7 +317,7 @@ describe("runHook", () => {
 
   it("records no branch or sha when HEAD cannot be read, without failing the hook", async () => {
     // A repository with no commits yet: `rev-parse HEAD` fails, and the Run is
-    // still recorded (hooks-contract.md §2 fail-open).
+    // still recorded (contracts/hooks.md §2 fail-open).
     repoDir = await initedRepo();
 
     const result = await hook(repoDir, "claude_code", {
@@ -421,7 +421,7 @@ describe("runHook", () => {
   });
 
   it("repairs only the most recent Turn, leaving an earlier one open", async () => {
-    // Documented scope (hooks-contract.md §6.7): `handlePromptSubmitted` opens a
+    // Documented scope (contracts/hooks.md §6.7): `handlePromptSubmitted` opens a
     // Turn per prompt without closing the previous one, so two prompts with no
     // Stop between them leave an earlier Turn open — that gap belongs to the
     // prompt path, and this test pins the boundary rather than hiding it.

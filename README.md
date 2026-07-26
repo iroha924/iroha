@@ -158,7 +158,7 @@ Two other settings worth knowing:
 
 ## Contributing
 
-Contributions are very welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the development setup and workflow. The full product specification lives in [docs/product/](./docs/product/).
+Contributions are very welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the development setup and workflow. The full product specification lives in [docs/](./docs/).
 
 ## Security
 

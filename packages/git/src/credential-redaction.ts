@@ -253,7 +253,7 @@ const ABSOLUTE_PATH_START =
 /**
  * Replaces the rest of `text`, starting from the first filesystem-path-
  * shaped substring found (e.g. in Git's own stderr), with a placeholder —
- * mcp-contract.md §8 forbids returning filesystem absolute paths in any
+ * contracts/mcp.md §8 forbids returning filesystem absolute paths in any
  * DB/API/MCP-reachable text, and Git's diagnostic messages can embed one
  * with no credential-URL shape for `redactUrlLikeCredentialsInText` to
  * catch. Apply this *after* credential redaction, not before: this leaves

@@ -38,9 +38,9 @@ function MiniStat({ label, value }: { label: string; value: number }) {
 }
 
 /**
- * Overview page (dashboard-api.md §6): pending-candidate pressure as the hero,
+ * Overview page (contracts/dashboard-api.md §6): pending-candidate pressure as the hero,
  * approved-knowledge composition by type, recent Sessions, and sync/dirty
- * status. No per-person metric (FR-108 / NFR-008 forbid ranking).
+ * status. No per-person metric — individual ranking is forbidden.
  */
 export function Overview() {
   const { t } = useI18n();

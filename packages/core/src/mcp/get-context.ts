@@ -68,8 +68,8 @@ function sourceLabel(result: RankedResult): string {
 }
 
 /**
- * Builds a bounded context pack for the current task (mcp-contract.md §6.2):
- * database-schema.md §9's hybrid ranking restricted to approved/verified
+ * Builds a bounded context pack for the current task (contracts/mcp.md §6.2):
+ * contracts/database.md §9's hybrid ranking restricted to approved/verified
  * entities (pending candidates are structurally excluded), scoped by the
  * caller's `paths`/`symbols`/`activeIssueRefs`, capped by `maxItems`/
  * `maxCharacters`, plus the session's latest unresolved items. Embedding is

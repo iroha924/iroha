@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { labelSchema, relativePathSchema, typedId, unique } from "./shared.js";
 
-/** Matches implementation/mcp-contract.md §5: `ist_<43 base64url characters>`. */
+/** Matches contracts/mcp.md §5: `ist_<43 base64url characters>`. */
 export const sessionTokenSchema = z.string().regex(/^ist_[A-Za-z0-9_-]{43}$/);
 
 const idempotencyKeySchema = z
@@ -135,6 +135,6 @@ export type CheckpointInput = z.infer<typeof checkpointInputSchema>;
 /**
  * A single knowledge proposal — the `create_checkpoint` `proposals[]` element
  * and the `propose_knowledge` `proposal` field share one shape
- * (mcp-contract.md §7 `KnowledgeProposal`).
+ * (contracts/mcp.md §7 `KnowledgeProposal`).
  */
 export type KnowledgeProposal = z.infer<typeof proposalSchema>;

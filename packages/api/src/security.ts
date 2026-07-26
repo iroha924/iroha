@@ -1,7 +1,7 @@
 import type { MiddlewareHandler } from "hono";
 
 /**
- * dashboard-api.md §9 security headers. The CSP is deliberately strict — only
+ * contracts/dashboard-api.md §9 security headers. The CSP is deliberately strict — only
  * same-origin scripts/styles/connections, `data:` images (for inline icons),
  * no `object`/`base`/`frame-ancestors`, no `unsafe-eval`, no `unsafe-inline` —
  * because the SPA is fully self-hosted and never loads a CDN script or remote

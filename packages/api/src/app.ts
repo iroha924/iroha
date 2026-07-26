@@ -137,7 +137,7 @@ const editSchema = z.strictObject({
 
 // A query param may arrive once (a string) or repeated (an array). The SPA sends
 // each once, but a duplicated param must not 400 — the query behavior is lenient
-// (dashboard-api.md: an invalid or unknown value is ignored, `?from=not-a-date`
+// (contracts/dashboard-api.md: an invalid or unknown value is ignored, `?from=not-a-date`
 // lists unfiltered). So accept the single-or-array shape (a plain `z.string()`
 // would reject the array form) and read the first value with `firstOf` in the
 // handler, matching the pre-migration `c.req.query()`; the lenient helpers below
@@ -172,7 +172,7 @@ const knowledgeQuery = z.object({
 const relationsQuery = z.object({ limit: queryParam("Max relations to return") });
 const eventsQuery = z.object({ limit: queryParam("Max events to return (1-100, default 30)") });
 
-// The anti-CSRF marker every state-changing request must carry (dashboard-api.md
+// The anti-CSRF marker every state-changing request must carry (contracts/dashboard-api.md
 // §3). Documented on each mutation so a client generated from `/api/doc` sends it
 // (without it the `antiCsrf` middleware 403s). Enforcement is the middleware, not
 // this schema — the header is always present by the time route validation runs.
@@ -186,7 +186,7 @@ const runParam = z.object({
   runId: z.string().openapi({ param: { name: "runId", in: "path" } }),
 });
 
-// Response envelopes for the OpenAPI document (dashboard-api.md §4). Responses
+// Response envelopes for the OpenAPI document (contracts/dashboard-api.md §4). Responses
 // are not validated at runtime — the handlers answer through `respond()`, whose
 // dynamic status the literal-typed response union cannot express — so these
 // schemas are documentation only.
@@ -272,7 +272,7 @@ export function createApp(config: AppConfig) {
     await next();
   });
 
-  // Anti-CSRF for every state-changing request (dashboard-api.md §3): exact
+  // Anti-CSRF for every state-changing request (contracts/dashboard-api.md §3): exact
   // same-origin, JSON content type, and the custom `X-Iroha-Request` header a
   // cross-site form or `<img>`/`<script>` load can never set.
   const antiCsrf: MiddlewareHandler<Vars> = async (c, next) => {
@@ -323,7 +323,7 @@ export function createApp(config: AppConfig) {
   // hand any caller that reaches the loopback port an unauthenticated disk-write.
   //
   // A successful read is not recorded. The SPA polls several pages every 5s
-  // (dashboard-api.md §7), which fills the whole list with `GET /api/v1/overview`
+  // (contracts/dashboard-api.md §7), which fills the whole list with `GET /api/v1/overview`
   // within minutes and hides the rows worth reading — measured: 50 of 50 rows
   // after ~4 minutes on one focused tab. Mutations and failures are what a
   // diagnostics list is for, and they are not periodic.
@@ -954,7 +954,8 @@ export function createApp(config: AppConfig) {
         info: {
           title: "iroha dashboard API",
           version: "0.1.0",
-          description: "Local, loopback-only API for the iroha dashboard (dashboard-api.md).",
+          description:
+            "Local, loopback-only API for the iroha dashboard (contracts/dashboard-api.md).",
         },
       }),
     ),

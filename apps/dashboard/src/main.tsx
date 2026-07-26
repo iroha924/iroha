@@ -9,7 +9,7 @@ import "@/index.css";
 import { I18nProvider } from "@/i18n/index.js";
 
 /**
- * dashboard-api.md §3: read the one-time launch token from the URL fragment,
+ * contracts/dashboard-api.md §3: read the one-time launch token from the URL fragment,
  * exchange it for the HttpOnly cookie, then strip the fragment from history so
  * it never lingers in the address bar or a bookmark.
  */

@@ -1,6 +1,6 @@
 # Contributing to iroha
 
-Thanks for your interest in improving iroha. This guide covers the local development setup. The confirmed product specification lives in [docs/product/](./docs/product/), and the implementation entry points are [CLAUDE.md](./CLAUDE.md) (Claude Code) and [AGENTS.md](./AGENTS.md) (Codex and others).
+Thanks for your interest in improving iroha. This guide covers the local development setup. The confirmed product specification lives in [docs/](./docs/), and the implementation entry points are [CLAUDE.md](./CLAUDE.md) (Claude Code) and [AGENTS.md](./AGENTS.md) (Codex and others).
 
 ## Prerequisites
 

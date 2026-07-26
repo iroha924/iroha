@@ -13,7 +13,7 @@ export const SERVER_NAME = "iroha";
 export const SERVER_VERSION = "0.1.2";
 
 /**
- * The server instructions. mcp-contract.md §3 requires the first 512 characters
+ * The server instructions. contracts/mcp.md §3 requires the first 512 characters
  * to be self-contained and to carry no repository data or secrets.
  */
 export const SERVER_INSTRUCTIONS =

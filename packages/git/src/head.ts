@@ -10,7 +10,7 @@ export interface HeadState {
 }
 
 /**
- * A fifth of the hooks-contract.md §7 budget of the tightest event that calls
+ * A fifth of the contracts/hooks.md §7 budget of the tightest event that calls
  * this today — SessionEnd, 1.5s (SessionStart is 3.0s). It is **not** below
  * every §7 budget: PreToolUse's is 0.5s, so a caller on one of the tighter
  * paths must not assume this cap fits its own.

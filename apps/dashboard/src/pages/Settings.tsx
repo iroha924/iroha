@@ -45,7 +45,7 @@ function SettingRow({
   );
 }
 
-/** Shared config editor + redacted local status (dashboard-api.md §6/§8). */
+/** Shared config editor + redacted local status (contracts/dashboard-api.md §6/§8). */
 export function Settings() {
   const { t } = useI18n();
   const queryClient = useQueryClient();

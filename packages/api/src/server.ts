@@ -23,7 +23,7 @@ export interface StartDashboardOptions {
 
 /**
  * Starts the dashboard's local API bound to `127.0.0.1` on a random port
- * (dashboard-api.md §3). Never binds `0.0.0.0`. Returns the loopback URL with
+ * (contracts/dashboard-api.md §3). Never binds `0.0.0.0`. Returns the loopback URL with
  * the one-time launch token in the fragment plus a `close()` that stops the
  * listener.
  */

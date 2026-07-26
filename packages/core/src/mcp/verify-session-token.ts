@@ -31,7 +31,7 @@ export interface VerifySessionTokenInput {
 
 /**
  * Verifies an `ist_` session token against the local `session_tokens` table
- * (mcp-contract.md §5): the token is valid only if its salt-keyed HMAC is on
+ * (contracts/mcp.md §5): the token is valid only if its salt-keyed HMAC is on
  * record, bound to this repository, not past its idle-expiry, and its Run is
  * still active. On success the idle window slides forward (`last_used_at` /
  * `expires_at` bumped) and the bound identity is returned.

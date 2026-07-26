@@ -13,7 +13,7 @@ import { z } from "zod";
 
 // Raw Claude Code hook input shapes. Forward-compatible: `z.object` validates
 // the fields iroha relies on and *strips* every unknown field, so a newer
-// Claude Code release adding fields never breaks parsing (hooks-contract.md §2).
+// Claude Code release adding fields never breaks parsing (contracts/hooks.md §2).
 // Field names and enums are taken verbatim from the official Claude Code hooks
 // documentation (https://code.claude.com/docs/en/hooks).
 
@@ -97,7 +97,7 @@ const CLAUDE_FILE_WRITE_TOOLS = new Set(["Write", "Edit", "MultiEdit"]);
  * repository-relative form in `@iroha/core` (it owns the filesystem/Git access
  * an adapter must not have). Shell commands are classified to their leading
  * token, never stored verbatim — the full command survives only as
- * `inputDigest` (hooks-contract.md §8).
+ * `inputDigest` (contracts/hooks.md §8).
  */
 export function extractClaudeTargets(
   toolName: string,
@@ -131,7 +131,7 @@ export function extractClaudeTargets(
   }
   if (toolName.startsWith("mcp__")) {
     // MCP arguments are allowlisted per known server/tool in core; the adapter
-    // retains only the tool name here (hooks-contract.md §8).
+    // retains only the tool name here (contracts/hooks.md §8).
     return [{ kind: "mcp", value: toolName, operation: "unknown" }];
   }
   return [{ kind: "other", value: toolName, operation: "unknown" }];

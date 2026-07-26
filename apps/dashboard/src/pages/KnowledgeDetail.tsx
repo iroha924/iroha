@@ -64,7 +64,7 @@ function provenanceFrom(frontmatter: unknown): Provenance {
 
 const SAFE_URL = /^https?:\/\//i;
 
-/** Approved-knowledge detail with rendered body, provenance, and relations (dashboard-api.md §6). */
+/** Approved-knowledge detail with rendered body, provenance, and relations (contracts/dashboard-api.md §6). */
 export function KnowledgeDetail() {
   const { t } = useI18n();
   const { id = "" } = useParams();

@@ -22,7 +22,7 @@ export interface SearchTextHit {
 }
 
 export interface SearchTextOptions {
-  /** database-schema.md §10: "MCP search response default: 10 results; maximum 50." */
+  /** contracts/database.md §10: "MCP search response default: 10 results; maximum 50." */
   limit?: number;
 }
 
@@ -37,7 +37,7 @@ function toHit(row: RankedRow, score: number): SearchTextHit {
 }
 
 /**
- * FTS-only slice of database-schema.md §9's Reciprocal Rank Fusion (unicode +
+ * FTS-only slice of contracts/database.md §9's Reciprocal Rank Fusion (unicode +
  * trigram terms). The vector term and the authority/scope/graph boosts live in
  * `searchHybrid` (this shares the candidate/RRF primitives via
  * `fts-candidates.ts`, so the two never diverge). This offline lexical path

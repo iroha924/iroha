@@ -13,7 +13,7 @@ import { scanForSecrets } from "./secret-scan.js";
 import { serializeCanonicalDocument } from "./serialize-canonical-document.js";
 
 /**
- * canonical-schema.md §3-4: the path (relative to the `.iroha/` root) for a
+ * contracts/canonical.md §3-4: the path (relative to the `.iroha/` root) for a
  * validated document — `id`/`type` have already passed Zod's strict ULID
  * pattern by this point, so building a path from them with `path.join`
  * carries none of the `..`-traversal risk that applies to untrusted
@@ -54,7 +54,7 @@ export interface WriteCanonicalDocumentResult {
 }
 
 /**
- * canonical-schema.md §12 steps 3-7 of the approval transaction: validate
+ * contracts/canonical.md §12 steps 3-7 of the approval transaction: validate
  * (Zod + body-template + secret scan), write to a sibling temp file, flush,
  * atomically rename into place, fsync the parent directory. Steps
  * 1/2/8/9/10 (write lock, candidate reload/concurrency check, DB commit,
@@ -146,7 +146,7 @@ export async function writeCanonicalDocument(
     return err(new IrohaError("INTERNAL_ERROR", "Failed to write canonical document", { cause }));
   }
 
-  // fsync the parent directory "where supported" (canonical-schema.md §12
+  // fsync the parent directory "where supported" (contracts/canonical.md §12
   // step 7) — POSIX only; Windows cannot open a directory as a file
   // handle, so a failure here is a best-effort durability gap, not a
   // reason to fail a write that has already atomically landed.

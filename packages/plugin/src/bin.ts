@@ -8,7 +8,7 @@
  * rather than a fatal ESM module-load crash before any of our code runs.
  *
  * That distinction is load-bearing for the hook's fail-open invariant (CLAUDE.md;
- * hooks-contract.md §2/§7): a transitive dependency (`rc-config-loader`, via
+ * contracts/hooks.md §2/§7): a transitive dependency (`rc-config-loader`, via
  * `secretlint`) calls `process.cwd()` at module top level, which throws `ENOENT`
  * when the agent's working directory has been removed mid-session — and that
  * throw happens during import, before `dispatch.ts` executes. Isolating the heavy

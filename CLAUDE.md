@@ -1,30 +1,24 @@
 # iroha implementation instructions
 
-You are implementing **iroha**, a local-first Engineering Memory Graph for Claude Code and Codex.
+**iroha** is a local-first Engineering Memory Graph for Claude Code and Codex. It ships as
+`@irohalabs/iroha` on npm; every work package is implemented.
 
-## Read first
+## Where the contracts are
 
-Resolve `<spec-root>` first:
+Read the one that governs what you are touching — not all of them.
 
-- in this handoff bundle: the directory containing this `CLAUDE.md`;
-- after WP-00 repository setup: `docs/product`.
+| Touching | Read |
+|---|---|
+| Anything (overall shape, package boundaries, data flow, the ADR table) | `docs/architecture.md` |
+| Runtime, versions, OS support, which package may depend on which | `docs/contracts/compatibility.md` |
+| `.iroha/` file format, the approval transaction | `docs/contracts/canonical.md` |
+| DB schema, search, rebuild | `docs/contracts/database.md` |
+| An MCP tool | `docs/contracts/mcp.md` |
+| A Hook | `docs/contracts/hooks.md` |
+| The dashboard or its API | `docs/contracts/dashboard-api.md` |
 
-Before changing code, read these files under `<spec-root>` in order:
-
-1. `background.md`
-2. `research.md`
-3. `requirements.md`
-4. `design.md`
-5. `implementation/compatibility.md`
-6. `implementation/canonical-schema.md`
-7. `implementation/database-schema.md`
-8. `implementation/mcp-contract.md`
-9. `implementation/hooks-contract.md`
-10. `implementation/dashboard-api.md`
-11. `implementation/vertical-slice.md`
-12. `implementation/implementation-plan.md`
-
-Machine-readable contracts live under `<spec-root>/schemas/` and `<spec-root>/migrations/`. When prose and a machine-readable contract disagree, stop and report the conflict. Do not silently choose one.
+Machine-readable contracts live at the repository root: `schemas/` and `migrations/`. When prose and
+a machine-readable contract disagree, stop and report the conflict. Do not silently choose one.
 
 ## Product invariants
 
@@ -44,8 +38,6 @@ Machine-readable contracts live under `<spec-root>/schemas/` and `<spec-root>/mi
 
 ## Implementation behavior
 
-- Work in the order defined by `<spec-root>/implementation/implementation-plan.md`.
-- Complete one work package and its tests before starting the next.
 - Use pnpm workspace dependencies with `workspace:*`.
 - Keep domain code independent from platform SDK types and filesystem/database implementations.
 - Validate every external boundary with Zod.

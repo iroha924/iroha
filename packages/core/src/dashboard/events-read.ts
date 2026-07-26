@@ -31,8 +31,8 @@ export interface ListDiagnosticsEventsInput {
  * warned, or failed.
  *
  * `event_log` holds no actor, path, or content column by construction
- * (hooks-contract.md §10), so this endpoint has nothing per-person to expose and
- * needs no filtering to stay within NFR-008. `session_id`/`turn_id` are not
+ * (contracts/hooks.md §10), so this endpoint has nothing per-person to expose and
+ * needs no filtering to keep individual ranking impossible. `session_id`/`turn_id` are not
  * projected: the page shows an operational timeline, not a session drill-down.
  *
  * `limit` goes through the shared `resolvePageSize`, so it obeys §4's "default

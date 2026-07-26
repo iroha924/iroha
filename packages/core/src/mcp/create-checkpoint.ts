@@ -53,7 +53,7 @@ interface RedactedCheckpoint {
   redactions: FieldRedaction[];
 }
 
-/** Scans and redacts every free-text checkpoint/proposal field (mcp-contract.md §6.6 step 2). */
+/** Scans and redacts every free-text checkpoint/proposal field (contracts/mcp.md §6.6 step 2). */
 async function redactCheckpoint(
   input: CheckpointInput,
 ): Promise<Result<RedactedCheckpoint, IrohaError>> {
@@ -187,7 +187,7 @@ function storedToData(responseJson: string): McpCreateCheckpointData {
 }
 
 /**
- * Materializes a checkpoint's `references[]` as graph edges (mcp-contract.md
+ * Materializes a checkpoint's `references[]` as graph edges (contracts/mcp.md
  * §6.6 step 6). Resolve-only, matching how canonical `relations[]` are imported
  * (`sync-canonical.ts` `insertCanonicalDocumentRelations`) and how forge sync
  * links work items: a `ref` that resolves to an existing entity becomes a
@@ -233,7 +233,7 @@ async function materializeReferenceRelations(
 }
 
 /**
- * Saves a structured Checkpoint and its knowledge candidates (mcp-contract.md
+ * Saves a structured Checkpoint and its knowledge candidates (contracts/mcp.md
  * §6.6). Fixed order: authenticate the session token, secret-scan/redact every
  * free-text field, resolve the Turn, then — under the idempotency contract, in
  * one write transaction — insert the checkpoint entity, the checkpoint, the

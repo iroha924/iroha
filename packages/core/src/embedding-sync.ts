@@ -139,7 +139,7 @@ export async function runEmbeddingSync(
       // Skip the provider call when a current vector already exists for this
       // exact content — e.g. one carried across a `sync --rebuild` by
       // `reuseEmbeddings`. This is what realizes the rebuild-reuse cost saving
-      // (database-schema.md §12 steps 8-9): the vector is present, so the job
+      // (contracts/database.md §12 steps 8-9): the vector is present, so the job
       // just completes.
       const existing = await getEmbeddingMetadataBySearchDocumentId(db, job.searchDocumentId);
       if (!existing.ok) {

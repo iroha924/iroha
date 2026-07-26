@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.j
 import { useI18n } from "@/i18n/index.js";
 import { checkpointOutcomeTone, runStatusTone } from "@/lib/status.js";
 
-/** Session detail: Runs and Checkpoints (dashboard-api.md §6); never raw conversation. */
+/** Session detail: Runs and Checkpoints (contracts/dashboard-api.md §6); never raw conversation. */
 export function SessionDetail() {
   const { t } = useI18n();
   const { id = "" } = useParams();

@@ -12,7 +12,7 @@ import type { ToolTarget } from "@iroha/platform";
  * value is then rewritten to a POSIX repo-relative path via a symlink-safe check
  * (`@iroha/git`); a target that resolves outside the repository (`..` traversal
  * or a symlink escaping the root) is dropped rather than persisted with an
- * absolute or out-of-repo path (hooks-contract.md §8 / privacy rules).
+ * absolute or out-of-repo path (contracts/hooks.md §8 / privacy rules).
  * `command`/`mcp`/`other` targets carry no filesystem path and pass through
  * unchanged.
  *

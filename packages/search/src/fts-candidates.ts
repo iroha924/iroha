@@ -1,14 +1,14 @@
 import { err, type IrohaError, ok, type Result, type TypedId } from "@iroha/domain";
 import { type Executor, mapLibsqlError } from "@iroha/storage";
 
-/** database-schema.md §9: "top 30 Unicode FTS rows" / "top 30 trigram FTS rows" (also the vector top-30). */
+/** contracts/database.md §9: "top 30 Unicode FTS rows" / "top 30 trigram FTS rows" (also the vector top-30). */
 export const CANDIDATE_LIMIT = 30;
 export const RRF_K = 60;
-/** database-schema.md §9's Reciprocal Rank Fusion weights per candidate source. */
+/** contracts/database.md §9's Reciprocal Rank Fusion weights per candidate source. */
 export const UNICODE_WEIGHT = 1.0;
 export const TRIGRAM_WEIGHT = 0.9;
 export const VECTOR_WEIGHT = 1.1;
-/** database-schema.md §8: "queries shorter than three Unicode characters fall back to escaped LIKE". */
+/** contracts/database.md §8: "queries shorter than three Unicode characters fall back to escaped LIKE". */
 export const MIN_FTS_QUERY_LENGTH = 3;
 export const DEFAULT_LIMIT = 10;
 export const MAX_LIMIT = 50;
@@ -20,7 +20,7 @@ export interface RankedRow {
   searchDocumentId: TypedId<"sdoc">;
   title: string;
   authority: number;
-  /** `entities.updated_at` — the recency tie-breaker input (database-schema.md §9). */
+  /** `entities.updated_at` — the recency tie-breaker input (contracts/database.md §9). */
   updatedAt: string;
 }
 
@@ -180,7 +180,7 @@ function escapeLikePattern(query: string): string {
 }
 
 /**
- * database-schema.md §8's bounded fallback for queries too short for FTS5
+ * contracts/database.md §8's bounded fallback for queries too short for FTS5
  * (fewer than 3 tokenizer-eligible characters) — an unindexed substring scan
  * over a `LIMIT`-bounded set rather than an unbounded table scan.
  */

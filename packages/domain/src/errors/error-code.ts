@@ -1,5 +1,5 @@
 /**
- * Matches the ErrorCode union in implementation/mcp-contract.md §4.
+ * Matches the ErrorCode union in contracts/mcp.md §4.
  */
 export const ERROR_CODES = [
   "NOT_INITIALIZED",

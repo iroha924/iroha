@@ -2,7 +2,7 @@ import type { Clock, IrohaError, RandomSource, Result } from "@iroha/domain";
 import { err, IrohaError as IrohaErrorClass, ok } from "@iroha/domain";
 import { runDashboardSync } from "./sync.js";
 
-/** The allowlisted repair operations (dashboard-api.md §5: "Repair operations are allowlisted"). */
+/** The allowlisted repair operations (contracts/dashboard-api.md §5: "Repair operations are allowlisted"). */
 export const DOCTOR_REPAIR_OPERATIONS = ["resync"] as const;
 export type DoctorRepairOperation = (typeof DOCTOR_REPAIR_OPERATIONS)[number];
 
