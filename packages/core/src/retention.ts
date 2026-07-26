@@ -20,8 +20,9 @@ import {
   type Executor,
   getLocalSetting,
   type LocalEventCounts,
-  type PruneCounts,
-  pruneLocalEventData,
+  listPrunableSessions,
+  pruneEventLog,
+  pruneSession,
 } from "@iroha/storage";
 import { z } from "zod";
 
@@ -85,6 +86,13 @@ export function retentionCutoff(setting: RetentionSetting, clock: Clock): string
   return new Date(clock.now().getTime() - setting.days * 86_400_000).toISOString();
 }
 
+/** What a sweep removed, reported by `iroha sync`. */
+export interface PruneCounts {
+  sessions: number;
+  checkpoints: number;
+  eventLogRows: number;
+}
+
 export interface RetentionOutcome {
   status: "disabled" | "pruned" | "failed";
   days: number | null;
@@ -107,15 +115,47 @@ export async function applyRetention(
   if (!setting.ok) {
     return { status: "failed", days: null, errorCode: setting.error.code };
   }
+  const days = setting.value.days;
   const cutoff = retentionCutoff(setting.value, clock);
   if (cutoff === null) {
     return { status: "disabled", days: null };
   }
-  const pruned = await pruneLocalEventData(db, repositoryId, cutoff);
-  if (!pruned.ok) {
-    return { status: "failed", days: setting.value.days, errorCode: pruned.error.code };
+
+  const candidates = await listPrunableSessions(db, repositoryId, cutoff);
+  if (!candidates.ok) {
+    return { status: "failed", days, errorCode: candidates.error.code };
   }
-  return { status: "pruned", days: setting.value.days, pruned: pruned.value };
+
+  const pruned: PruneCounts = { sessions: 0, checkpoints: 0, eventLogRows: 0 };
+  for (const sessionId of candidates.value) {
+    // Re-read the window between sessions. The dashboard can commit a retention
+    // change while a sync is finishing, and a user who has just widened the
+    // window — or turned pruning off — must not have more history deleted under
+    // the old one. Whatever was already deleted was deleted under the window in
+    // force at the time, which is the intended behavior.
+    const current = await readRetentionSetting(db, repositoryId);
+    if (!current.ok || current.value.days !== days) {
+      break;
+    }
+    const result = await pruneSession(db, repositoryId, cutoff, sessionId);
+    if (!result.ok) {
+      return { status: "failed", days, errorCode: result.error.code };
+    }
+    // `null` means a hook or MCP tool wrote to the session after it was listed,
+    // so it no longer qualifies — skip it, do not count it.
+    if (result.value !== null) {
+      pruned.sessions += 1;
+      pruned.checkpoints += result.value.checkpoints;
+    }
+  }
+
+  const eventLogRows = await pruneEventLog(db, repositoryId, cutoff);
+  if (!eventLogRows.ok) {
+    return { status: "failed", days, errorCode: eventLogRows.error.code };
+  }
+  pruned.eventLogRows = eventLogRows.value;
+
+  return { status: "pruned", days, pruned };
 }
 
 export interface RetentionStatus {

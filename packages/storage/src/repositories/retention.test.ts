@@ -5,7 +5,12 @@ import { openMigratedTestDb, removeTempDir } from "../test-helpers/tmp-db.js";
 import { insertEntity, insertRepository, upsertCanonicalDocument } from "./identity.js";
 import { insertCandidate } from "./knowledge.js";
 import { insertEventLog } from "./operations.js";
-import { countLocalEventData, pruneLocalEventData } from "./retention.js";
+import {
+  countLocalEventData,
+  listPrunableSessions,
+  pruneEventLog,
+  pruneSession,
+} from "./retention.js";
 import {
   closeSessionRun,
   getAgentSessionById,
@@ -153,7 +158,35 @@ async function seedCanonicalDocument(db: Database, entityId: string, path: strin
   }
 }
 
-describe("pruneLocalEventData", () => {
+/** The whole sweep: list candidates, delete each, then prune diagnostics rows. */
+async function pruneAll(
+  db: Database,
+  cutoff: string,
+): Promise<{ sessions: number; checkpoints: number; eventLogRows: number }> {
+  const candidates = await listPrunableSessions(db, REPO, cutoff);
+  if (!candidates.ok) {
+    throw new Error(`list failed: ${candidates.error.message}`);
+  }
+  let sessions = 0;
+  let checkpoints = 0;
+  for (const id of candidates.value) {
+    const result = await pruneSession(db, REPO, cutoff, id);
+    if (!result.ok) {
+      throw new Error(`prune failed: ${result.error.message}`);
+    }
+    if (result.value !== null) {
+      sessions += 1;
+      checkpoints += result.value.checkpoints;
+    }
+  }
+  const events = await pruneEventLog(db, REPO, cutoff);
+  if (!events.ok) {
+    throw new Error(`event log prune failed: ${events.error.message}`);
+  }
+  return { sessions, checkpoints, eventLogRows: events.value };
+}
+
+describe("retention pruning", () => {
   let tempDir: string | undefined;
   let db: Database | undefined;
 
@@ -188,10 +221,8 @@ describe("pruneLocalEventData", () => {
     const database = await open();
     const { sessionId } = await seedSession(database, "aged", OLD);
 
-    const pruned = await pruneLocalEventData(database, REPO, CUTOFF);
-    expect(pruned.ok).toBe(true);
-    if (!pruned.ok) return;
-    expect(pruned.value.sessions).toBe(1);
+    const pruned = await pruneAll(database, CUTOFF);
+    expect(pruned.sessions).toBe(1);
 
     expect((await getAgentSessionById(database, sessionId)).ok).toBe(true);
     const gone = await getAgentSessionById(database, sessionId);
@@ -213,8 +244,8 @@ describe("pruneLocalEventData", () => {
     const database = await open();
     await seedSession(database, "recent", RECENT);
 
-    const pruned = await pruneLocalEventData(database, REPO, CUTOFF);
-    expect(pruned.ok && pruned.value.sessions).toBe(0);
+    const pruned = await pruneAll(database, CUTOFF);
+    expect(pruned.sessions).toBe(0);
   });
 
   it("keeps an aged session whose summary is approved canonical", async () => {
@@ -222,8 +253,8 @@ describe("pruneLocalEventData", () => {
     const { sessionId } = await seedSession(database, "canon", OLD);
     await seedCanonicalDocument(database, sessionId, "sessions/2026/canon.md");
 
-    const pruned = await pruneLocalEventData(database, REPO, CUTOFF);
-    expect(pruned.ok && pruned.value.sessions).toBe(0);
+    const pruned = await pruneAll(database, CUTOFF);
+    expect(pruned.sessions).toBe(0);
     // `canonical_documents.entity_id` cascades from `entities`, so pruning this
     // session would delete the index row for Git-tracked team knowledge.
     const doc = await database.execute({
@@ -239,8 +270,8 @@ describe("pruneLocalEventData", () => {
     const checkpointId = await seedCheckpoint(database, "chkcanon", sessionId);
     await seedCanonicalDocument(database, checkpointId, "checkpoints/2026/c.md");
 
-    const pruned = await pruneLocalEventData(database, REPO, CUTOFF);
-    expect(pruned.ok && pruned.value.sessions).toBe(0);
+    const pruned = await pruneAll(database, CUTOFF);
+    expect(pruned.sessions).toBe(0);
     const kept = await getCheckpointById(database, checkpointId);
     expect(kept.ok && kept.value).not.toBeNull();
   });
@@ -259,8 +290,8 @@ describe("pruneLocalEventData", () => {
     });
     expect(candidate.ok).toBe(true);
 
-    const pruned = await pruneLocalEventData(database, REPO, CUTOFF);
-    expect(pruned.ok && pruned.value.sessions).toBe(0);
+    const pruned = await pruneAll(database, CUTOFF);
+    expect(pruned.sessions).toBe(0);
     // `candidates.source_session_id` is ON DELETE SET NULL, so pruning would not
     // delete the candidate — it would silently strip its provenance.
     const rows = await database.execute({
@@ -275,15 +306,59 @@ describe("pruneLocalEventData", () => {
     const { sessionId } = await seedSession(database, "chkplain", OLD);
     const checkpointId = await seedCheckpoint(database, "chkplain", sessionId);
 
-    const pruned = await pruneLocalEventData(database, REPO, CUTOFF);
-    expect(pruned.ok).toBe(true);
-    if (!pruned.ok) return;
-    expect(pruned.value).toMatchObject({ sessions: 1, checkpoints: 1 });
+    const pruned = await pruneAll(database, CUTOFF);
+    expect(pruned).toMatchObject({ sessions: 1, checkpoints: 1 });
     const entities = await database.execute({
       sql: "SELECT COUNT(*) AS n FROM entities WHERE id IN (?, ?)",
       args: [sessionId, checkpointId],
     });
     expect(Number(entities.rows[0]?.n)).toBe(0);
+  });
+
+  it("keeps a session with recent activity even when last_seen_at is stale", async () => {
+    const database = await open();
+    const { sessionId, turnId } = await seedSession(database, "live", OLD);
+    // `last_seen_at` advances only on SESSION_STARTED, so a session running
+    // longer than the window keeps a stale value. Trusting it alone would delete
+    // this session's runs, turns, and tool events — including the activity below,
+    // from after the cutoff — on the first sync after the session closes.
+    await database.execute({
+      sql: "UPDATE tool_events SET occurred_at = ? WHERE turn_id = ?",
+      args: [RECENT, turnId],
+    });
+
+    const pruned = await pruneAll(database, CUTOFF);
+    expect(pruned.sessions).toBe(0);
+    const kept = await getAgentSessionById(database, sessionId);
+    expect(kept.ok && kept.value).not.toBeNull();
+  });
+
+  it("keeps an aged session whose checkpoint a pending candidate references", async () => {
+    const database = await open();
+    const { sessionId } = await seedSession(database, "chkcand", OLD);
+    const checkpointId = await seedCheckpoint(database, "chkcand", sessionId);
+    // `propose_knowledge` accepts any existing `sourceCheckpointId`, so a pending
+    // candidate can point at this session's checkpoint while its own
+    // `source_session_id` is null. `source_checkpoint_id` is ON DELETE SET NULL,
+    // so pruning would strip provenance from something awaiting review.
+    const candidate = await insertCandidate(database, {
+      id: candId("chkcand"),
+      repositoryId: REPO,
+      candidateType: "session_summary",
+      payloadJson: "{}",
+      sourceCheckpointId: checkpointId,
+      revisionToken: "tok",
+      createdAt: OLD,
+    });
+    expect(candidate.ok).toBe(true);
+
+    const pruned = await pruneAll(database, CUTOFF);
+    expect(pruned.sessions).toBe(0);
+    const rows = await database.execute({
+      sql: "SELECT source_checkpoint_id FROM candidates WHERE id = ?",
+      args: [candId("chkcand")],
+    });
+    expect(rows.rows[0]?.source_checkpoint_id).toBe(checkpointId);
   });
 
   it("keeps an aged session whose run is still active", async () => {
@@ -297,8 +372,8 @@ describe("pruneLocalEventData", () => {
       args: [sessionId],
     });
 
-    const pruned = await pruneLocalEventData(database, REPO, CUTOFF);
-    expect(pruned.ok && pruned.value.sessions).toBe(0);
+    const pruned = await pruneAll(database, CUTOFF);
+    expect(pruned.sessions).toBe(0);
     const kept = await getAgentSessionById(database, sessionId);
     expect(kept.ok && kept.value).not.toBeNull();
   });
@@ -322,8 +397,8 @@ describe("pruneLocalEventData", () => {
       expect(inserted.ok).toBe(true);
     }
 
-    const pruned = await pruneLocalEventData(database, REPO, CUTOFF);
-    expect(pruned.ok && pruned.value.eventLogRows).toBe(2);
+    const pruned = await pruneAll(database, CUTOFF);
+    expect(pruned.eventLogRows).toBe(2);
     const counts = await countLocalEventData(database, REPO, null);
     expect(counts.ok && counts.value.eventLogRows).toBe(1);
   });

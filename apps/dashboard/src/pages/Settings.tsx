@@ -169,8 +169,13 @@ export function Settings() {
             hint={t("settings.retentionHint")}
           >
             {/* Saved on change, unlike the shared config above: this is a single
-                local key, not part of the config.yaml the Save button rewrites. */}
+                local key, not part of the config.yaml the Save button rewrites.
+                Disabled while a save is in flight — two overlapping upserts would
+                let completion order decide the stored window, so picking a short
+                window and then "Forever" could leave the short one persisted and a
+                later sync would delete history the final choice meant to keep. */}
             <Select
+              disabled={saveRetention.isPending}
               value={local.retentionDays === null ? "forever" : String(local.retentionDays)}
               onValueChange={(value) =>
                 saveRetention.mutate(value === "forever" ? null : Number(value))

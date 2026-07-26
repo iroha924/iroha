@@ -152,6 +152,50 @@ describe("applyRetention", () => {
     expect(outcome.pruned?.sessions).toBe(1);
   });
 
+  it("stops mid-sweep when the window changes underneath it", async () => {
+    const db = await seededDb();
+    await seedAgedSession(db, "one");
+    await seedAgedSession(db, "two");
+    await storeSetting(db, JSON.stringify({ days: 30 }));
+
+    // Simulate the dashboard committing a change while a sync is finishing: the
+    // window is widened after the candidate list was taken. Nothing further may
+    // be deleted under the old, shorter window.
+    // `Database["execute"]` is overloaded, so its `Parameters` resolve to `never`.
+    // Every caller in this package passes the `{sql, args}` form, so the spy is
+    // typed to that shape rather than to the overload set.
+    type Execute = (statement: { sql: string; args: unknown[] }) => Promise<unknown>;
+    const target = db as unknown as { execute: Execute };
+    const original = target.execute.bind(db);
+    let calls = 0;
+    target.execute = async (statement) => {
+      if (!statement.sql.includes("FROM local_settings")) {
+        return original(statement);
+      }
+      calls += 1;
+      const result = await original(statement);
+      // Change it *after* the second read (the first loop iteration), so that
+      // iteration proceeds under the old window and the next one sees the new.
+      if (calls === 2) {
+        await original({
+          sql: "UPDATE local_settings SET value_json = ? WHERE key = ?",
+          args: [JSON.stringify({ days: null }), RETENTION_SETTING_KEY],
+        });
+      }
+      return result;
+    };
+
+    const outcome = await applyRetention(db, REPO, CLOCK);
+    target.execute = original;
+
+    expect(outcome.status).toBe("pruned");
+    // The first session is deleted under the window in force at the time; the
+    // second is not, because by then the user had turned retention off.
+    expect(outcome.pruned?.sessions).toBe(1);
+    const remaining = await readRetentionStatus(db, REPO, CLOCK);
+    expect(remaining.ok && remaining.value.counts.sessions).toBe(1);
+  });
+
   it("reports failed rather than throwing when the setting is unreadable", async () => {
     const db = await seededDb();
     await storeSetting(db, '"not a window"');
