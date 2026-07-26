@@ -137,8 +137,8 @@ async function pruneDistToRuntime(distDir: string, entry: string): Promise<void>
 /**
  * Write the complete publishable package into `destDir`, replacing any previous
  * contents. Reuses `assembleArchive` for the plugin config + skills, then adds
- * the runtime `dist/` (pruned to the `bin.mjs` closure), `LICENSE`, and the
- * generated `package.json`.
+ * the runtime `dist/` (pruned to the `bin.mjs` closure), `LICENSE`, `README.md`,
+ * and the generated `package.json`.
  */
 export async function assembleRelease(destDir: string): Promise<void> {
   await assembleArchive(destDir); // manifests, hook/MCP config, skills (removes destDir first)
@@ -152,6 +152,12 @@ export async function assembleRelease(destDir: string): Promise<void> {
     recursive: true,
   });
   await cp(join(REPO_ROOT, "LICENSE"), join(destDir, "LICENSE"));
+  // npm renders this on the package page and warns when it is absent. The repo
+  // README is the right text — its four relative links (`./CONTRIBUTING.md`,
+  // `./docs/`, `./docs/install.md`, `./LICENSE`) resolve against the `repository`
+  // field on npmjs.com, and it embeds no images. Neither this nor LICENSE needs a
+  // `files` entry: npm always includes them.
+  await cp(join(REPO_ROOT, "README.md"), join(destDir, "README.md"));
 
   const manifest = await buildPublishManifest();
   await mkdir(dirname(join(destDir, "package.json")), { recursive: true });
