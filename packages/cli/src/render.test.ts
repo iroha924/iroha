@@ -236,7 +236,6 @@ describe("terminalWidth", () => {
       if (columns) {
         Object.defineProperty(process.stdout, "columns", columns);
       } else {
-        // biome-ignore lint/performance/noDelete: restoring an absent own property.
         delete (process.stdout as { columns?: number }).columns;
       }
     }
