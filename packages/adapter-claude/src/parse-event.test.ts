@@ -128,11 +128,7 @@ describe("parseClaudeEvent — tool events and target extraction", () => {
     expect(event?.kind === "TOOL_STARTED" && event.payload.targets[0]?.value).toBe("pnpm");
   });
 
-  // The assigned value is dropped whole — never split, never inspected — while the
-  // program after it is named. Collapsing the entire command to a generic label was
-  // over-conservative and lost that `CI=1 pnpm test` was a test run, which the
-  // Checkpoint rule (hooks-contract §6.6) needs to distinguish.
-  it("names the program after an env-assignment prefix, never the assigned value", () => {
+  it("collapses an env-assignment prefix to the generic label (never leaks the secret)", () => {
     const { ctx } = makeFakeCtx();
     const event = unwrap(
       parseClaudeEvent(
@@ -146,7 +142,7 @@ describe("parseClaudeEvent — tool events and target extraction", () => {
       ),
     );
     expect(event).toMatchObject({
-      payload: { targets: [{ kind: "command", value: "gh", operation: "execute" }] },
+      payload: { targets: [{ kind: "command", value: "command", operation: "execute" }] },
     });
     expect(JSON.stringify(event)).not.toContain("ghp_notARealSecret");
   });

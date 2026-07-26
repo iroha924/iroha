@@ -6,7 +6,6 @@ import {
   continuationOutput,
   denyOutput,
   type HookOutput,
-  isBuildTestOrMigrationCommand,
   type NormalizedEvent,
   noOutput,
   type ToolTarget,
@@ -457,20 +456,24 @@ async function handleToolStarted(
 /**
  * Whether a tool use makes the Turn checkpoint-worthy, per `contracts/hooks.md`
  * §6.6 — "a mutation tool **succeeded**" or "a build/test/migration command
- * **ran**". The success condition belongs to the first clause only.
+ * **ran**". The success condition belongs to the first clause only, which is why a
+ * failed `pnpm test` still qualifies: that is the turn whose unresolved work most
+ * needs recording.
  *
- * And it is only those commands. Treating every command as qualifying marked a Turn
- * pending for `curl` and `git status`, so a turn that only polled a URL still had
- * its stop blocked for a Checkpoint, filling the record with near-empty entries the
- * Digest then counts.
+ * Every command qualifies, which is wider than §6.6's second clause and known to be
+ * so: it also fires for a read-only `curl` or `git status`, filling the record with
+ * near-empty Checkpoints. Narrowing it needs the command *category* §6.4 step 3
+ * calls for — mutation / validation / read-only, decided before arguments are
+ * discarded and with shell-aware tokenization. An attempt to approximate that from
+ * the program name alone leaked part of a credential into `target_summary` and
+ * simultaneously stopped `rm`, `git commit` and `terraform apply` from qualifying,
+ * so the approximation is not available: it is the category or nothing.
  */
 function requiresCheckpoint(targets: readonly ToolTarget[], succeeded: boolean): boolean {
-  return targets.some((t) => {
-    if (t.kind === "command") {
-      return isBuildTestOrMigrationCommand(t.value);
-    }
-    return succeeded && (t.operation === "write" || t.operation === "delete");
-  });
+  return targets.some(
+    (t) =>
+      t.kind === "command" || (succeeded && (t.operation === "write" || t.operation === "delete")),
+  );
 }
 
 /**

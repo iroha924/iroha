@@ -33,62 +33,15 @@ export interface ToolTarget {
  * as the tool event's `inputDigest`.
  */
 export function classifyCommandTarget(command: string): string {
-  // An env-assignment prefix (`VAR=value`) is never the program. Skip such tokens
-  // whole — never split or inspect them — because an assigned value can contain a
-  // `/` whose tail would otherwise pass the bare-name check below and leak. The
-  // program *after* the prefix is safe to name and is what the command actually is:
-  // collapsing `CI=1 pnpm test` to the generic label loses that it was a test run.
-  const tokens = command.trim().split(/\s+/);
-  const program = tokens.find((token) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(token)) ?? "";
-  if (program.length === 0 || program.includes("=")) {
+  const leading = command.trim().split(/\s+/)[0] ?? "";
+  // An env-assignment prefix (`VAR=value`) is never a program name — collapse it
+  // *before* any path handling, because the assigned value can itself contain a
+  // `/` whose tail would otherwise pass the bare-name check and leak.
+  if (leading.length === 0 || leading.includes("=")) {
     return "command";
   }
-  const base = program.split(/[/\\]/).pop() ?? "";
+  const base = leading.split(/[/\\]/).pop() ?? "";
   return /^[A-Za-z0-9._-]+$/.test(base) ? base : "command";
-}
-
-/**
- * The build/test/migration runners `contracts/hooks.md` §6.6 means when it says a
- * Turn requires a Checkpoint because "a build/test/migration command ran".
- *
- * Matched against `classifyCommandTarget`'s output, which is the bare program name
- * — arguments never leave the digest, so `pnpm test` and `pnpm install` are
- * indistinguishable here and both count. That is the deliberate direction of error:
- * treating every command as qualifying is what the code did before, and it marked a
- * Turn checkpoint-worthy for `curl` and `git status`, so a polling turn that did no
- * work still demanded a Checkpoint and filled the record with near-empty ones.
- *
- * A runner missing from this list costs a prompt that was not raised — recoverable,
- * since a file mutation qualifies on its own and PreCompact still leaves a dirty
- * marker. Add to it rather than widening it back to "any command".
- */
-const BUILD_TEST_MIGRATION_RUNNERS: ReadonlySet<string> = new Set([
-  "bun",
-  "cargo",
-  "dotnet",
-  "go",
-  "gradle",
-  "gradlew",
-  "jest",
-  "just",
-  "make",
-  "mvn",
-  "npm",
-  "npx",
-  "playwright",
-  "pnpm",
-  "pytest",
-  "task",
-  "tox",
-  "tsc",
-  "turbo",
-  "vitest",
-  "yarn",
-]);
-
-/** Whether a classified command target is a build/test/migration run (§6.6). */
-export function isBuildTestOrMigrationCommand(classified: string): boolean {
-  return BUILD_TEST_MIGRATION_RUNNERS.has(classified);
 }
 
 /**

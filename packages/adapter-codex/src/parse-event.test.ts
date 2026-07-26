@@ -280,11 +280,7 @@ describe("parseCodexEvent — apply_patch and Bash targets", () => {
     });
   });
 
-  // The assigned value is dropped whole — never split, never inspected — while the
-  // program after it is named. Collapsing the entire command to a generic label was
-  // over-conservative and lost that `CI=1 pnpm test` was a test run, which the
-  // Checkpoint rule (hooks-contract §6.6) needs to distinguish.
-  it("names the program after an env-assignment prefix, never the assigned value", () => {
+  it("collapses an env-assignment prefix to the generic label (never leaks the secret)", () => {
     const { ctx } = makeFakeCtx();
     const event = unwrap(
       parseCodexEvent(
@@ -299,7 +295,7 @@ describe("parseCodexEvent — apply_patch and Bash targets", () => {
       ),
     );
     expect(event).toMatchObject({
-      payload: { targets: [{ kind: "command", value: "aws", operation: "execute" }] },
+      payload: { targets: [{ kind: "command", value: "command", operation: "execute" }] },
     });
     expect(JSON.stringify(event)).not.toContain("abcd/efgh");
   });
