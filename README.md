@@ -62,7 +62,7 @@ The plugin registers iroha's skills, lifecycle hooks, and MCP server with your a
 /plugin install iroha@iroha
 ```
 
-Skills then show up as `/iroha:init`, `/iroha:sync`, `/iroha:search`, `/iroha:checkpoint`, `/iroha:dashboard`, and `/iroha:doctor`.
+Skills then show up as `/iroha:init`, `/iroha:sync`, `/iroha:search`, `/iroha:checkpoint`, `/iroha:digest`, `/iroha:dashboard`, and `/iroha:doctor`.
 
 ### OpenAI Codex
 
@@ -99,6 +99,8 @@ A teammate who clones the repo runs `iroha init` then `iroha sync --rebuild` to 
 ## The approval dashboard
 
 `iroha dashboard` serves a local, single-origin app from one loopback port and hands your browser a one-time launch token. It's where you review candidate knowledge, see each item's provenance and relationships, and approve or reject it. The dashboard is the *only* place approval happens — it's a human's call, never an agent's. It binds to loopback only, so nothing is exposed off your machine.
+
+Its front page is the **Digest**: what the current week or month actually looked like — where guardrails stopped you, which parts of the codebase you kept returning to, what your team approved. The numbers come from iroha's own index. `/iroha:digest` lets your agent write the surrounding prose, and even then it can only reference iroha's figures, never state its own.
 
 ## Configuration
 
