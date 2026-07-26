@@ -9,7 +9,7 @@ iroha の開発に使っている技術を「何か / iroha での役割 / い�
 ## 0. 設計思想（なぜこの構成か）
 
 - **ローカルファースト**: クラウド・常駐デーモン・外部同期なし。libSQL は「捨てて再構築できるローカル索引」であって正本ではない。正本は Git 管理された `.iroha/`。
-- **ポート & アダプタ**: ドメインコード（`@iroha/domain`, `@iroha/core`）は SDK 型・FS・DB 実装から独立。プラットフォーム依存はアダプタに閉じ込める。
+- **ポート & アダプタ**: 最内核の `@iroha/domain` は SDK 型・FS・DB 実装から独立（依存は Zod のみ）。`@iroha/core` はその上のユースケース層で、storage/git/canonical 等をポート経由で使う。プラットフォーム依存はアダプタに閉じ込める。
 - **境界で必ず検証**: 外部入力（ユーザー・API・サブプロセス・ファイル）は Zod で検証してから内側へ。例外は境界を越えない（`Result<T,E>`）。
 - **KISS / YAGNI 優先**: 抽象化は 3 回目の重複が現実に起きてから。将来仮定でオプションや層を足さない。
 - **多層防御**: セキュリティスキャナも Git フックも「1 つが漏らしても別が拾う」よう重ねる。
@@ -27,17 +27,17 @@ iroha の開発に使っている技術を「何か / iroha での役割 / い�
 | 技術 | 何か / iroha での役割 | いつ使う（トリガー） |
 |---|---|---|
 | **pnpm workspace**（v11、`pnpm-workspace.yaml`） | 20 パッケージのモノレポ管理。ワークスペース依存は `workspace:*` | 依存の追加/更新時 |
-| ├ **strict catalog**（`catalogMode: strict`） | 全依存をカタログに集中ピン留め。`package.json` では `"catalog:"` で参照。バージョンの単一情報源 | 依存追加時は必ずカタログにピン留め→`"catalog:"` 参照。生バージョン文字列は install 失敗 |
-| ├ **minimumReleaseAge**（現状は未設定だが `Exclude` リストは残置） | 公開直後の新版を弾く supply-chain ガード。若すぎる版は `--frozen-lockfile` で失敗 | 新規依存は数日以上枯れた版を選ぶ。若い版を入れるなら理由付きで `minimumReleaseAgeExclude` に追加 |
+| ├ **strict catalog**（`catalogMode: strict`） | 依存をカタログに集中ピン留め。`package.json` では `"catalog:"` で参照。バージョンの単一情報源 | 依存追加時は必ずカタログにピン留め→`"catalog:"` 参照。**例外**: turbo は `compatibility.md` の表が「exact in root devDependencies」を指定しているためカタログ外の直接ピン（`"turbo": "2.10.5"`） |
+| ├ **公開直後版のガード** | 実際に効いているのは Renovate の `minimumReleaseAge: 3 days`（`.github/renovate.json`）。pnpm 側の `minimumReleaseAge` は**未設定**で、`minimumReleaseAgeExclude` リストだけが残置＝手で足した新しすぎる依存を install が弾くことはない | 新規依存は数日以上枯れた版を自分で選ぶ（自動では止まらない） |
 | └ **overrides** | 上流に in-range 修正が無い transitive 脆弱性を強制パッチ（例: `fast-uri`, `js-yaml@5.2.1`） | osv-scan が transitive CVE を出し、上流未修正のとき |
-| **turbo**（`turbo.json`） | タスクのキャッシュ付き並列オーケストレーション。`lint`/`typecheck`/`test`/`build` を依存グラフ順に実行 | `pnpm lint` 等が内部で `turbo run` を呼ぶ。キャッシュヒットで `>>> FULL TURBO` |
+| **turbo**（`turbo.json`） | タスクのキャッシュ付き並列オーケストレーション。依存辺は `build: ^build` と、`typecheck`/`test`: **上流の `build`**（同名タスクの上流ではない）。`lint` は依存辺なしで全パッケージ並列 | `pnpm lint` 等が内部で `turbo run` を呼ぶ。キャッシュヒットで `>>> FULL TURBO` |
 | **tsdown**（rolldown ベース） | 実行コードのビルド（`dist/*.mjs` + `.d.mts`）。tsconfig の `paths` を自動解決 | `pnpm build`。プラグイン配布バンドルは `deps.alwaysBundle:[/^@iroha\//]` でワークスペースのみ inline |
 
 ## 3. コード品質・Lint・フォーマット
 
 | ツール | 何か / iroha での役割 | いつ使う（トリガー） | コマンド |
 |---|---|---|---|
-| **Biome 2.5.4** | Lint + フォーマッタ（ESLint+Prettier 相当を 1 バイナリ）。パッケージ間 import 境界を `noRestrictedImports` で機械強制、`interface`/named export/kebab-case ファイル名等も強制 | コード変更の都度。CI と pre-commit | `pnpm lint` / `biome check --write src` |
+| **Biome 2.5.4** | Lint + フォーマッタ（ESLint+Prettier 相当を 1 バイナリ）。パッケージ間 import 境界を `noRestrictedImports` で機械強制、`interface`/named export/kebab-case ファイル名等も強制 | コード変更の都度。CI と pre-commit | `pnpm lint`（`turbo run lint`）/ `pnpm format`（`biome format --write .`） |
 | **sherif 1.13** | Rust 製のモノレポ `package.json` 整合 linter（依存キー順、多重バージョン等）。`-f` で自動修正 | 任意の `package.json` に依存を足/消/並べ替えした後 | `pnpm lint:packages` |
 | **knip 6.29** | 未使用ファイル・未使用（dev）依存・未使用 export を検出（`knip.json`）。ハード CI ゲートではなくレビュー時チェック | 機能や caller を消した後、依存棚卸し時。false-positive は `knip.json` で設定（消さない） | `pnpm knip` |
 | **taze 19** | 依存アップグレードの対話的確認（`-r` recursive・catalog 対応）。**報告のみ**、書込みは `-w` | ローカルで更新可能なものを見たいとき（定常更新は Renovate 側） | `pnpm deps:check` |
@@ -48,7 +48,7 @@ iroha の開発に使っている技術を「何か / iroha での役割 / い�
 |---|---|---|
 | **lefthook 2.1**（`lefthook.yml`） | Git フックランナー。pre-commit（merge-conflict / secret-scan / typecheck / biome / markdownlint）、commit-msg（commitlint）、pre-push（test / build） | commit / push の都度自動。`--no-verify` でスキップしない方針 |
 | **commitlint 21** + **czg**（cz-git） | Conventional Commits 強制。サブジェクトは**100 文字以内**。czg は対話的にメッセージ生成 | commit 時に自動検証。`pnpm cz` で対話生成（`git commit -m` も可） |
-| **gitleaks**（pre-commit + CI） | コミット済みシークレット検出（entropy + パターン）。ローカルフックと CI で**同じツール**を使い検知乖離を防ぐ | commit / push・CI の都度 |
+| **gitleaks**（CI ゲート、pre-commit は任意） | コミット済みシークレット検出（entropy + パターン）。pre-commit は常に走る素の grep に加え、**ローカルに gitleaks が入っていれば** `--staged` でも検査する二層。未インストール時は警告のみでブロックしない（`brew install gitleaks` 推奨）＝正本ゲートは CI の `secrets-scan` | commit / push・CI の都度 |
 | カスタムフック `.claude/hooks/check-path-safety-diff.sh` | `*paths*.ts`/`*credential*.ts` に新規 `path.resolve/join/normalize` が増えたら手動承認を要求（決定的バックストップ） | git push 時（該当ファイルを触ったとき） |
 
 ## 5. テスト
@@ -75,9 +75,9 @@ iroha の開発に使っている技術を「何か / iroha での役割 / い�
 
 | 技術 | 何か / iroha での役割 | いつ使う（トリガー） |
 |---|---|---|
-| **libSQL**（`@libsql/client` 0.17） | ローカル SQLite 互換索引（`.git/iroha/index.db`）。**捨てて再構築可能**、承認済み知識の唯一の正本ではない | 検索・グラフ・セッション索引。パラメータ化 SQL のみ（文字列連結禁止） |
+| **libSQL**（`@libsql/client` 0.17） | ローカル SQLite 互換索引（`<git rev-parse --git-path iroha>/index.db`）。**捨てて再構築可能**、承認済み知識の唯一の正本ではない | 検索・グラフ・セッション索引。パラメータ化 SQL のみ（文字列連結禁止）。パスは必ず git に解決させる（linked worktree や separate git dir では `.git/iroha` とは限らない） |
 | **前方専用マイグレーション**（`migrations/*.sql`） | スキーマ進化。rebuild テストで再構築可能性を保証 | スキーマ変更時。前方専用（後方互換シムを作らない） |
-| **FTS**（libSQL 全文検索） | 語彙検索アーム。識別子/path は AND、自然文は OR にクエリ種ルーティング | 検索の lexical 経路。CJK は空白区切り前提（tokenization 制約） |
+| **FTS**（libSQL 全文検索） | 語彙検索アーム。識別子/path は AND、自然文は OR にクエリ種ルーティング | 検索の lexical 経路。索引は 2 本立てで、`unicode61` が英単語・識別子、`trigram` が CJK と部分一致を担当（日本語は分割せずそのまま引ける） |
 
 **Windows 注意**: WAL モードの close 後ロックで `EBUSY` が起きるため Windows は CI verify マトリクスから除外（`.claude/rules/windows-ci-compat.md`）。
 
@@ -137,11 +137,11 @@ iroha の開発に使っている技術を「何か / iroha での役割 / い�
 |---|---|---|
 | **publint 0.3** | 公開パッケージの packaging 正当性（exports/files/bin、ESM/CJS 条件） | packaging（`build-release.ts`/plugin `package.json`/exports/bin）を触ったとき。`pnpm check:package` |
 | **attw**（@arethetypeswrong/cli 0.18） | 型解決可能性チェック。iroha 公開物は**CLI**なので "no types" は想定内（exit 0） | 同上。`pnpm check:package` |
-| **size-limit 13** | ダッシュボードバンドルの**brotli** サイズをゲート（`.size-limit.json`、~295kB JS / ~15kB CSS） | UI 依存/重い import を足したとき。CI `size` job。`pnpm size` |
+| **size-limit 13** | ダッシュボードバンドルの**brotli** サイズをゲート（`.size-limit.json` の上限は 320kB JS / 18kB CSS。現状は ~295kB / ~15kB） | UI 依存/重い import を足したとき。CI `size` job。`pnpm size` |
 | **changesets 2.31** | バージョン/CHANGELOG 管理 | リリース準備時。`pnpm changeset` |
-| **npm provenance** | `release.yml` の `workflow_dispatch`（`publish:true`）で `@iroha-labs/iroha` を publish（SBOM は組込 `npm sbom`） | **人間ゲート**。実公開はまだ（構造は valid だが未 installable） |
+| **npm provenance** | `release.yml` の `workflow_dispatch`（`publish:true`）で `@irohalabs/iroha` を publish（SBOM は組込 `npm sbom`） | **人間ゲート**（既定は dry-run）。認証は OIDC trusted publishing で `NPM_TOKEN` は存在しない／作らない |
 
-**公開物の実体**: `@iroha/plugin` を `@iroha-labs/iroha` として publish。bin-only CLI（exports/types を剥がす）。`build-release.ts` が name 書換え・workspace 依存 drop・`catalog:`→具体版解決・migrations/dashboard/skills 同梱。
+**公開物の実体**: `@iroha/plugin` を `@irohalabs/iroha` として publish。bin-only CLI（exports/types を剥がす）。`build-release.ts` が name 書換え・workspace 依存 drop・`catalog:`→具体版解決・migrations/dashboard/skills 同梱。
 
 ## 14. ドキュメント・パース
 
@@ -155,10 +155,10 @@ iroha の開発に使っている技術を「何か / iroha での役割 / い�
 
 | ボット | 観測方法 | トリガー |
 |---|---|---|
-| **Greptile** | CI status check「Greptile Review」（advisory・**findings 有無に関わらず pass**）+ Summary/inline コメント。P0/P1/P2 バッジ | PR open + **毎 push**。修正 push で Summary を in-place 更新・解決スレッド auto-resolve |
+| **Greptile**（**現在 disabled**） | 有効時は CI status check「Greptile Review」（advisory・**findings 有無に関わらず pass**）+ Summary/inline コメント。P0/P1/P2 バッジ | 現状は動かないので「Greptile Review」チェックを待たない（永久に現れず post-push の確認が止まる） |
 | **Codex**（`chatgpt-codex-connector[bot]`） | **CI 非観測**。PR リアクション 👀（レビュー中）/ 👍（完了・問題なし）/ 👍消滅（完了・問題あり）+ 投稿レビュー | **PR open のみ自動**。再レビューは `@codex review [for security regressions]`。rate-limited なので claude が要否判断（既指摘の修正だけなら再依頼しない） |
 
-**規律**: push 後は Greptile pass を見届け、Codex が 👀 のままマージしない。全 finding（`<details>` 折り畳み含む）を読み、INVALID は再現で実証。修正 push 後はスレッドを resolve。
+**規律**: push 後は CI が全項目 pass するまで見届け、Codex が 👀 のままマージしない。全 finding（`<details>` 折り畳み含む）を読み、INVALID は再現で実証。修正 push 後はスレッドを resolve。
 
 ## 16. ドメイン設計パターン
 
@@ -187,6 +187,4 @@ iroha の開発に使っている技術を「何か / iroha での役割 / い�
 
 `domain` ← 全パッケージが依存可（最内核）。`core` → `domain`/`storage`/`canonical`/`git`/`search`/`config`/`adapter-*`/`forge*`。`api` → `core`。`cli`/`mcp`/`plugin` → 上位。`forge-github` → `forge` → `domain`。禁止 import を書くと `pnpm lint` がエラー（許可先も表示）。§4 を変えるときは `biome.json` の override も同一コミットで更新。
 
----
-
-*最終更新: 2026-07-25（F3 = @hono/zod-openapi 導入時）。技術を追加/置換したらこの表も更新する。*
+技術を追加・置換したら、この表も同じ PR で更新すること。
