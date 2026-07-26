@@ -128,6 +128,7 @@ describe("tarball contents", () => {
       "mcp.codex.json",
       "skills/init/SKILL.md",
       "skills/checkpoint/SKILL.md",
+      "skills/digest/SKILL.md",
     ]) {
       expect(tarballPaths, `missing ${required}`).toContain(required);
     }

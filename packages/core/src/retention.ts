@@ -21,6 +21,7 @@ import {
   getLocalSetting,
   type LocalEventCounts,
   listPrunableSessions,
+  pruneDigestIssues,
   pruneEventLog,
   pruneSession,
 } from "@iroha/storage";
@@ -102,6 +103,15 @@ export interface PruneCounts {
   sessions: number;
   checkpoints: number;
   eventLogRows: number;
+  /**
+   * Composed Digest issues older than the window. Pruned with the data they
+   * narrate: an issue that says "{{local.denials.total}} denials, all in
+   * packages/git" renders "0 denials, all in packages/git" once the sweep removes
+   * the sessions behind it — an unreviewed claim outliving its evidence, under the
+   * one setting whose purpose is deliberate deletion. Losing it costs nothing;
+   * `/iroha:digest` regenerates prose.
+   */
+  digestIssues: number;
 }
 
 export interface RetentionOutcome {
@@ -144,7 +154,12 @@ export async function applyRetention(
   // force at the time, which is the intended behavior.
   const guard = { key: RETENTION_SETTING_KEY, expectedValueJson: setting.value.rawJson };
 
-  const pruned: PruneCounts = { sessions: 0, checkpoints: 0, eventLogRows: 0 };
+  const pruned: PruneCounts = {
+    sessions: 0,
+    checkpoints: 0,
+    eventLogRows: 0,
+    digestIssues: 0,
+  };
   let policyChanged = false;
   for (const sessionId of candidates.value) {
     const result = await pruneSession(db, repositoryId, cutoff, sessionId, guard);
@@ -167,12 +182,26 @@ export async function applyRetention(
     }
   }
 
+  // The loop's guard is per-session, so the policy could still have changed after
+  // the last one. Re-read before the two sweep-wide deletes rather than trusting a
+  // flag set earlier: both would otherwise run with the superseded cutoff.
+  if (!policyChanged) {
+    const current = await readRetentionSetting(db, repositoryId);
+    if (!current.ok || current.value.setting.days !== days) {
+      return { status: "pruned", days, pruned };
+    }
+  }
   if (!policyChanged) {
     const eventLogRows = await pruneEventLog(db, repositoryId, cutoff);
     if (!eventLogRows.ok) {
       return { status: "failed", days, errorCode: eventLogRows.error.code };
     }
     pruned.eventLogRows = eventLogRows.value;
+    const digestIssues = await pruneDigestIssues(db, repositoryId, cutoff);
+    if (!digestIssues.ok) {
+      return { status: "failed", days, errorCode: digestIssues.error.code };
+    }
+    pruned.digestIssues = digestIssues.value;
   }
 
   return { status: "pruned", days, pruned };

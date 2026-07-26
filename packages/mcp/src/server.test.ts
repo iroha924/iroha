@@ -40,15 +40,17 @@ describe("MCP server over the wire (in-memory transport)", () => {
     return client;
   }
 
-  it("lists all eight tools with input schemas and no approval operation", async () => {
+  it("lists all ten tools with input schemas and no approval operation", async () => {
     dir = await mkdtemp(join(tmpdir(), "iroha-mcp-wire-"));
     const client = await connectedClient(dir);
     try {
       const listed = await client.listTools();
       const names = listed.tools.map((tool) => tool.name);
-      expect(names).toHaveLength(8);
+      expect(names).toHaveLength(10);
       expect(names).toContain("create_checkpoint");
       expect(names).toContain("get_session_state");
+      expect(names).toContain("get_digest_data");
+      expect(names).toContain("save_digest_prose");
       for (const substring of APPROVAL_SUBSTRINGS) {
         expect(names.some((name) => name.includes(substring))).toBe(false);
       }

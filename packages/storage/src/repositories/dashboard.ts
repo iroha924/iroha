@@ -8,7 +8,7 @@ import { nullableString } from "../row-helpers.js";
  * `listKnowledgeEntities`). Kept as one list so the SQL filter and the by-type
  * breakdown below never drift apart.
  */
-const KNOWLEDGE_ENTITY_TYPES = [
+export const KNOWLEDGE_ENTITY_TYPES = [
   "decision",
   "rule",
   "concept",

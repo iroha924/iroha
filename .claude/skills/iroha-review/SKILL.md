@@ -18,35 +18,24 @@ The *thinking* that belongs before a security-sensitive change — what a patter
 - **Zero side effects**. Do not create state files like `.mumei`, and do not commit or push. Report the findings and stop.
 - **fail-open**. This skill itself is not what decides "whether the merge is allowed". It presents the severity of the findings and the verification results; the user decides whether to act on them.
 - **fresh-context principle**. Each reviewer Agent is invoked without the context of this conversation (why this change was made). Reviewing within the same context introduces confirmation bias (the same reason as `.claude/agents/security-diff-reviewer.md`).
-- No auto-fixing. After reporting the findings, wait for the user's instructions on whether and how to fix them.
+- **The tree stays frozen while reviewers run.** They are given a commit range and read it with `git diff`, so uncommitted edits are outside their scope — but a reviewer that also opens a file sees whatever is on disk *now*. Do not edit tracked files between launching Step 3 and collecting its results; if you must, commit first and re-run against the new range.
+- **Report before fixing.** Findings are reported first, always. Whether fixing follows immediately depends on what the user already asked for (Step 5) — the point of the default is that a review never becomes an unrequested rewrite, not that a standing instruction gets ignored.
 
 ## Step 1 — Determine the target diff
 
 ```bash
 git rev-parse --git-dir >/dev/null 2>&1 || { echo "not a git repository"; exit 0; }
-
 base="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')"
-if [ -z "$base" ]; then
-  git show-ref --verify --quiet refs/heads/main && base="main"
-fi
-if [ -z "$base" ]; then
-  git show-ref --verify --quiet refs/heads/master && base="master"
-fi
-if [ -z "$base" ]; then
-  echo "cannot resolve base ref; a main or master branch is required."
-  exit 0
-fi
-
-merge_base="$(git merge-base "$base" HEAD 2>/dev/null)"
-committed_files="$(git diff --name-only "$merge_base"..HEAD)"
-uncommitted_status="$(git status --porcelain)"
+base="${base:-main}"
+git show-ref --verify --quiet "refs/heads/$base" || base=master
+merge_base="$(git merge-base "$base" HEAD)"
+git diff --stat "$merge_base"..HEAD
+git status --porcelain
 ```
 
-- If `committed_files` is empty, report "no diff against `$base`, nothing to review" and stop.
-- If `uncommitted_status` is non-empty, confirm with **AskUserQuestion**: "Should the uncommitted changes (present the list) also be included in the review scope?"
-  - Include → the target diff is `git diff "$merge_base"` (includes the working tree; one-dot, not two-dot)
-  - Do not include → the target diff is `git diff "$merge_base"..HEAD` (committed only)
-- Report the list of changed files and the size of the target diff (line count) up front, and make the review scope explicit.
+- No `merge_base`, or an empty diff → report "no diff against `$base`, nothing to review" and stop. No `main`/`master`/`origin/HEAD` → report that and stop.
+- Uncommitted changes present → confirm with **AskUserQuestion** whether to include them (present the list). Including them means the range becomes `git diff "$merge_base"` (one dot); excluding them keeps `"$merge_base"..HEAD`. **If they are included, commit them first** — reviewers read a commit range, so uncommitted work would otherwise be invisible to the very pass meant to cover it.
+- Report the changed-file list and the diff size up front, and state the scope explicitly.
 
 ## Step 2 — Deterministic checks (ground truth, no LLM judgment needed)
 
@@ -73,35 +62,49 @@ If there is a match, treat it as a confirmed finding (false positives are possib
 
 ## Step 3 — Launch reviewers in parallel (fresh context)
 
-Pass each reviewer **only the diff itself and the changed file paths**. Do not pass why the change was made or what conversation took place (fresh-context principle).
+Pass each reviewer **the commit range and the changed-file list** — not the diff text, which for a large change does not fit a prompt. Every reviewer has `Bash` and reads the range itself. Do not pass why the change was made or what conversation took place (fresh-context principle).
 
 ```text
-Agent(security-reviewer, prompt: "<diff> <changed files>")
-Agent(spec-compliance-reviewer, prompt: "<diff> <changed files>")
-Agent(adversarial-reviewer, prompt: "<diff> <changed files>")
+Agent(security-reviewer,        prompt: "git diff <merge_base>..HEAD ; <changed files>")
+Agent(spec-compliance-reviewer, prompt: "git diff <merge_base>..HEAD ; <changed files>")
+Agent(adversarial-reviewer,     prompt: "git diff <merge_base>..HEAD ; <changed files>")
 ```
 
-The three have independent perspectives (security / spec & invariant compliance / correctness & edge cases), so they may be launched in parallel (three Agent calls in a single message).
+The three have independent perspectives (security / spec & invariant compliance / correctness & edge cases), so they may be launched in parallel (Agent calls in a single message).
+
+### Scale the pass to the diff
+
+Three reviewers on a three-line change costs more than it can possibly return. Judge by what the diff actually touches, not by line count alone:
+
+| Diff | Reviewers |
+|---|---|
+| Formatting, comments, a rename, a version bump, docs only | **none** — Step 2 is the whole review; say so and stop |
+| One file, one behaviour, no new external boundary | `adversarial-reviewer` only |
+| New logic, a new API/MCP surface, a schema change, or several packages | all three |
+| Any of the above **plus** `packages/git`, `packages/forge*`, `packages/adapter-*` | all three + `security-diff-reviewer` |
+
+Set `effort` per reviewer rather than letting all three inherit the session's. Precision holds at low effort, and depth pays unevenly: `adversarial-reviewer` is where an exhaustive sweep earns its cost (`xhigh`), while `spec-compliance-reviewer` mostly reads documents and compares them to code (`medium`).
 
 ### Add `security-diff-reviewer` when the diff touches a security-sensitive package
 
-When any changed path matches `packages/git/`, `packages/forge*/`, or `packages/adapter-*/`, launch a fourth reviewer in the same message:
+Verify the match against the actual changed-file list rather than assuming:
 
-```text
-Agent(security-diff-reviewer, prompt: "<diff> <changed files>")
+```bash
+git diff --name-only "$merge_base"..HEAD | grep -E "^packages/(git|forge[^/]*|adapter-[^/]*)/"
 ```
 
 `security-reviewer` covers OWASP-class defects across the whole monorepo; `security-diff-reviewer` is narrower and deeper, specialized for the four regression patterns these packages have actually produced (see `.claude/rules/secure-subprocess-and-credentials.md` and `path-and-symlink-safety.md`): a narrow fix that leaves the same defect at a sibling call site, a pattern change that trades one false-negative for another, code violating an invariant it declared in the same sitting, and dropped platform behavior when hand-rolling around an OS-native function. Skip it for a diff outside those packages — it has nothing to add there.
 
-Verify the match against the actual changed-file list rather than assuming; a diff can reach these packages through a file you did not expect:
+## Step 3.5 — Collapse duplicates and fold findings into each other
 
-```bash
-echo "$committed_files" | grep -E "^packages/(git|forge[^/]*|adapter-[^/]*)/"
-```
+The reviewers run blind to each other, so expect overlap — in practice three or four of a dozen findings arrive more than once. Two passes over the collected list:
 
-## Step 4 — Verify HIGH/CRITICAL findings (adjudication)
+- **Same defect, several reporters** → keep one entry and note the corroboration. Independent agreement is evidence, so it *raises* confidence; it does not mean two findings.
+- **One fix resolves several findings** → say so before fixing anything. Fixes genuinely collapse: removing a redundant validation can settle a documented-gate-order discrepancy at the same time. Missing this produces churn and a diff that looks larger than the change.
 
-Of the candidate findings gathered in Step 3, have `finding-validator` independently verify the HIGH/CRITICAL ones, one at a time. MEDIUM/LOW may be skipped (even in 2026-era practice, verifying every finding has poor cost-effectiveness, and narrowing to the high-severity ones is standard).
+## Step 4 — Adjudicate the findings that need it
+
+**Validate only a HIGH/CRITICAL finding that arrived without a reproduction.** A reviewer that ran the failure and pasted the output has already done this work; sending it to `finding-validator` re-derives a demonstrated fact.
 
 ```text
 Agent(finding-validator, prompt: "<one finding: file, line, failure scenario>")
@@ -110,28 +113,33 @@ Agent(finding-validator, prompt: "<one finding: file, line, failure scenario>")
 `finding-validator`'s verdict:
 
 - `valid` → include in `ReportFindings` with `verdict: CONFIRMED`
-- `invalid` → drop it (leave a one-line reason under "excluded findings" in the final report — to prevent recurrence of a cyclic false positive)
-- `unsure` → include with `verdict: PLAUSIBLE`, and state explicitly that it "could not be verified"
+- `invalid` → drop it, and record a one-line reason under "excluded findings" in the final report (so a cyclic false positive does not come back next round)
+- `unsure` → include with `verdict: PLAUSIBLE`, and state explicitly that it could not be verified
 
-For MEDIUM/LOW findings whose verification was skipped, include them without a `verdict` (or as PLAUSIBLE).
+A finding whose reporter already reproduced it is `CONFIRMED` on that evidence — quote the reproduction rather than re-running it. MEDIUM/LOW are not validated; report them without a `verdict`.
+
+Whatever the severity, for each finding you are going to act on, ask one more thing: **is there an existing test aimed at this, and why did it pass?** A test that exercises zero of the rows it looks like it exercises, or compares two reads of unchanged data, is its own finding and usually the more durable one.
 
 ## Step 5 — Report
 
-Call the `ReportFindings` tool once, passing the final list of findings sorted by descending severity (if the array is empty, "no findings"). `level` is usually `"high"` because multiple agents plus a verification pass are run.
+Call the `ReportFindings` tool **once**, with the final list sorted by descending severity (an empty array when nothing survived). `level` is usually `"high"` because multiple agents plus an adjudication pass ran. Do not also print the findings as prose — the tool call *is* the report.
 
-In addition to the `ReportFindings` output, state the following explicitly in the conversation:
+Alongside it, state in the conversation:
 
-1. The review scope (committed only / including uncommitted, diff line count, base ref).
-2. The result of the Step 2 deterministic checks (whether everything passed, what failed).
-3. **What is not covered** (e.g., "Windows-specific behavior could not be verified in this environment", "dedicated tools such as semgrep/osv-scanner are not installed, so pattern grep only"). Do not paper over what you do not know with a pretense of knowing it (the evaluation-honesty principle in `~/.claude/CLAUDE.md`).
+1. The review scope (committed only / including uncommitted, diff size, base ref).
+2. The Step 2 deterministic results — what passed, what failed.
+3. **What is not covered.** Be specific: "Windows-only behaviour was not verified on this machine (macOS)", "no live Forge credentials, so the GitHub path is untested". Do not paper over what you do not know (the evaluation-honesty principle in `~/.claude/CLAUDE.md`).
 4. That this skill changed nothing (no commit, no push).
+
+**If the user has already asked for the findings to be fixed** — they said "review and fix", or the review is running inside work they told you to finish — then report first, exactly as above, and continue into the fixes without waiting for a second instruction. The "wait for instructions" default exists so a review does not become an unrequested rewrite; it is not a reason to ignore an instruction you already have. Fix in severity order, apply Step 3.5's folding, and verify each fix goes red on the pre-fix code before claiming it works.
 
 ## What this skill does not do
 
 - Do not commit, push, or create a PR.
 - Do not create state files like `.mumei`.
-- Do not auto-fix findings (wait for the user's instructions for the next action).
-- Do not treat high-severity findings as confirmed without verification (Step 4 is mandatory; do not skip it).
+- Do not auto-fix findings **unless the user has already asked for it** (Step 5) — a review must not become an unrequested rewrite.
+- Do not treat a high-severity finding as confirmed on reasoning alone. Either its reporter reproduced it or `finding-validator` did (Step 4).
+- Do not tell a reviewer to be conservative, to report only high-confidence findings, or to filter its own output. Suppression instructions are followed literally and cost real findings; filtering is Step 4's job, not the reviewer's.
 - When nothing is found, do not invent plausible-looking findings (honestly report an empty array).
 
 ## Troubleshooting
@@ -150,12 +158,13 @@ Skeleton of a typical output:
 
 ```text
 Scope: committed changes since the merge-base with main (2 uncommitted changes: asked whether to include → chose not to)
-diff: 8 files changed, +640/-12
+diff: 8 files changed, +640/-12 → new logic in one package, no security-sensitive path: all three reviewers, no security-diff-reviewer
 
 Step 2 deterministic checks: lint OK / typecheck OK / test OK (83 passed) / build OK / secret patterns: none detected
 
-[ReportFindings output: 1 finding (MEDIUM, verdict: CONFIRMED), or "no findings"]
+[ReportFindings: 1 finding (MEDIUM, verdict: CONFIRMED), or an empty array]
 
+Duplicates collapsed: 2 (both reviewers raised the same unchecked boundary — corroborated, counted once)
 Not covered: Windows-specific newline/path behavior was not verified in this environment (macOS).
 
 This skill changed nothing (no commit, no push).

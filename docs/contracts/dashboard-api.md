@@ -123,11 +123,21 @@ The API is built with `@hono/zod-openapi`: each route validates its request body
 
 | Method | Path | Purpose |
 |---|---|---|
+| `GET` | `/api/v1/digest` | one period's Digest: aggregate facts, prior-period comparison, and composed prose |
 | `GET` | `/api/v1/overview` | counts, recent Sessions, pending Candidates, unresolved items |
 | `GET` | `/api/v1/sessions` | paginated Sessions |
 | `GET` | `/api/v1/sessions/:id` | Session, Runs, summary, relations |
 | `GET` | `/api/v1/sessions/:id/runs/:runId` | Turns, Tool summaries, Checkpoints |
 | `GET` | `/api/v1/checkpoints/:id` | structured Checkpoint detail |
+
+`GET /api/v1/digest` query parameters: `unit` (`week`|`month`, default this developer's stored
+`digest.period`) and `offset` (integer 0–520; 0 is the current period, higher values are back
+issues). Neither is rejected: an unknown `unit` is ignored and falls back to the stored preference,
+while an out-of-range `offset` is **clamped** to `0..520` rather than ignored — ignoring it would
+answer a request for 520+ periods ago with the *current* period. The response carries the resolved
+`period.offset`, which is what a client must read to know which issue it was served. Period
+boundaries are UTC calendar boundaries, so the same key names the same window for every teammate.
+Read-only; prose is written through MCP (`save_digest_prose`), not through this API.
 
 Session filters: platform, actor, status, label, Issue/PR ref, date range, unresolved-only.
 
@@ -212,6 +222,7 @@ Repair operations are allowlisted. The browser cannot run arbitrary shell comman
 
 ```text
 /
+/overview
 /sessions
 /sessions/:sessionId
 /sessions/:sessionId/runs/:runId
@@ -225,7 +236,25 @@ Repair operations are allowlisted. The browser cannot run arbitrary shell comman
 /doctor
 ```
 
-### Overview
+### Digest (`/`)
+
+The front page is the period Digest (architecture.md ADR-016). Show:
+
+- the composed headline and deck for the period, or templated copy when none has been composed —
+  the page is never blank, because the numbers are computed on request;
+- Guardrail denials for the period, attributed to the Rule that produced each one, with the
+  previous period's total beside it;
+- where denials clustered, when iroha found a cluster;
+- Sessions, Checkpoints by outcome, and pending recurring review lessons;
+- knowledge approved in the period, Guardrails added or changed, promoted review lessons;
+- how enforceable the approved Guardrail set is (enforceable / not-hook-enforceable / malformed).
+
+Label composed prose as auto-composed and unreviewed, and render numbers as authoritative beside
+it. Do not present a blended adherence score, and state that advisory rules are not machine-
+observable rather than implying they were measured. As everywhere else: no individual ranking, no
+hours worked, no per-person attribution.
+
+### Overview (`/overview`)
 
 Show:
 

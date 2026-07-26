@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,6 +12,17 @@ import { createTempGitRepo, removeTempDir } from "./test-helpers/tmp-repo.js";
 
 const MIGRATIONS_DIR = fileURLToPath(new URL("../../../migrations", import.meta.url));
 const CLOCK = new FixedClock(new Date("2026-01-01T00:00:00.000Z"));
+
+/**
+ * The highest version this build ships. Derived rather than written down: what is
+ * under test is the runner applying *every* pending migration, so the expected
+ * value is "the latest one that exists", and pinning a literal would only make
+ * the test go stale each time a migration is added.
+ */
+async function latestMigrationVersion(): Promise<number> {
+  const entries = await readdir(MIGRATIONS_DIR);
+  return Math.max(...entries.map((entry) => Number(entry.split("_")[0])));
+}
 
 describe("iroha sync applies pending migrations", () => {
   let repoDir: string | undefined;
@@ -43,7 +54,7 @@ describe("iroha sync applies pending migrations", () => {
     expect(init.ok).toBe(true);
 
     // A plain (non-rebuild) `iroha sync` with the current migrations dir must
-    // apply every pending migration (002 and 003).
+    // apply every pending migration.
     const synced = await runSync(repoDir, MIGRATIONS_DIR);
     expect(synced.ok).toBe(true);
 
@@ -53,7 +64,7 @@ describe("iroha sync applies pending migrations", () => {
     if (!opened.ok) throw new Error("db not opened");
     try {
       const userVersion = await opened.value.execute("PRAGMA user_version");
-      expect(userVersion.rows[0]?.user_version).toBe(4);
+      expect(userVersion.rows[0]?.user_version).toBe(await latestMigrationVersion());
       const table = await opened.value.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'session_tokens'",
       );

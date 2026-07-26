@@ -383,6 +383,90 @@ interface LinkEntitiesInput {
 
 Self-relations are rejected except `RELATED_TO`. Unknown entity IDs are rejected; tools do not invent placeholder entities.
 
+### 6.9 `get_digest_data`
+
+Purpose: return one Digest period's aggregate facts so an agent can compose the period's prose.
+
+Annotations: read-only, idempotent.
+
+Input:
+
+```ts
+interface GetDigestDataInput {
+  unit?: "week" | "month";          // default: the stored `digest.period`
+  offset?: number;                  // integer 0..520; 0 is the current period
+}
+```
+
+No session token, matching the other read-only tools: it exposes aggregate counts already
+derivable from the tools an agent has, and requiring a token would stop the composing skill from
+running outside a live Run.
+
+The response carries the period's identity, the aggregates, the same aggregates for the previous
+period, any correlations iroha computed, the composed prose if the period already has one, and a
+flat `facts` array of `{ id, value, label }`.
+
+**Aggregates only, and person-less by construction.** The payload has no field named or typed as
+actor, author, email, or session owner anywhere in it, so per-person narration is not something
+the agent could produce — the data never arrives. Free text in a fact is either an
+already-approved canonical entity's title or summary, or a repository-relative path a Guardrail
+denied (realpath-resolved and repository-confined before storage, which §8 permits persisting).
+Never a prompt, a transcript, a raw tool payload, or an absolute path.
+
+### 6.10 `save_digest_prose`
+
+Purpose: store the composed prose for one Digest period.
+
+Annotations: local-write, idempotent, non-canonical and never committed to Git.
+
+Input:
+
+```ts
+interface SaveDigestProseInput {
+  sessionToken: string;
+  /** Echoed from the `period` in the `get_digest_data` response this was composed against. */
+  periodUnit: "week" | "month";
+  periodKey: string;
+  prose: {
+    headline: string;               // 1..200
+    standfirst: string;             // 1..500
+    sections: {                     // 1..4
+      slot: "stumbles" | "codebase" | "wins" | "teaching";
+      heading: string;              // 1..120
+      body: string;                 // 1..2000
+    }[];
+  };
+}
+```
+
+**There is no field for a number.** To state a figure the prose references a fact id as
+`{{factId}}`, and the renderer substitutes iroha's own value — so a fabricated figure is not
+expressible. A reference to an id the period did not issue is rejected as `INVALID_INPUT`. The
+offending ids are **not** returned: §4 strips `details` from every failure envelope, and echoing
+them into the message would put agent-supplied text (which can be secret-shaped) into an error. The
+agent already holds the issued list from `get_digest_data` and re-checks its references against it.
+An id that later disappears renders as an em dash, not a stale number.
+
+**The period is named, not derived.** `periodUnit`/`periodKey` come from the `get_digest_data`
+response. An offset would be relative to "now", so a dropped or stale one silently files the
+composition under a period it does not describe — and reference validation cannot catch that,
+because the period-independent ids exist in every period's fact table. A key no period of that unit
+produces is rejected.
+
+Gates, in order: session token, the named period, fact references, then a secret scan of every
+free-text field before the write. The shape is enforced by the tool's own input schema, which the
+dispatcher strict-parses before the handler runs (§8), so it is not re-checked here.
+
+**Redaction is reported.** A finding replaces the whole field, so the response carries
+`redactions[]` and the call raises a `field_redacted` warning (§6.6 does the same for a Checkpoint):
+a bare success would tell the agent a section saved when nothing of it survived.
+
+Recomposing a period overwrites its previous issue — the numbers are recomputed on every read, so
+an older narration of the same period is stale rather than history.
+
+What the seam cannot prevent is prose that contradicts a correct number; the dashboard therefore
+renders numbers as authoritative and labels the prose unreviewed.
+
 ## 7. Knowledge proposal contract
 
 ```ts

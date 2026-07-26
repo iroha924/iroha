@@ -49,10 +49,10 @@ function formatSync(data: RunSyncResult): string {
   if (retention.status === "failed") {
     lines.push(`Retention: pruning failed (${retention.errorCode}) — will retry on the next sync.`);
   } else if (retention.pruned !== undefined) {
-    const { sessions, checkpoints, eventLogRows } = retention.pruned;
-    if (sessions + checkpoints + eventLogRows > 0) {
+    const { sessions, checkpoints, eventLogRows, digestIssues } = retention.pruned;
+    if (sessions + checkpoints + eventLogRows + digestIssues > 0) {
       lines.push(
-        `Retention: pruned ${sessions} session(s), ${checkpoints} checkpoint(s), and ${eventLogRows} diagnostics row(s) older than ${retention.days} days.`,
+        `Retention: pruned ${sessions} session(s), ${checkpoints} checkpoint(s), ${eventLogRows} diagnostics row(s), and ${digestIssues} digest issue(s) older than ${retention.days} days.`,
       );
     }
   }

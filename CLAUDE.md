@@ -109,10 +109,10 @@ when you open a matching file, so there is nothing to invoke.
 
 To review a change, run the `iroha-review` skill (`.claude/skills/iroha-review/`) — the repository's
 single review pipeline. It runs the deterministic gate, then launches fresh-context reviewers in
-parallel, and adds the `security-diff-reviewer` subagent when the diff touches `packages/git`,
-`packages/forge*`, or `packages/adapter-*` — the pass that catches a narrow fix leaving the same
-defect at a sibling call site, or trading one false-negative for another. Run it before pushing a
-fix to one of these packages. A `PreToolUse` hook on `git push`
+parallel, scaled to what the diff touches, and adds the `security-diff-reviewer` subagent when the
+diff reaches `packages/git`, `packages/forge*`, or `packages/adapter-*` — the pass that catches a
+narrow fix leaving the same defect at a sibling call site, or trading one false-negative for
+another. Run it before pushing a fix to one of these packages. A `PreToolUse` hook on `git push`
 (`.claude/hooks/check-path-safety-diff.sh`) also flags any newly added
 `path.resolve`/`path.join`/`path.normalize` call in `*paths*.ts`/`*credential*.ts` files for manual
 approval — this is a deterministic backstop, not a substitute for the review pass.
