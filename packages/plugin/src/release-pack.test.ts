@@ -16,13 +16,24 @@ import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { REPO_ROOT } from "./build-archive.js";
 import { assembleRelease } from "./build-release.js";
-import { PLUGIN_VERSION, PUBLISHED_PACKAGE_NAME } from "./metadata.js";
+import {
+  PLUGIN_KEYWORDS,
+  PLUGIN_REPOSITORY,
+  PLUGIN_VERSION,
+  PUBLISHED_PACKAGE_NAME,
+} from "./metadata.js";
 
 const execFileAsync = promisify(execFile);
 
 let releaseDir: string;
 let tarballPaths: string[];
-let publishManifest: { name: string; version: string; dependencies: Record<string, string> };
+let publishManifest: {
+  name: string;
+  version: string;
+  keywords?: string[];
+  bugs?: { url: string };
+  dependencies: Record<string, string>;
+};
 
 async function walk(dir: string): Promise<string[]> {
   const out: string[] = [];
@@ -56,6 +67,11 @@ describe("published package.json", () => {
   it("is named @irohalabs/iroha at the plugin version", () => {
     expect(publishManifest.name).toBe(PUBLISHED_PACKAGE_NAME);
     expect(publishManifest.version).toBe(PLUGIN_VERSION);
+    // npm indexes `keywords` for search and links `bugs` as "Report a bug". Both
+    // platform manifests and the marketplaces already carry the keywords, so the
+    // published package must not be the one place that drops them.
+    expect(publishManifest.keywords).toEqual([...PLUGIN_KEYWORDS]);
+    expect(publishManifest.bugs?.url).toBe(`${PLUGIN_REPOSITORY}/issues`);
   });
 
   it("declares no workspace or unresolved dependency", () => {

@@ -36,6 +36,14 @@ export const PLUGIN_KEYWORDS = [
   "engineering",
   "claude-code",
   "codex",
+  // What someone actually searches npm for when they want this: the protocol it
+  // speaks, the shape of the tool, and the property that distinguishes it from
+  // the hosted alternatives.
+  "mcp",
+  "mcp-server",
+  "local-first",
+  "ai-agent",
+  "adr",
 ] as const;
 
 /**

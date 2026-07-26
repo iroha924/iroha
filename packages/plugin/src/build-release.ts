@@ -21,6 +21,7 @@ import { assembleArchive, REPO_ROOT } from "./build-archive.js";
 import {
   PLUGIN_DESCRIPTION,
   PLUGIN_HOMEPAGE,
+  PLUGIN_KEYWORDS,
   PLUGIN_LICENSE,
   PLUGIN_REPOSITORY,
   PLUGIN_VERSION,
@@ -74,9 +75,15 @@ async function buildPublishManifest(): Promise<Record<string, unknown>> {
     name: PUBLISHED_PACKAGE_NAME,
     version: PLUGIN_VERSION,
     description: PLUGIN_DESCRIPTION,
+    // npm indexes these for search and shows them on the package page; both
+    // platform manifests and the two marketplaces already carry the same list,
+    // so this keeps the published package from being the one place without it.
+    keywords: [...PLUGIN_KEYWORDS],
     license: PLUGIN_LICENSE,
     repository: { type: "git", url: `git+${PLUGIN_REPOSITORY}.git` },
     homepage: PLUGIN_HOMEPAGE,
+    // Renders as "Report a bug" on npmjs.com.
+    bugs: { url: `${PLUGIN_REPOSITORY}/issues` },
     type: "module",
     engines: { node: ">=24.0.0 <25" },
     bin: { iroha: "./dist/bin.mjs" },
