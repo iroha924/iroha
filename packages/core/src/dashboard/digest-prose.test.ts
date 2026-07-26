@@ -59,6 +59,36 @@ describe("digestProseSchema", () => {
     expect(result.success).toBe(false);
   });
 
+  it("rejects duplicate slots at a length the bound allows", () => {
+    // The length bound alone cannot catch this: four sections is legal, so the
+    // renderer would key two siblings on the same slot.
+    const result = digestProseSchema.safeParse(
+      prose({
+        sections: [
+          { slot: "wins", heading: "a", body: "a" },
+          { slot: "wins", heading: "b", body: "b" },
+        ],
+      }),
+    );
+
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts one section per slot", () => {
+    const result = digestProseSchema.safeParse(
+      prose({
+        sections: [
+          { slot: "stumbles", heading: "a", body: "a" },
+          { slot: "codebase", heading: "b", body: "b" },
+          { slot: "wins", heading: "c", body: "c" },
+          { slot: "teaching", heading: "d", body: "d" },
+        ],
+      }),
+    );
+
+    expect(result.success).toBe(true);
+  });
+
   it("rejects an unknown top-level field", () => {
     const result = digestProseSchema.safeParse({ ...prose(), byline: "an agent" });
 
@@ -173,7 +203,8 @@ describe("redactProse", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value).toEqual(original);
+    expect(result.value.prose).toEqual(original);
+    expect(result.value.redactions).toEqual([]);
   });
 
   it("redacts a secret in a section body before it can be stored", async () => {
@@ -191,8 +222,9 @@ describe("redactProse", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.sections[0]?.body).not.toContain("ghp_");
-    expect(result.value.sections[0]?.body).toContain("redacted");
+    expect(result.value.prose.sections[0]?.body).not.toContain("ghp_");
+    expect(result.value.prose.sections[0]?.body).toContain("redacted");
+    expect(result.value.redactions.map((r) => r.field)).toEqual(["sections[0].body"]);
   });
 
   it("redacts a secret in the headline", async () => {
@@ -200,7 +232,8 @@ describe("redactProse", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.headline).not.toContain(SESSION_TOKEN);
+    expect(result.value.prose.headline).not.toContain(SESSION_TOKEN);
+    expect(result.value.redactions.map((r) => r.field)).toEqual(["headline"]);
   });
 });
 

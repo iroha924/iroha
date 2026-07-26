@@ -10,7 +10,8 @@
  * inputs (`tool_events`, `checkpoints`) are disposable index state that
  * `sync --rebuild` drops, which is also why a Digest could not be canonical even
  * if we wanted it to be — canonical.md §1 requires everything there to be
- * reconstructible from the committed files.
+ * reconstructible from the committed files, and §2 keeps complete tool inputs and
+ * outputs out of it in the first place.
  *
  * The two scopes and the rule that keeps facts from drifting between them are in
  * `.claude/rules/digest-scopes.md`.
@@ -113,6 +114,12 @@ export interface DigestFact {
 /** A correlation iroha found, so prose can narrate a link rather than invent one. */
 export interface DigestCorrelation {
   kind: "denial_cluster";
+  /**
+   * What the cluster *is* — the leading path segments its members share. This is
+   * the cluster's identity, and what its fact id is built from; the rank it
+   * happens to hold in the list is not.
+   */
+  key: string;
   /** The repo paths the cluster covers, most-denied first. */
   paths: string[];
   count: number;
@@ -144,7 +151,12 @@ export interface DigestLocalScope {
    * teammates can legitimately see different numbers.
    */
   pendingReviewLearnings: number;
-  correlations: DigestCorrelation[];
+  /**
+   * Capped at `MAX_CLUSTERS` for display, with the real number of clusters in
+   * `total`. Without that, prose told "these are the clusters" could honestly
+   * claim denials clustered in exactly five areas when there were nine.
+   */
+  correlations: DigestList<DigestCorrelation>;
 }
 
 export interface DigestTeamScope {
@@ -155,9 +167,13 @@ export interface DigestTeamScope {
 }
 
 export interface DigestData {
+  /**
+   * The period these facts cover. `offset` is the *resolved* offset, which is what
+   * a client must read to know which issue it got — an out-of-range request is
+   * clamped, so the offset asked for and the offset served can differ, and a
+   * client trusting its own value would render the wrong archive controls.
+   */
   period: DigestPeriod;
-  /** Whether a newer period exists — the archive's "next issue" affordance. */
-  hasNewer: boolean;
   local: DigestLocalScope;
   team: DigestTeamScope;
   facts: DigestFact[];
@@ -189,10 +205,14 @@ function clusterKey(path: string): string {
 }
 
 /**
- * Group denied paths by their leading segments. Ordered by count then key so two
- * reads of unchanged data produce the same clusters — prose references them.
+ * Group denied paths by their leading segments, strongest cluster first.
+ *
+ * The ordering is presentational only. Each cluster's *identity* is its `key`,
+ * which is what `buildFacts` addresses it by — a rank would change owner the
+ * moment another denial landed, and a citation written against rank 0 would then
+ * render a different cluster's number while still resolving.
  */
-function denialClusters(targets: { path: string; count: number }[]): DigestCorrelation[] {
+function denialClusters(targets: readonly { path: string; count: number }[]): DigestCorrelation[] {
   const grouped = new Map<string, { paths: { path: string; count: number }[]; count: number }>();
   for (const target of targets) {
     const key = clusterKey(target.path);
@@ -204,14 +224,20 @@ function denialClusters(targets: { path: string; count: number }[]): DigestCorre
   return [...grouped.entries()]
     .filter(([, entry]) => entry.count >= MIN_CLUSTER_COUNT)
     .sort(([keyA, a], [keyB, b]) => b.count - a.count || keyA.localeCompare(keyB))
-    .slice(0, MAX_CLUSTERS)
-    .map(([, entry]) => ({
+    .map(([key, entry]) => ({
       kind: "denial_cluster" as const,
+      key,
       paths: entry.paths
         .sort((a, b) => b.count - a.count || a.path.localeCompare(b.path))
         .map((target) => target.path),
       count: entry.count,
     }));
+}
+
+/** Cap the clusters shown while keeping the real count, so prose cannot imply it saw them all. */
+function capClusters(clusters: DigestCorrelation[]): DigestList<DigestCorrelation> {
+  const items = clusters.slice(0, MAX_CLUSTERS);
+  return { items, total: clusters.length, truncated: clusters.length > items.length };
 }
 
 /**
@@ -254,15 +280,22 @@ function buildFacts(local: DigestLocalScope, team: DigestTeamScope): DigestFact[
       value: team.knowledge.priorValue,
       label: "Knowledge approved in the previous period",
     },
+    // `total`, never `items.length`: the items are capped for display, so a fact
+    // taken from their length reports the cap for any period that overflows it.
     {
       id: "team.guardrailsChanged.total",
-      value: team.guardrailsChanged.items.length,
+      value: team.guardrailsChanged.total,
       label: "Guardrails added or changed",
     },
     {
       id: "team.reviewLearnings.total",
-      value: team.reviewLearnings.items.length,
+      value: team.reviewLearnings.total,
       label: "Review lessons promoted",
+    },
+    {
+      id: "local.correlations.total",
+      value: local.correlations.total,
+      label: "Distinct areas denials clustered in",
     },
   ];
   for (const [outcome, count] of Object.entries(local.checkpoints.byOutcome)) {
@@ -293,11 +326,11 @@ function buildFacts(local: DigestLocalScope, team: DigestTeamScope): DigestFact[
       label: `Guardrails classified "${kind}"`,
     });
   }
-  for (const [index, correlation] of local.correlations.entries()) {
+  for (const correlation of local.correlations.items) {
     facts.push({
-      id: `local.correlations.${index}.count`,
+      id: `local.correlations.${correlation.key}.count`,
       value: correlation.count,
-      label: `Denials clustered in ${correlation.paths.join(", ")}`,
+      label: `Denials clustered in ${correlation.key}`,
     });
   }
   return facts;
@@ -416,7 +449,7 @@ export async function computeDigest(
     },
     sessions: { value: now.sessions, priorValue: before.sessions },
     pendingReviewLearnings: pendingLearnings.value,
-    correlations: denialClusters(now.denials.targets.items),
+    correlations: capClusters(denialClusters(now.denials.allTargets)),
   };
   const team: DigestTeamScope = {
     knowledge: {
@@ -434,7 +467,6 @@ export async function computeDigest(
 
   return ok({
     period,
-    hasNewer: offset > 0,
     local,
     team,
     facts,

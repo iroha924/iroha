@@ -129,7 +129,7 @@ describe("getDigest", () => {
       end: "2026-07-27T00:00:00.000Z",
       offset: 0,
     });
-    expect(digest.value.hasNewer).toBe(false);
+    expect(digest.value.period.offset).toBe(0);
   });
 
   it("honours the stored window preference", async () => {
@@ -174,7 +174,7 @@ describe("getDigest", () => {
     expect(digest.ok && digest.value.period.unit).toBe("week");
   });
 
-  it("marks a back issue as having a newer one and windows to that period", async () => {
+  it("windows to the requested back issue", async () => {
     process.env.TZ = "UTC";
     repo = await setupMcpRepo(random);
 
@@ -183,7 +183,7 @@ describe("getDigest", () => {
     expect(digest.ok).toBe(true);
     if (!digest.ok) return;
     expect(digest.value.period.key).toBe("2026-07-13");
-    expect(digest.value.hasNewer).toBe(true);
+    expect(digest.value.period.offset).toBe(1);
   });
 
   it("compares denials against the previous period", async () => {
@@ -233,9 +233,59 @@ describe("getDigest", () => {
 
     expect(digest.ok).toBe(true);
     if (!digest.ok) return;
-    expect(digest.value.local.correlations).toEqual([
-      { kind: "denial_cluster", paths: ["packages/git/b.ts", "packages/git/a.ts"], count: 3 },
-    ]);
+    expect(digest.value.local.correlations).toEqual({
+      items: [
+        {
+          kind: "denial_cluster",
+          key: "packages/git",
+          paths: ["packages/git/b.ts", "packages/git/a.ts"],
+          count: 3,
+        },
+      ],
+      total: 1,
+      truncated: false,
+    });
+  });
+
+  it("addresses a cluster fact by the cluster, so a later reorder cannot re-point a citation", async () => {
+    process.env.TZ = "UTC";
+    repo = await setupMcpRepo(random);
+    const turnId = await seedTurn(repo);
+    let db = await openRepoDb(repo);
+    try {
+      for (const suffix of ["g1", "g2", "g3"]) {
+        await seedDenial(db, suffix, turnId, IN_WINDOW, { path: `packages/git/${suffix}.ts` });
+      }
+      for (const suffix of ["a1", "a2"]) {
+        await seedDenial(db, suffix, turnId, IN_WINDOW, { path: `apps/dashboard/${suffix}.tsx` });
+      }
+    } finally {
+      await closeDatabase(db);
+    }
+
+    const before = await getDigest({ cwd: repo.repoDir, clock, random });
+    expect(before.ok).toBe(true);
+    if (!before.ok) return;
+    const gitFact = "local.correlations.packages/git.count";
+    expect(before.value.facts.find((f) => f.id === gitFact)?.value).toBe(3);
+    expect(before.value.local.correlations.items[0]?.key).toBe("packages/git");
+
+    // Two more denials elsewhere overtake it, so the ranks swap.
+    db = await openRepoDb(repo);
+    try {
+      for (const suffix of ["a3", "a4"]) {
+        await seedDenial(db, suffix, turnId, IN_WINDOW, { path: `apps/dashboard/${suffix}.tsx` });
+      }
+    } finally {
+      await closeDatabase(db);
+    }
+
+    const after = await getDigest({ cwd: repo.repoDir, clock, random });
+    expect(after.ok).toBe(true);
+    if (!after.ok) return;
+    expect(after.value.local.correlations.items[0]?.key).toBe("apps/dashboard");
+    // The rank changed owner; the fact did not. A positional id would report 4 here.
+    expect(after.value.facts.find((f) => f.id === gitFact)?.value).toBe(3);
   });
 
   it("classifies the approved Guardrail set so an unenforceable rule is visible", async () => {
@@ -338,7 +388,7 @@ describe("getDigest", () => {
     expect(digest.ok).toBe(true);
     if (!digest.ok) return;
     expect(digest.value.local.denials.value).toBe(0);
-    expect(digest.value.local.correlations).toEqual([]);
+    expect(digest.value.local.correlations.items).toEqual([]);
     expect(digest.value.team.knowledge.value).toBe(0);
     expect(digest.value.facts.length).toBeGreaterThan(0);
   });

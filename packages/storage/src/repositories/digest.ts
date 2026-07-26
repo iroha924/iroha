@@ -9,10 +9,14 @@ import type { CheckpointOutcome } from "./sessions.js";
 const CHECKPOINT_OUTCOMES = ["completed", "partial", "blocked", "no_change"] as const;
 
 /**
- * Caps on the item lists a Digest window returns. The editorial page shows a
+ * How many items of a list a Digest window returns. The editorial page shows a
  * handful of each; a period with hundreds would be a rendering problem, not a
- * more informative issue. The caller is told when a list was cut (`truncated`)
- * so the page can say so rather than silently implying it saw everything.
+ * more informative issue.
+ *
+ * The cap bounds the *items*, never the reported `total` — that comes from its own
+ * uncapped `COUNT(*)`. Deriving a count from a truncated list is how
+ * `team.guardrailsChanged.total` came to report 20 for a period with 25 approvals,
+ * a wrong number the composing agent could cite as authoritative.
  */
 const MAX_LIST_ITEMS = 20;
 
@@ -43,8 +47,11 @@ export interface DigestKnowledgeRef {
 }
 
 export interface DigestList<T> {
+  /** At most `MAX_LIST_ITEMS`, for display. */
   items: T[];
-  /** Whether `MAX_LIST_ITEMS` cut the list short. */
+  /** The uncapped count — what a fact about this list must report. */
+  total: number;
+  /** Whether the cap cut `items` short; always `total > items.length`. */
   truncated: boolean;
 }
 
@@ -64,7 +71,15 @@ export interface DigestWindowFacts {
   denials: {
     total: number;
     byRule: DigestDenialByRule[];
+    /** Capped for display, with the true distinct-path count in `total`. */
     targets: DigestList<DigestDenialTarget>;
+    /**
+     * Every denied path, uncapped. Cluster aggregation reads this, not `targets`:
+     * grouping a capped list under-reports each cluster while the (uncapped)
+     * denial total stays right, so the page would show clusters summing to less
+     * than the total with nothing to explain the gap.
+     */
+    allTargets: DigestDenialTarget[];
   };
   checkpoints: {
     total: number;
@@ -80,8 +95,9 @@ export interface DigestWindowFacts {
   promotedReviewLearnings: DigestList<DigestKnowledgeRef>;
 }
 
-function toList<T>(rows: T[]): DigestList<T> {
-  return { items: rows.slice(0, MAX_LIST_ITEMS), truncated: rows.length > MAX_LIST_ITEMS };
+function toList<T>(rows: T[], total: number): DigestList<T> {
+  const items = rows.slice(0, MAX_LIST_ITEMS);
+  return { items, total, truncated: total > items.length };
 }
 
 function toKnowledgeRef(row: Record<string, unknown>): DigestKnowledgeRef {
@@ -107,6 +123,25 @@ const DENIALS_WHERE = `WHERE s.repository_id = ? AND e.status = 'denied'
      AND e.occurred_at >= ? AND e.occurred_at < ?`;
 
 /**
+ * Whether a failure is a database that predates one of this feature's migrations.
+ * The hook, the MCP server, and the dashboard all open the database *without*
+ * migrating — only `init`/`sync`/`doctor --repair` do (contracts/database.md §3) —
+ * so between a package upgrade and the next sync the reads below run against the
+ * older schema. `listApprovedRulesForRepository` handles the same window for
+ * migration 004's `severity`; the Digest matters more, because it is the front
+ * page: without this it turns a pending migration into a 500 with no hint.
+ */
+function isMissingDeniedRuleColumn(cause: unknown): boolean {
+  const message = cause instanceof Error ? cause.message : String(cause);
+  return /no such column/i.test(message) && /denied_by_rule_id/i.test(message);
+}
+
+function isMissingDigestIssuesTable(cause: unknown): boolean {
+  const message = cause instanceof Error ? cause.message : String(cause);
+  return /no such table/i.test(message) && /digest_issues/i.test(message);
+}
+
+/**
  * Approved knowledge, windowed by the timestamp a human approved it. `entities`
  * carries the type and title; `knowledge_items` carries `approved_at` and
  * `enforcement`. Both filters are needed: `status = 'approved'` excludes a
@@ -118,10 +153,18 @@ const APPROVED_IN_WINDOW = `FROM knowledge_items k
      AND k.approved_at >= ? AND k.approved_at < ?`;
 
 /**
- * Compute one period's Digest facts. Six independent aggregates, run
+ * Compute one period's Digest facts. Seven independent aggregates, run
  * concurrently against a plain read executor (never a transaction — a period
  * read must not hold the write lock, which is the same reason the hook path
  * writes no diagnostics row).
+ *
+ * The three list queries carry no `LIMIT`; `toList` caps what is *shown* and
+ * reports the real count. Two reasons: a count taken from a capped list is
+ * wrong (and gets cited as a fact), and the denial-path list feeds cluster
+ * aggregation, which under-reports if it only ever sees the first 20 paths. All
+ * three sets are naturally small — one period's denials and one period's
+ * approvals — so fetching them whole costs less than a second counting query per
+ * list would.
  *
  * Every list is ordered deterministically, with an id tie-breaker after the
  * ranking column: two runs over unchanged data must produce the same issue,
@@ -134,25 +177,36 @@ export async function getDigestWindowFacts(
 ): Promise<Result<DigestWindowFacts, IrohaError>> {
   const denialArgs = [repositoryId, window.start, window.end];
   const approvedArgs = [repositoryId, window.start, window.end];
+  /**
+   * Before migration 005 there is no attribution to read, so every denial falls
+   * into the one unattributed group — the same shape a denial recorded before the
+   * column existed already produces, and honest: the counts are right and the
+   * attribution is genuinely unknown.
+   */
+  const byRuleSql = (attribution: string) => `SELECT ${attribution} AS rule_id,
+                  ken.title AS rule_title, COUNT(*) AS c
+                  ${DENIALS_FROM}
+                  LEFT JOIN entities ken ON ken.id = ${attribution}
+                 ${DENIALS_WHERE}
+                GROUP BY ${attribution}, ken.title
+                ORDER BY c DESC, rule_id`;
   try {
     const [byRule, targets, checkpoints, sessions, approved, guardrails, learnings] =
       await Promise.all([
-        db.execute({
-          sql: `SELECT e.denied_by_rule_id AS rule_id, ken.title AS rule_title, COUNT(*) AS c
-                  ${DENIALS_FROM}
-                  LEFT JOIN entities ken ON ken.id = e.denied_by_rule_id
-                 ${DENIALS_WHERE}
-                GROUP BY e.denied_by_rule_id, ken.title
-                ORDER BY c DESC, rule_id`,
-          args: denialArgs,
-        }),
+        db
+          .execute({ sql: byRuleSql("e.denied_by_rule_id"), args: denialArgs })
+          .catch((cause: unknown) => {
+            if (isMissingDeniedRuleColumn(cause)) {
+              return db.execute({ sql: byRuleSql("NULL"), args: denialArgs });
+            }
+            throw cause;
+          }),
         db.execute({
           sql: `SELECT e.target_summary AS path, COUNT(*) AS c
                   ${DENIALS_FROM} ${DENIALS_WHERE} AND e.target_summary IS NOT NULL
                 GROUP BY e.target_summary
-                ORDER BY c DESC, path
-                LIMIT ?`,
-          args: [...denialArgs, MAX_LIST_ITEMS + 1],
+                ORDER BY c DESC, path`,
+          args: denialArgs,
         }),
         db.execute({
           sql: `SELECT c.outcome, COUNT(*) AS c FROM checkpoints c
@@ -177,16 +231,14 @@ export async function getDigestWindowFacts(
         db.execute({
           sql: `SELECT en.id, en.title, en.summary
                   ${APPROVED_IN_WINDOW} AND k.enforcement = 'guardrail'
-                ORDER BY k.approved_at DESC, en.id
-                LIMIT ?`,
-          args: [...approvedArgs, MAX_LIST_ITEMS + 1],
+                ORDER BY k.approved_at DESC, en.id`,
+          args: approvedArgs,
         }),
         db.execute({
           sql: `SELECT en.id, en.title, en.summary
                   ${APPROVED_IN_WINDOW} AND k.knowledge_type = 'review_learning'
-                ORDER BY k.approved_at DESC, en.id
-                LIMIT ?`,
-          args: [...approvedArgs, MAX_LIST_ITEMS + 1],
+                ORDER BY k.approved_at DESC, en.id`,
+          args: approvedArgs,
         }),
       ]);
 
@@ -224,19 +276,26 @@ export async function getDigestWindowFacts(
       count: Number(row.c ?? 0),
     }));
 
+    const denialTargets = targets.rows.map((row) => ({
+      path: String(row.path),
+      count: Number(row.c ?? 0),
+    }));
+    const guardrailRefs = guardrails.rows.map(toKnowledgeRef);
+    const learningRefs = learnings.rows.map(toKnowledgeRef);
+
     return ok({
       denials: {
         total: denialsByRule.reduce((sum, row) => sum + row.count, 0),
         byRule: denialsByRule,
-        targets: toList(
-          targets.rows.map((row) => ({ path: String(row.path), count: Number(row.c ?? 0) })),
-        ),
+        targets: toList(denialTargets, denialTargets.length),
+        // Uncapped, so cluster aggregation sees every denied path.
+        allTargets: denialTargets,
       },
       checkpoints: { total: checkpointTotal, byOutcome },
       sessions: Number(sessions.rows[0]?.c ?? 0),
       approvedKnowledge: { total: approvedTotal, byType },
-      guardrailsChanged: toList(guardrails.rows.map(toKnowledgeRef)),
-      promotedReviewLearnings: toList(learnings.rows.map(toKnowledgeRef)),
+      guardrailsChanged: toList(guardrailRefs, guardrailRefs.length),
+      promotedReviewLearnings: toList(learningRefs, learningRefs.length),
     });
   } catch (cause) {
     return err(mapLibsqlError(cause, "Failed to compute digest window facts"));
@@ -258,7 +317,13 @@ export interface UpsertDigestIssueInput {
   composedAt: string;
 }
 
-/** The composed prose for one period, or `null` when the issue has none yet. */
+/**
+ * The composed prose for one period, or `null` when the issue has none yet.
+ *
+ * A database from before migration 006 has no table to read, which is reported as
+ * `null` — indistinguishable from "not composed yet", which is exactly what it
+ * means. See `isMissingDeniedRuleColumn` for why the pre-migration window exists.
+ */
 export async function getDigestIssue(
   db: Executor,
   repositoryId: TypedId<"repo">,
@@ -282,6 +347,9 @@ export async function getDigestIssue(
       composedAt: String(row.composed_at),
     });
   } catch (cause) {
+    if (isMissingDigestIssuesTable(cause)) {
+      return ok(null);
+    }
     return err(mapLibsqlError(cause, "Failed to read digest issue"));
   }
 }
@@ -313,6 +381,35 @@ export async function upsertDigestIssue(
     return ok(undefined);
   } catch (cause) {
     return err(mapLibsqlError(cause, "Failed to store digest issue"));
+  }
+}
+
+/**
+ * Delete composed issues older than `cutoff`, returning how many went.
+ *
+ * Retention is a privacy control whose purpose is deliberate deletion, and an
+ * issue outlives the data it narrates: once a sweep removes the sessions behind
+ * "{{local.denials.total}} denials, all in packages/git", the surviving prose
+ * renders "0 denials, all in packages/git" — an unreviewed claim about evidence
+ * that is gone. Pruning the issue with the window it describes keeps the two in
+ * step, and costs nothing: prose is regenerable with `/iroha:digest`.
+ */
+export async function pruneDigestIssues(
+  db: Executor,
+  repositoryId: TypedId<"repo">,
+  cutoff: string,
+): Promise<Result<number, IrohaError>> {
+  try {
+    const result = await db.execute({
+      sql: "DELETE FROM digest_issues WHERE repository_id = ? AND composed_at < ?",
+      args: [repositoryId, cutoff],
+    });
+    return ok(Number(result.rowsAffected ?? 0));
+  } catch (cause) {
+    if (isMissingDigestIssuesTable(cause)) {
+      return ok(0);
+    }
+    return err(mapLibsqlError(cause, "Failed to prune digest issues"));
   }
 }
 

@@ -491,7 +491,7 @@ export function createApp(config: AppConfig) {
       tags: ["digest"],
       summary: "Editorial digest for one anchored calendar period",
       description:
-        "Deterministic period facts plus the composed prose, if any. Numbers are computed on request, so the payload is always current and a period with no prose renders from templated copy rather than being blank. `unit` and `offset` are lenient: an unknown unit or an out-of-range offset is ignored, not rejected.",
+        "Deterministic period facts plus the composed prose, if any. Numbers are computed on request, so the payload is always current and a period with no prose renders from templated copy rather than being blank. `unit` and `offset` are lenient rather than rejecting: an unknown unit is ignored, and an out-of-range `offset` is clamped to 0..520. Read the resolved `period.offset` from the response to know which issue was served.",
       request: { query: digestQuery },
       responses: RESPONSES,
     }),
@@ -1088,9 +1088,15 @@ function numOpt(key: string, value: string | undefined): Record<string, number> 
 }
 
 /**
- * Like `numOpt`, but keeps only an integer within `[min, max]`. Anything else is
- * dropped rather than rejected, which is the query convention here — the caller
- * then sees the default, not a 400.
+ * Like `numOpt`, but for an integer with a bound: a non-integer is dropped (the
+ * query convention — the caller sees the default, not a 400), while an
+ * out-of-range integer is **clamped** rather than dropped.
+ *
+ * Clamped, because for an offset the two differ in what they claim. Dropping
+ * `?offset=999` answers with the *current* period, which reads as "999 periods ago
+ * is now"; clamping answers with the oldest period the cap allows. Either way the
+ * response carries the resolved `period.offset`, so a client can see which issue
+ * it actually got instead of trusting the value it asked for.
  */
 function intOpt(
   key: string,
@@ -1100,7 +1106,7 @@ function intOpt(
 ): Record<string, number> {
   if (value === undefined) return {};
   const n = Number(value);
-  return Number.isInteger(n) && n >= min && n <= max ? { [key]: n } : {};
+  return Number.isInteger(n) ? { [key]: Math.min(max, Math.max(min, n)) } : {};
 }
 
 function enumOpt<T extends string>(

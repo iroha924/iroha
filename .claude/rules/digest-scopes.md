@@ -28,6 +28,8 @@ differs per clone reads as shared truth that teammates cannot reproduce.
   `review_learning` count is local, not team).
 - **Team**: anything windowed by `knowledge_items.approved_at` with `status = 'approved'`. That
   timestamp travels in the canonical frontmatter and is restored on rebuild, so every clone agrees.
+  The one team-scope value that is *not* windowed is `rulesetAdequacy` — it is the current state of
+  the approved Guardrail set, and the page says so rather than implying a period total.
 
 **A team-wide raw denial tally is not collectable** and adding one is not a matter of writing the
 query. Denials exist only in each developer's local index; a shared tally needs a shared store,
@@ -60,14 +62,24 @@ discouraged.
 When you add a rendered number, add a fact for it in the same change. The invariant runs both ways:
 
 - a number on the page with no fact is one the prose cannot cite;
-- a fact never rendered is a claim with no visible source.
+- a fact never rendered is a claim with no visible source;
+- a fact whose value comes from a display-capped list reports the cap, not the truth. Take a
+  `*.total` from the list's own uncapped count.
 
 `save_digest_prose` validates references against the *same* `computeDigest` result the page reads,
 so validation can never accept a citation the page will not render. Keep it that way — a second,
 parallel fact computation on the write path would reopen exactly the gap the seam closes.
 
 Fact ids are derived from what the fact *is*, never from a counter or random seed: prose composed
-against one page load has to still resolve on the next.
+against one page load has to still resolve on the next. A denial cluster is therefore addressed by
+the path prefix it covers, not by its rank — with a rank, another denial reorders the list and a
+citation written against rank 0 keeps resolving while reporting a *different* cluster's number,
+which is the one wrong-authority outcome the seam exists to prevent.
+
+A composition also names the period it is for (`periodUnit` + `periodKey`, echoed from
+`get_digest_data`), never an offset. An offset is relative to "now", so a dropped or stale one
+attaches the narrative to a period it does not describe — and reference validation cannot catch it,
+because the period-independent ids exist in every period's fact table.
 
 **What the seam does not prevent** is prose that contradicts a correct number — "a quiet week" over
 a denial spike. That is inherent to narration and unfixable by architecture, which is why numbers
@@ -87,13 +99,18 @@ render as authoritative and prose always carries the unreviewed label. Do not re
   hands that payload to an agent verbatim, so anti-surveillance holds because the person data is
   absent, not because a prompt asks for restraint. A test asserts the serialized payload contains
   none of those words — if you make it fail, the fix is removing the field, not the assertion.
-- Free text quoted into a fact comes only from an already-approved canonical entity's title or
-  summary. Never from a prompt, a transcript, or raw tool input.
+- Free text in a fact is either an already-approved canonical entity's title or summary, or a
+  repository-relative denied path (`tool_events.target_summary` — realpath-resolved and confined to
+  the repository by `resolveTargets`, which `mcp.md` §8 permits persisting). Never a prompt, a
+  transcript, a raw tool payload, or an absolute path. Widening that vocabulary is not a free
+  change: iroha's own fact labels are **not** secret-scanned, only the agent's prose is, and that
+  is only safe while the label sources stay limited to these two.
 
 ## 5. Prose is local, regenerable, and outside the approval gate
 
-`digest_issues` is local index state. Its inputs are excluded from canonical, so prose narrating
-them is not reconstructible from the committed files — writing it into `.iroha/` would break the
+`digest_issues` is local index state. Its inputs are dropped by `sync --rebuild` and kept out of
+canonical by `canonical.md` §2 (which excludes complete tool inputs and outputs), so prose
+narrating them is not reconstructible from the committed files — writing it into `.iroha/` would break the
 reconstructability charter. And it needs no approval gate: a Digest asserts no new team truth, so
 it sits *outside* the candidate→approve→canonical boundary rather than bypassing it.
 

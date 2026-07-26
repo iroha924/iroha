@@ -1,7 +1,7 @@
 import { CryptoRandomSource, FixedClock, type TypedId } from "@iroha/domain";
 import { closeDatabase, type Database, insertToolEvent, openDatabase } from "@iroha/storage";
 import { afterEach, describe, expect, it } from "vitest";
-import { getDigest } from "../dashboard/digest.js";
+import { type DigestProse, getDigest } from "../dashboard/index.js";
 import { type McpTestRepo, seedSessionWithToken, setupMcpRepo } from "../test-helpers/mcp-repo.js";
 import { removeTempDir } from "../test-helpers/tmp-repo.js";
 import { mcpGetDigestData, mcpSaveDigestProse } from "./digest.js";
@@ -59,7 +59,7 @@ async function seedDenial(
   if (!inserted.ok) throw new Error(`seed denial failed: ${inserted.error.message}`);
 }
 
-function proseWith(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+function proseWith(overrides: Partial<DigestProse> = {}): DigestProse {
   return {
     headline: "A quiet week",
     standfirst: "Nothing broke.",
@@ -67,6 +67,10 @@ function proseWith(overrides: Record<string, unknown> = {}): Record<string, unkn
     ...overrides,
   };
 }
+
+/** The current week under the fixed clock, as `get_digest_data` reports it. */
+const CURRENT_PERIOD = { periodUnit: "week" as const, periodKey: "2026-07-20" };
+const PRIOR_PERIOD = { periodUnit: "week" as const, periodKey: "2026-07-13" };
 
 describe("mcpGetDigestData", () => {
   let repo: McpTestRepo | undefined;
@@ -145,6 +149,7 @@ describe("mcpSaveDigestProse", () => {
       clock,
       random,
       sessionToken: token,
+      ...CURRENT_PERIOD,
       prose: proseWith({
         headline: "{{local.denials.total}} edits the Guardrails caught",
         sections: [
@@ -182,6 +187,7 @@ describe("mcpSaveDigestProse", () => {
       clock,
       random,
       sessionToken: "ist_notarealtokenatallnotarealtokenatallxxxxx",
+      ...CURRENT_PERIOD,
       prose: proseWith(),
     });
 
@@ -202,6 +208,7 @@ describe("mcpSaveDigestProse", () => {
       clock,
       random,
       sessionToken: token,
+      ...CURRENT_PERIOD,
       prose: proseWith({ headline: "Velocity is up {{local.velocity.score}}%" }),
     });
 
@@ -211,7 +218,7 @@ describe("mcpSaveDigestProse", () => {
     expect(saved.error.details).toEqual({ unknownFactIds: ["local.velocity.score"] });
   });
 
-  it("refuses prose whose shape does not match, without touching the store", async () => {
+  it("refuses a period key no period of that unit produces", async () => {
     process.env.TZ = "UTC";
     repo = await setupMcpRepo(random);
     const { token } = await seedSession(repo);
@@ -221,7 +228,10 @@ describe("mcpSaveDigestProse", () => {
       clock,
       random,
       sessionToken: token,
-      prose: { headline: "no sections" },
+      periodUnit: "week",
+      // A Wednesday — never a week start.
+      periodKey: "2026-07-22",
+      prose: proseWith(),
     });
 
     expect(saved.ok).toBe(false);
@@ -229,6 +239,54 @@ describe("mcpSaveDigestProse", () => {
     expect(saved.error.code).toBe("INVALID_INPUT");
     const digest = await getDigest({ cwd: repo.repoDir, clock, random });
     expect(digest.ok && digest.value.prose).toBeNull();
+  });
+
+  it("stores against the named period, not one re-derived from the request", async () => {
+    process.env.TZ = "UTC";
+    repo = await setupMcpRepo(random);
+    const { token } = await seedSession(repo);
+
+    // The agent read last week and composes for it. Nothing about "now" may
+    // redirect the write to the current period.
+    const saved = await mcpSaveDigestProse({
+      cwd: repo.repoDir,
+      clock,
+      random,
+      sessionToken: token,
+      ...PRIOR_PERIOD,
+      prose: proseWith({ headline: "Last week held" }),
+    });
+
+    expect(saved.ok).toBe(true);
+    if (!saved.ok) return;
+    expect(saved.value.period.key).toBe("2026-07-13");
+    const current = await getDigest({ cwd: repo.repoDir, clock, random });
+    const back = await getDigest({ cwd: repo.repoDir, clock, random, offset: 1 });
+    expect(current.ok && current.value.prose).toBeNull();
+    expect(back.ok && back.value.prose?.prose.headline).toBe("Last week held");
+  });
+
+  it("reports which fields redaction replaced instead of returning a bare success", async () => {
+    process.env.TZ = "UTC";
+    repo = await setupMcpRepo(random);
+    const { token } = await seedSession(repo);
+
+    const saved = await mcpSaveDigestProse({
+      cwd: repo.repoDir,
+      clock,
+      random,
+      sessionToken: token,
+      ...CURRENT_PERIOD,
+      prose: proseWith({
+        sections: [
+          { slot: "teaching", heading: "h", body: `Never paste ${CREDENTIALED_URL} anywhere.` },
+        ],
+      }),
+    });
+
+    expect(saved.ok).toBe(true);
+    if (!saved.ok) return;
+    expect(saved.value.redactions.map((r) => r.field)).toEqual(["sections[0].body"]);
   });
 
   it("redacts a secret before the prose reaches the database", async () => {
@@ -241,6 +299,7 @@ describe("mcpSaveDigestProse", () => {
       clock,
       random,
       sessionToken: token,
+      ...CURRENT_PERIOD,
       prose: proseWith({
         sections: [
           {
@@ -273,6 +332,7 @@ describe("mcpSaveDigestProse", () => {
         clock,
         random,
         sessionToken: token,
+        ...CURRENT_PERIOD,
         prose: proseWith({ headline }),
       });
 
@@ -288,26 +348,5 @@ describe("mcpSaveDigestProse", () => {
     } finally {
       await closeDatabase(db);
     }
-  });
-
-  it("keeps a back issue's prose separate from the current period's", async () => {
-    process.env.TZ = "UTC";
-    repo = await setupMcpRepo(random);
-    const { token } = await seedSession(repo);
-
-    await mcpSaveDigestProse({
-      cwd: repo.repoDir,
-      clock,
-      random,
-      sessionToken: token,
-      offset: 1,
-      prose: proseWith({ headline: "Last week" }),
-    });
-
-    const current = await getDigest({ cwd: repo.repoDir, clock, random });
-    const back = await getDigest({ cwd: repo.repoDir, clock, random, offset: 1 });
-
-    expect(current.ok && current.value.prose).toBeNull();
-    expect(back.ok && back.value.prose?.prose.headline).toBe("Last week");
   });
 });

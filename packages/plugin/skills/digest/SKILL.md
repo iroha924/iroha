@@ -19,6 +19,10 @@ It returns aggregates for the period, the same numbers for the previous period, 
 
 Call **`save_digest_prose`** with:
 
+- **periodUnit** and **periodKey** — copied from the `period` in the `get_digest_data` response you
+  just read. These are required, and they are how the issue is filed. Do not guess them and do not
+  carry them over from an earlier call: if they name a different period than the one you read, the
+  narrative lands on the wrong issue with that period's numbers substituted into it.
 - **headline** — the issue's one-line lede.
 - **standfirst** — one sentence framing the period.
 - **sections** — one to four, each with a fixed `slot` (`stumbles`, `codebase`, `wins`, `teaching`), a `heading`, and a `body`.
@@ -31,7 +35,11 @@ Call **`save_digest_prose`** with:
 headline: "{{local.denials.total}} edits the Guardrails caught"
 ```
 
-Referencing an id this period did not issue is rejected, with the offending ids named — reread `facts` and fix it. Do not type a digit you read out of `get_digest_data`; reference the fact instead, so the page can never show a number that drifted from the data.
+Referencing an id this period did not issue is rejected. The response does not list which ones, so compare your references against the `facts` array you were given and fix them there. Do not type a digit you read out of `get_digest_data`; reference the fact instead, so the page can never show a number that drifted from the data.
+
+A cluster is referenced by the area it covers, not by its position in the list — `{{local.correlations.packages/git.count}}`, never `{{local.correlations.0.count}}`. The ranking moves as denials land; the area does not.
+
+One section per slot. Two sections claiming the same slot is rejected.
 
 ## What makes a good issue
 
@@ -45,4 +53,7 @@ Referencing an id this period did not issue is rejected, with the offending ids 
 
 - **Never write about a person.** No individual, no attribution of work, no ranking. The payload contains no actor or author field for exactly this reason; do not reintroduce one from your own session context.
 - **Never quote a prompt, transcript, tool payload, secret, or absolute path.** Free text you quote must come from what `get_digest_data` returned.
+- **Never assume a save was lossless.** If the response carries `redactions`, the scanner found
+  something secret-shaped and replaced those *entire* fields. Rewrite them without the offending
+  text and save again — do not report success to the user as-is.
 - **Never present the Digest as approved team knowledge.** It is a local, regenerable view, never committed to Git. Durable lessons go through `propose_knowledge` and human approval instead.

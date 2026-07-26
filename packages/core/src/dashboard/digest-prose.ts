@@ -18,7 +18,7 @@
 import type { IrohaError, Result } from "@iroha/domain";
 import { err, IrohaError as IrohaErrorClass, ok } from "@iroha/domain";
 import { z } from "zod";
-import { redactField } from "../mcp/redact.js";
+import { type FieldRedaction, redactField } from "../mcp/redact.js";
 import type { DigestFact } from "./digest.js";
 
 /**
@@ -43,7 +43,17 @@ export const digestProseSchema = z.strictObject({
       }),
     )
     .min(1)
-    .max(DIGEST_SLOTS.length),
+    .max(DIGEST_SLOTS.length)
+    // One section per slot. The length bound alone lets four sections all claim
+    // the same slot, which the page renders with duplicate React keys — React
+    // does not guarantee correct reconciliation of those across the 5s refetch,
+    // and the slots are a fixed set precisely so the layout stays predictable.
+    .refine(
+      (sections) => new Set(sections.map((section) => section.slot)).size === sections.length,
+      {
+        message: "each section must use a distinct slot",
+      },
+    ),
 });
 
 export type DigestProse = z.infer<typeof digestProseSchema>;
@@ -63,8 +73,14 @@ export interface DigestProseIssue {
  * A `{{factId}}` reference. The character class matches the id vocabulary
  * `buildFacts` produces and nothing else, and there is no nested quantifier, so
  * matching is linear over an already length-bounded string.
+ *
+ * `/` is in the class because a denial cluster is addressed by the path prefix it
+ * covers (`local.correlations.packages/git.count`) — the cluster's identity, which
+ * is what keeps a citation pointing at the same cluster after the ranking moves.
+ * A captured id is only ever a Map key, never a filesystem path, so the slash
+ * carries no traversal meaning.
  */
-const FACT_REFERENCE = /\{\{([A-Za-z0-9._-]+)\}\}/g;
+const FACT_REFERENCE = /\{\{([A-Za-z0-9._\-/]+)\}\}/g;
 
 /** What an unresolvable reference renders as — an em dash, never a guessed number. */
 const MISSING_VALUE = "—";
@@ -133,6 +149,18 @@ export function validateFactReferences(
   return ok(undefined);
 }
 
+export interface RedactedProse {
+  prose: DigestProse;
+  /**
+   * Which fields were replaced, and by which scanner rule. Reported rather than
+   * discarded because redaction is coarse — a single finding blanks the whole
+   * field — so a composing agent that got back only "success" would be told its
+   * teaching section saved when in fact nothing of it survived. Every sibling
+   * write tool returns this (contracts/mcp.md §6.6/§8).
+   */
+  redactions: FieldRedaction[];
+}
+
 /**
  * Scan every free-text field for secrets before the prose is stored.
  *
@@ -147,28 +175,43 @@ export function validateFactReferences(
  * A scanner failure is an error, never a silent store: unscanned text must not
  * reach the database.
  */
-export async function redactProse(prose: DigestProse): Promise<Result<DigestProse, IrohaError>> {
-  const headline = await redactField("headline", prose.headline);
+export async function redactProse(prose: DigestProse): Promise<Result<RedactedProse, IrohaError>> {
+  const redactions: FieldRedaction[] = [];
+  const scan = async (field: string, value: string): Promise<Result<string, IrohaError>> => {
+    const result = await redactField(field, value);
+    if (!result.ok) {
+      return result;
+    }
+    if (result.value.redaction !== undefined) {
+      redactions.push(result.value.redaction);
+    }
+    return ok(result.value.value);
+  };
+
+  const headline = await scan("headline", prose.headline);
   if (!headline.ok) {
     return headline;
   }
-  const standfirst = await redactField("standfirst", prose.standfirst);
+  const standfirst = await scan("standfirst", prose.standfirst);
   if (!standfirst.ok) {
     return standfirst;
   }
   const sections: DigestProse["sections"] = [];
   for (const [index, section] of prose.sections.entries()) {
-    const heading = await redactField(`sections[${index}].heading`, section.heading);
+    const heading = await scan(`sections[${index}].heading`, section.heading);
     if (!heading.ok) {
       return heading;
     }
-    const body = await redactField(`sections[${index}].body`, section.body);
+    const body = await scan(`sections[${index}].body`, section.body);
     if (!body.ok) {
       return body;
     }
-    sections.push({ slot: section.slot, heading: heading.value.value, body: body.value.value });
+    sections.push({ slot: section.slot, heading: heading.value, body: body.value });
   }
-  return ok({ headline: headline.value.value, standfirst: standfirst.value.value, sections });
+  return ok({
+    prose: { headline: headline.value, standfirst: standfirst.value, sections },
+    redactions,
+  });
 }
 
 /**

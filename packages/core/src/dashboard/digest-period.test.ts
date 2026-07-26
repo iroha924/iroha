@@ -1,6 +1,10 @@
 import type { Clock } from "@iroha/domain";
 import { describe, expect, it } from "vitest";
-import { priorDigestPeriod, resolveDigestPeriod } from "./digest-period.js";
+import {
+  priorDigestPeriod,
+  resolveDigestPeriod,
+  resolveDigestPeriodByKey,
+} from "./digest-period.js";
 
 function clockAt(iso: string): Clock {
   return { now: () => new Date(iso) };
@@ -125,6 +129,106 @@ describe("resolveDigestPeriod — month", () => {
 
       expect(period.key).toBe("2026-11");
       expect(period.end).toBe("2026-12-01T00:00:00.000Z");
+    });
+  });
+});
+
+describe("adjacent periods share their boundary exactly", () => {
+  /**
+   * Both zones move their clock at local midnight, so `setHours(0,0,0,0)` on the
+   * transition day resolves an hour off. Deriving a period's end by advancing from
+   * its own (shifted) start carried that shift into the end while the next period
+   * recomputed midnight cleanly — leaving a one-hour overlap in which a single
+   * event counted toward both `value` and `priorValue`.
+   */
+  const OVERLAP_CASES = [
+    { tz: "America/Asuncion", unit: "month" as const, now: "2023-11-15T12:00:00.000Z" },
+    { tz: "Asia/Tehran", unit: "week" as const, now: "2021-03-30T12:00:00.000Z" },
+  ];
+
+  for (const { tz, unit, now } of OVERLAP_CASES) {
+    it(`neither overlaps nor gaps across a midnight DST transition (${tz}, ${unit})`, () => {
+      withTz(tz, () => {
+        const clock = clockAt(now);
+        for (let offset = 0; offset < 4; offset++) {
+          const current = resolveDigestPeriod(unit, offset, clock);
+          const prior = resolveDigestPeriod(unit, offset + 1, clock);
+
+          expect(prior.end, `${prior.key} → ${current.key}`).toBe(current.start);
+          expect(new Date(prior.start).getTime()).toBeLessThan(new Date(prior.end).getTime());
+        }
+      });
+    });
+  }
+
+  it("keeps every boundary shared across a year of weeks in a half-hour-offset zone", () => {
+    withTz("Asia/Kathmandu", () => {
+      const clock = clockAt("2026-07-23T12:00:00.000Z");
+      for (let offset = 0; offset < 52; offset++) {
+        const current = resolveDigestPeriod("week", offset, clock);
+        const prior = resolveDigestPeriod("week", offset + 1, clock);
+        expect(prior.end, prior.key).toBe(current.start);
+      }
+    });
+  });
+});
+
+describe("resolveDigestPeriodByKey", () => {
+  it("finds the period a key names", () => {
+    withTz("UTC", () => {
+      const clock = clockAt("2026-07-23T12:00:00.000Z");
+
+      const found = resolveDigestPeriodByKey("week", "2026-07-13", clock, 520);
+
+      expect(found?.key).toBe("2026-07-13");
+      expect(found?.offset).toBe(1);
+      expect(found?.start).toBe("2026-07-13T00:00:00.000Z");
+    });
+  });
+
+  it("finds the current period's own key", () => {
+    withTz("UTC", () => {
+      const found = resolveDigestPeriodByKey(
+        "week",
+        "2026-07-20",
+        clockAt("2026-07-23T12:00:00.000Z"),
+        520,
+      );
+
+      expect(found?.offset).toBe(0);
+    });
+  });
+
+  it("resolves a month key", () => {
+    withTz("UTC", () => {
+      const found = resolveDigestPeriodByKey(
+        "month",
+        "2026-05",
+        clockAt("2026-07-23T12:00:00.000Z"),
+        520,
+      );
+
+      expect(found?.offset).toBe(2);
+      expect(found?.end).toBe("2026-06-01T00:00:00.000Z");
+    });
+  });
+
+  it("returns null for a key no period produces", () => {
+    withTz("UTC", () => {
+      const clock = clockAt("2026-07-23T12:00:00.000Z");
+
+      // A Wednesday — never a week start — and a future week.
+      expect(resolveDigestPeriodByKey("week", "2026-07-22", clock, 520)).toBeNull();
+      expect(resolveDigestPeriodByKey("week", "2026-08-03", clock, 520)).toBeNull();
+      expect(resolveDigestPeriodByKey("week", "not-a-date", clock, 520)).toBeNull();
+    });
+  });
+
+  it("returns null for a key beyond the offset it is allowed to search", () => {
+    withTz("UTC", () => {
+      const clock = clockAt("2026-07-23T12:00:00.000Z");
+
+      expect(resolveDigestPeriodByKey("week", "2026-07-13", clock, 0)).toBeNull();
     });
   });
 });

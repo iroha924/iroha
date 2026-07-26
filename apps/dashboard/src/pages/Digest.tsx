@@ -6,21 +6,31 @@ import { api } from "@/api/client.js";
 import { ErrorState, Loading, Mark, PageHeader } from "@/components/brand.js";
 import { Badge } from "@/components/ui/badge.js";
 import { Button } from "@/components/ui/button.js";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.js";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card.js";
 import { useI18n } from "@/i18n/index.js";
 
 const CHECKPOINT_OUTCOMES = ["completed", "partial", "blocked", "no_change"] as const;
 const ADEQUACY_KINDS = ["enforceable", "not_hook_enforceable", "invalid"] as const;
 
-/** A section marker carrying the three-circle motif rather than a plain rule. */
+/**
+ * A section marker carrying the three-circle motif rather than a plain rule.
+ *
+ * A two-column grid, not a flex row with a nudged icon: `items-center` centres
+ * the mark on the heading's own line box, so the alignment holds if the heading
+ * size changes instead of depending on a hand-measured `mt-*`. The note sits at
+ * `col-start-2`, which tracks the mark's width without restating it — and keeps
+ * the mark on the *heading*, not on the taller title-and-note block.
+ */
 function SectionHeading({ title, note }: { title: string; note?: string }) {
   return (
-    <div className="mb-4 flex items-start gap-3">
-      <Mark className="mt-0.5 h-5 w-5 shrink-0 opacity-90" />
-      <div className="min-w-0">
-        <h2 className="font-display text-xl font-semibold tracking-[-0.01em] text-ink">{title}</h2>
-        {note !== undefined && <p className="mt-1 text-sm text-ink-muted">{note}</p>}
-      </div>
+    <div className="mb-4 grid grid-cols-[auto_1fr] items-center gap-x-3">
+      <Mark className="h-5 w-5 shrink-0 opacity-90" />
+      <h2 className="min-w-0 font-display text-xl font-semibold tracking-[-0.01em] text-ink">
+        {title}
+      </h2>
+      {note !== undefined && (
+        <p className="col-start-2 mt-1 text-pretty text-sm text-ink-muted">{note}</p>
+      )}
     </div>
   );
 }
@@ -127,7 +137,7 @@ function Masthead({ digest }: { digest: DigestData }) {
             <p className="font-display text-3xl font-semibold leading-snug tracking-[-0.01em] text-ink">
               {prose.prose.headline}
             </p>
-            <p className="mt-3 max-w-2xl text-ink-muted">{prose.prose.standfirst}</p>
+            <p className="mt-3 max-w-2xl text-pretty text-ink-muted">{prose.prose.standfirst}</p>
             <p className="mt-5 text-xs uppercase tracking-[0.14em] text-ink-faint">
               {t("digest.unreviewed")}
             </p>
@@ -166,6 +176,10 @@ export function Digest() {
   const d = q.data;
 
   const denialsByRule = d.local.denials.byRule;
+  // The *resolved* offset, not the one requested: the API clamps an out-of-range
+  // value, so stepping back past the cap would otherwise leave the local state
+  // ahead of the server's and disable "newer" on an issue that has one.
+  const servedOffset = d.period.offset;
 
   return (
     <section>
@@ -177,7 +191,7 @@ export function Digest() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setOffset(offset + 1)}
+              onClick={() => setOffset(servedOffset + 1)}
               aria-label={t("digest.older")}
             >
               <ChevronLeftIcon />
@@ -186,8 +200,8 @@ export function Digest() {
             <Button
               variant="outline"
               size="sm"
-              disabled={!d.hasNewer}
-              onClick={() => setOffset(Math.max(0, offset - 1))}
+              disabled={servedOffset === 0}
+              onClick={() => setOffset(Math.max(0, servedOffset - 1))}
               aria-label={t("digest.newer")}
             >
               {t("digest.newer")}
@@ -234,18 +248,28 @@ export function Digest() {
           </Card>
         </div>
 
-        {d.local.correlations.length > 0 && (
+        {d.local.correlations.items.length > 0 && (
           <Card className="mt-6">
             <CardHeader>
               <CardTitle>{t("digest.clusters")}</CardTitle>
             </CardHeader>
-            <CardContent className="flex flex-wrap gap-2">
-              {d.local.correlations.map((correlation) => (
-                <Badge key={correlation.paths.join("|")} variant="pending">
-                  <span className="font-mono text-[11px]">{correlation.paths[0]}</span>
-                  <span className="tabular-nums">{correlation.count}</span>
-                </Badge>
-              ))}
+            <CardContent>
+              <div className="flex flex-wrap gap-2">
+                {d.local.correlations.items.map((correlation) => (
+                  <Badge key={correlation.key} variant="pending">
+                    <span className="font-mono text-[11px]">{correlation.key}</span>
+                    <span className="tabular-nums">{correlation.count}</span>
+                  </Badge>
+                ))}
+              </div>
+              {d.local.correlations.truncated && (
+                <p className="mt-3 text-xs text-ink-faint">
+                  {t("digest.clustersTruncated").replace(
+                    "{total}",
+                    String(d.local.correlations.total),
+                  )}
+                </p>
+              )}
             </CardContent>
           </Card>
         )}
@@ -281,7 +305,12 @@ export function Digest() {
           <Card>
             <CardContent>
               <Stat label={t("digest.pendingLearnings")} value={d.local.pendingReviewLearnings} />
-              <p className="mt-3 text-xs text-ink-muted">{t("digest.pendingLearningsHint")}</p>
+              <p className="mt-1 text-xs uppercase tracking-[0.12em] text-ink-faint">
+                {t("digest.asOfNow")}
+              </p>
+              <p className="mt-3 text-pretty text-xs text-ink-muted">
+                {t("digest.pendingLearningsHint")}
+              </p>
             </CardContent>
           </Card>
         </div>
@@ -329,6 +358,7 @@ export function Digest() {
         <Card className="mt-6">
           <CardHeader>
             <CardTitle>{t("digest.rulesetAdequacy")}</CardTitle>
+            <CardDescription>{t("digest.asOfNow")}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid gap-6 sm:grid-cols-3">
@@ -340,7 +370,7 @@ export function Digest() {
                 />
               ))}
             </div>
-            <p className="mt-5 text-xs text-ink-muted">{t("digest.adequacyHint")}</p>
+            <p className="mt-5 text-pretty text-xs text-ink-muted">{t("digest.adequacyHint")}</p>
           </CardContent>
         </Card>
       </div>
@@ -356,7 +386,11 @@ export function Digest() {
         </Card>
       ))}
 
-      <p className="mt-10 max-w-2xl text-xs text-ink-faint">{t("digest.advisoryNote")}</p>
+      {/* No measure cap: this is one sentence that reads as a single footnote line
+          at the content width. `text-pretty` keeps a narrower viewport from
+          leaving one trailing character alone on the last line — the default
+          any-character break for Japanese does exactly that. */}
+      <p className="mt-10 text-pretty text-xs text-ink-faint">{t("digest.advisoryNote")}</p>
     </section>
   );
 }

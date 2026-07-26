@@ -55,6 +55,9 @@ const RETENTION_SETTING_KEY = "retention.local_events";
 /** Offered windows; the API accepts any 1-3650 day value. */
 const RETENTION_CHOICES = [30, 90, 180, 365] as const;
 
+/** Mirrors `DIGEST_PERIOD_SETTING_KEY`, for the same reason as above. */
+const DIGEST_PERIOD_SETTING_KEY = "digest.period";
+
 /** Shared config editor + redacted local status (contracts/dashboard-api.md §6/§8). */
 export function Settings() {
   const { t } = useI18n();
@@ -67,6 +70,17 @@ export function Settings() {
     if (q.data !== undefined) setConfig(q.data.shared);
   }, [q.data]);
 
+  const saveDigestPeriod = useMutation({
+    mutationFn: (unit: "week" | "month") =>
+      api.updateLocalSetting(DIGEST_PERIOD_SETTING_KEY, { unit }),
+    onSuccess: () => {
+      setNotice(t("common.saved"));
+      void queryClient.invalidateQueries({ queryKey: ["settings"] });
+      // The front page reads this key to pick its window.
+      void queryClient.invalidateQueries({ queryKey: ["digest"] });
+    },
+    onError: () => setNotice(t("common.error")),
+  });
   const saveRetention = useMutation({
     mutationFn: (days: number | null) => api.updateLocalSetting(RETENTION_SETTING_KEY, { days }),
     onSuccess: () => {
@@ -161,6 +175,28 @@ export function Settings() {
                 setConfig({ ...config, forge: { ...config.forge, enabled: checked } })
               }
             />
+          </SettingRow>
+
+          <SettingRow
+            htmlFor="cfg-digest-period"
+            label={t("settings.digestPeriod")}
+            hint={t("settings.digestPeriodHint")}
+          >
+            {/* Saved on change, and the only way to reach the month window: before
+                this the key was writable through the raw settings API alone. */}
+            <Select
+              disabled={saveDigestPeriod.isPending}
+              value={local.digestPeriodUnit}
+              onValueChange={(value) => saveDigestPeriod.mutate(value as "week" | "month")}
+            >
+              <SelectTrigger id="cfg-digest-period" className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="week">{t("digest.unitWeek")}</SelectItem>
+                <SelectItem value="month">{t("digest.unitMonth")}</SelectItem>
+              </SelectContent>
+            </Select>
           </SettingRow>
 
           <SettingRow

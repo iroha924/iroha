@@ -2,7 +2,7 @@ import type { IdPrefix, TypedId } from "@iroha/domain";
 import { afterEach, describe, expect, it } from "vitest";
 import { closeDatabase, type Database } from "../connection.js";
 import { openMigratedTestDb, removeTempDir } from "../test-helpers/tmp-db.js";
-import { countPendingReviewLearnings, getDigestWindowFacts } from "./digest.js";
+import { countPendingReviewLearnings, getDigestIssue, getDigestWindowFacts } from "./digest.js";
 import { insertEntity, insertRepository } from "./identity.js";
 import { insertCandidate, upsertKnowledgeItem } from "./knowledge.js";
 import {
@@ -353,6 +353,60 @@ describe("getDigestWindowFacts", () => {
     expect(facts.value.denials.total).toBe(25);
     expect(facts.value.denials.targets.items).toHaveLength(20);
     expect(facts.value.denials.targets.truncated).toBe(true);
+    // The cap bounds the items only; the count and the uncapped list stay whole,
+    // so a fact taken from `total` and cluster aggregation both see every path.
+    expect(facts.value.denials.targets.total).toBe(25);
+    expect(facts.value.denials.allTargets).toHaveLength(25);
+  });
+
+  it("reports the real count for a team list past the display cap", async () => {
+    const db = await openDb();
+    for (let i = 0; i < 25; i++) {
+      await seedApprovedKnowledge(db, `g${String(i).padStart(3, "0")}`, "rule", INSIDE, {
+        guardrail: true,
+      });
+    }
+
+    const facts = await getDigestWindowFacts(db, REPO, WINDOW);
+
+    expect(facts.ok).toBe(true);
+    if (!facts.ok) return;
+    expect(facts.value.guardrailsChanged.items).toHaveLength(20);
+    // The fact built from this must be 25, not the cap — a count taken from the
+    // capped list would tell the composing agent 20 and be cited as authoritative.
+    expect(facts.value.guardrailsChanged.total).toBe(25);
+    expect(facts.value.guardrailsChanged.truncated).toBe(true);
+  });
+
+  it("degrades to unattributed denials on a database from before the attribution column", async () => {
+    const db = await openDb();
+    const turnId = await seedSession(db, "a", REPO, INSIDE);
+    await seedDenial(db, "d1", turnId, INSIDE, { path: "packages/git/a.ts" });
+    await seedDenial(db, "d2", turnId, INSIDE, { path: "packages/git/b.ts" });
+    // The state between a package upgrade and the next `iroha sync`: the dashboard
+    // opens the database without migrating, so the column is simply not there yet.
+    // The partial index covers the column, so it has to go first.
+    await db.execute("DROP INDEX idx_tool_events_denied");
+    await db.execute("ALTER TABLE tool_events DROP COLUMN denied_by_rule_id");
+
+    const facts = await getDigestWindowFacts(db, REPO, WINDOW);
+
+    expect(facts.ok).toBe(true);
+    if (!facts.ok) return;
+    expect(facts.value.denials.total).toBe(2);
+    expect(facts.value.denials.byRule).toEqual([{ ruleId: null, ruleTitle: null, count: 2 }]);
+  });
+
+  it("reports no prose on a database from before the digest_issues table", async () => {
+    const db = await openDb();
+    await db.execute("DROP TABLE digest_issues");
+
+    const issue = await getDigestIssue(db, REPO, "week", "2026-07-20");
+
+    // Indistinguishable from "not composed yet", which is what it means — and what
+    // keeps a pending migration from turning the front page into a 500.
+    expect(issue.ok).toBe(true);
+    expect(issue.ok && issue.value).toBeNull();
   });
 
   it("returns zeroed facts for a period with no activity", async () => {
@@ -365,10 +419,11 @@ describe("getDigestWindowFacts", () => {
     expect(facts.value.denials).toEqual({
       total: 0,
       byRule: [],
-      targets: { items: [], truncated: false },
+      targets: { items: [], total: 0, truncated: false },
+      allTargets: [],
     });
     expect(facts.value.sessions).toBe(0);
-    expect(facts.value.guardrailsChanged).toEqual({ items: [], truncated: false });
+    expect(facts.value.guardrailsChanged).toEqual({ items: [], total: 0, truncated: false });
   });
 });
 

@@ -399,7 +399,7 @@ one table retention never bounds.
 The Digest is the dashboard's front page: a per-period read model over facts already recorded,
 plus optional narration. Nothing here is canonical and nothing is committed to Git.
 
-- **The numbers are computed on request, never snapshotted.** `getDigestWindowFacts` runs six
+- **The numbers are computed on request, never snapshotted.** `getDigestWindowFacts` runs seven
   aggregates over one half-open window `[start, end)` and is called twice per page — for the
   period and for the one before it, which is where the prior-period comparison comes from. There
   is no snapshot table, so a trend resets on `sync --rebuild`; that is surfaced rather than
@@ -411,7 +411,18 @@ plus optional narration. Nothing here is canonical and nothing is committed to G
   values UTC, display local). The window preference lives in `local_settings` under
   `digest.period` as `{"unit": "week" | "month"}`, and a malformed value falls back to the
   default rather than erroring — unlike `retention.local_events`, which governs deletion and so
-  must not guess at intent.
+  must not guess at intent. It is still *rejected on write*: reading leniently and accepting
+  anything would return 200 for a typo and then silently ignore it.
+- **A period's end is the next period's start**, anchored the same way, never this start advanced
+  by one unit. On a day whose DST transition falls at local midnight the two differ, and adjacent
+  windows would overlap by an hour — counting one event in both a period and its predecessor.
+- **An out-of-range `offset` is clamped, not dropped.** Dropping it would answer a request for
+  520+ periods ago with the *current* period. The response carries the resolved `period.offset`,
+  so a client reads which issue it was served rather than trusting what it asked for.
+- **Two facts are current-state, not period-scoped**: `team.rulesetAdequacy` (how enforceable the
+  approved Guardrail set is *now*) and `local.pendingReviewLearnings`. §6 of `dashboard-api.md`
+  asks for them in the present tense; the page labels them so, because a back issue citing one
+  drifts from the period it names.
 
 ### Two scopes
 
@@ -464,8 +475,9 @@ Recomposing overwrites: the numbers are recomputed on every read, so an older na
 same period is stale by construction, not history worth versioning.
 
 The row is local index state. A Digest's headline facts come from `tool_events`/`checkpoints`,
-which §2 of `canonical.md` excludes from canonical and `sync --rebuild` drops — so prose
-narrating them is not reconstructible from the committed files, and writing it into `.iroha/`
+which `sync --rebuild` drops and which §2 of `canonical.md` keeps out of canonical (it excludes
+complete tool inputs and outputs) — so prose narrating them is not reconstructible from the
+committed files, and writing it into `.iroha/`
 would put a non-reconstructable artifact into a store whose §1 charter is that everything there
 is rebuildable. It also needs no approval gate: a Digest asserts no new team truth, so it sits
 outside the candidate→approve→canonical boundary rather than bypassing it. No `dispatch`/`digest`

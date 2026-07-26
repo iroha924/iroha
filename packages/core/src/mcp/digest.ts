@@ -16,13 +16,22 @@ import {
   computeDigest,
   type DigestData,
   type DigestPeriod,
+  type DigestPeriodUnit,
+  type DigestProse,
   type DigestSelection,
-  digestProseSchema,
   redactProse,
+  resolveDigestPeriodByKey,
   validateFactReferences,
 } from "../dashboard/index.js";
+import type { FieldRedaction } from "./redact.js";
 import { verifySessionToken } from "./verify-session-token.js";
 import { withMcpRepository } from "./with-repository.js";
+
+/**
+ * How far back a composition may name a period. Mirrors the API's own cap so the
+ * two boundaries agree on which back issues exist.
+ */
+const MAX_DIGEST_OFFSET = 520;
 
 export interface McpGetDigestDataInput extends DigestSelection {
   cwd: string;
@@ -46,46 +55,61 @@ export async function mcpGetDigestData(
   );
 }
 
-export interface McpSaveDigestProseInput extends DigestSelection {
+export interface McpSaveDigestProseInput {
   cwd: string;
   clock: Clock;
   random: RandomSource;
   sessionToken: string;
-  /** The agent's composition, before validation and redaction. */
-  prose: unknown;
+  /**
+   * The period this composition is *for*, echoed from the `period` that
+   * `get_digest_data` returned.
+   *
+   * Named, never re-derived from an offset. When the save re-resolved a period
+   * from its own optional `offset`, an agent that read a back issue and then
+   * omitted the argument published last week's narrative as the current issue —
+   * a success return, no warning, the wrong week's numbers substituted into it,
+   * and the issue it was written for still blank. `validateFactReferences` cannot
+   * catch that, because the period-independent ids exist in both fact tables.
+   */
+  periodUnit: DigestPeriodUnit;
+  periodKey: string;
+  /** The agent's composition, already validated by the tool's own input schema. */
+  prose: DigestProse;
 }
 
 export interface McpSaveDigestProseData {
   period: DigestPeriod;
   composedAt: string;
+  /**
+   * Fields whose content was replaced because the scanner found a secret in it.
+   * Empty on a clean save. Reported because redaction blanks a whole field: a bare
+   * success would tell the agent its section saved when nothing of it survived.
+   */
+  redactions: FieldRedaction[];
 }
 
 /**
  * Store a composition for one period (`save_digest_prose`).
  *
  * Four gates, in order: a valid session token, the same one every local write
- * requires (contracts/mcp.md §5); the shape must match `digestProseSchema`; every
- * `{{factId}}` must be one *this period* issued; and every free-text field is
- * secret-scanned before it reaches the database. The middle two are what make the
- * number/prose seam hold — an agent cannot cite authority iroha did not grant —
- * and the last is the at-rest requirement for any local store of agent text.
+ * requires (contracts/mcp.md §5); the named period must be one this clock can
+ * still produce; every `{{factId}}` must be one *that period* issued; and every
+ * free-text field is secret-scanned before it reaches the database. The middle two
+ * are what make the number/prose seam hold — an agent cannot cite authority iroha
+ * did not grant, nor attach a narrative to a period it was not written for — and
+ * the last is the at-rest requirement for any local store of agent text.
  *
- * The shape check runs before the repository is opened, so malformed input costs
- * no connection. Recomposing overwrites the period's previous issue: the numbers
- * are recomputed on every read, so an older narration of the same period is
- * stale, not history.
+ * The shape is not re-checked here: the MCP dispatcher strict-parses the tool's
+ * `inputSchema`, which embeds `digestProseSchema`, so the handler's argument is
+ * already the validated output (`packages/mcp/src/tools/types.ts`). Every sibling
+ * use case takes the typed value the same way.
+ *
+ * Recomposing overwrites the period's previous issue: the numbers are recomputed
+ * on every read, so an older narration of the same period is stale, not history.
  */
 export async function mcpSaveDigestProse(
   input: McpSaveDigestProseInput,
 ): Promise<Result<McpSaveDigestProseData, IrohaError>> {
-  const validated = digestProseSchema.safeParse(input.prose);
-  if (!validated.success) {
-    return err(
-      new IrohaErrorClass("INVALID_INPUT", "Digest prose does not match the expected shape", {
-        details: { fields: [...new Set(validated.error.issues.map((i) => i.path.join(".")))] },
-      }),
-    );
-  }
   return withMcpRepository(
     { cwd: input.cwd, clock: input.clock, random: input.random, tool: "save_digest_prose" },
     async (ctx) => {
@@ -99,30 +123,44 @@ export async function mcpSaveDigestProse(
       if (!verified.ok) {
         return verified;
       }
-      const digest = await computeDigest(ctx, input);
+      const period = resolveDigestPeriodByKey(
+        input.periodUnit,
+        input.periodKey,
+        ctx.clock,
+        MAX_DIGEST_OFFSET,
+      );
+      if (period === null) {
+        return err(
+          new IrohaErrorClass(
+            "INVALID_INPUT",
+            "periodKey does not name a period of this unit; echo the `period` from get_digest_data",
+          ),
+        );
+      }
+      const digest = await computeDigest(ctx, { unit: period.unit, offset: period.offset });
       if (!digest.ok) {
         return digest;
       }
-      const references = validateFactReferences(validated.data, digest.value.facts);
+      const references = validateFactReferences(input.prose, digest.value.facts);
       if (!references.ok) {
         return references;
       }
-      const redacted = await redactProse(validated.data);
+      const redacted = await redactProse(input.prose);
       if (!redacted.ok) {
         return redacted;
       }
       const composedAt = ctx.clock.now().toISOString();
       const stored = await upsertDigestIssue(ctx.db, {
         repositoryId: ctx.repo.repositoryId,
-        periodUnit: digest.value.period.unit,
-        periodKey: digest.value.period.key,
-        proseJson: JSON.stringify(redacted.value),
+        periodUnit: period.unit,
+        periodKey: period.key,
+        proseJson: JSON.stringify(redacted.value.prose),
         composedAt,
       });
       if (!stored.ok) {
         return stored;
       }
-      return ok({ period: digest.value.period, composedAt });
+      return ok({ period, composedAt, redactions: redacted.value.redactions });
     },
   );
 }

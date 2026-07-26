@@ -408,9 +408,10 @@ flat `facts` array of `{ id, value, label }`.
 
 **Aggregates only, and person-less by construction.** The payload has no field named or typed as
 actor, author, email, or session owner anywhere in it, so per-person narration is not something
-the agent could produce — the data never arrives. Free text appearing in a fact comes only from an
-already-approved canonical entity's title or summary, never from a prompt, a transcript, or raw
-tool input.
+the agent could produce — the data never arrives. Free text in a fact is either an
+already-approved canonical entity's title or summary, or a repository-relative path a Guardrail
+denied (realpath-resolved and repository-confined before storage, which §8 permits persisting).
+Never a prompt, a transcript, a raw tool payload, or an absolute path.
 
 ### 6.10 `save_digest_prose`
 
@@ -423,8 +424,9 @@ Input:
 ```ts
 interface SaveDigestProseInput {
   sessionToken: string;
-  unit?: "week" | "month";
-  offset?: number;
+  /** Echoed from the `period` in the `get_digest_data` response this was composed against. */
+  periodUnit: "week" | "month";
+  periodKey: string;
   prose: {
     headline: string;               // 1..200
     standfirst: string;             // 1..500
@@ -439,13 +441,28 @@ interface SaveDigestProseInput {
 
 **There is no field for a number.** To state a figure the prose references a fact id as
 `{{factId}}`, and the renderer substitutes iroha's own value — so a fabricated figure is not
-expressible. A reference to an id the period did not issue is rejected as `INVALID_INPUT` with the
-offending ids in `details.unknownFactIds`. An id that later disappears renders as an em dash, not
-a stale number.
+expressible. A reference to an id the period did not issue is rejected as `INVALID_INPUT`. The
+offending ids are **not** returned: §4 strips `details` from every failure envelope, and echoing
+them into the message would put agent-supplied text (which can be secret-shaped) into an error. The
+agent already holds the issued list from `get_digest_data` and re-checks its references against it.
+An id that later disappears renders as an em dash, not a stale number.
 
-Gates, in order: session token, shape, fact references, then a secret scan of every free-text
-field before the write. Recomposing a period overwrites its previous issue — the numbers are
-recomputed on every read, so an older narration of the same period is stale rather than history.
+**The period is named, not derived.** `periodUnit`/`periodKey` come from the `get_digest_data`
+response. An offset would be relative to "now", so a dropped or stale one silently files the
+composition under a period it does not describe — and reference validation cannot catch that,
+because the period-independent ids exist in every period's fact table. A key no period of that unit
+produces is rejected.
+
+Gates, in order: session token, the named period, fact references, then a secret scan of every
+free-text field before the write. The shape is enforced by the tool's own input schema, which the
+dispatcher strict-parses before the handler runs (§8), so it is not re-checked here.
+
+**Redaction is reported.** A finding replaces the whole field, so the response carries
+`redactions[]` and the call raises a `field_redacted` warning (§6.6 does the same for a Checkpoint):
+a bare success would tell the agent a section saved when nothing of it survived.
+
+Recomposing a period overwrites its previous issue — the numbers are recomputed on every read, so
+an older narration of the same period is stale rather than history.
 
 What the seam cannot prevent is prose that contradicts a correct number; the dashboard therefore
 renders numbers as authoritative and labels the prose unreviewed.

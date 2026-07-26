@@ -13,6 +13,8 @@ const EMPTY_BY_TYPE = {
   review_learning: 0,
 };
 
+const EMPTY_LIST = { items: [], total: 0, truncated: false };
+
 function digest(overrides: Record<string, unknown> = {}) {
   return ok({
     period: {
@@ -22,7 +24,6 @@ function digest(overrides: Record<string, unknown> = {}) {
       end: "2026-07-27T00:00:00.000Z",
       offset: 0,
     },
-    hasNewer: false,
     local: {
       denials: { value: 0, priorValue: 0, byRule: [] },
       checkpoints: {
@@ -32,12 +33,12 @@ function digest(overrides: Record<string, unknown> = {}) {
       },
       sessions: { value: 0, priorValue: 0 },
       pendingReviewLearnings: 0,
-      correlations: [],
+      correlations: EMPTY_LIST,
     },
     team: {
       knowledge: { value: 0, priorValue: 0, byType: EMPTY_BY_TYPE },
-      guardrailsChanged: { items: [], truncated: false },
-      reviewLearnings: { items: [], truncated: false },
+      guardrailsChanged: EMPTY_LIST,
+      reviewLearnings: EMPTY_LIST,
       rulesetAdequacy: { enforceable: 0, not_hook_enforceable: 0, invalid: 0 },
     },
     facts: [],
@@ -108,7 +109,7 @@ describe("Digest", () => {
           },
           sessions: { value: 1, priorValue: 0 },
           pendingReviewLearnings: 0,
-          correlations: [],
+          correlations: EMPTY_LIST,
         },
       }),
     });
@@ -124,8 +125,8 @@ describe("Digest", () => {
       "GET /api/v1/digest": digest({
         team: {
           knowledge: { value: 0, priorValue: 0, byType: EMPTY_BY_TYPE },
-          guardrailsChanged: { items: [], truncated: false },
-          reviewLearnings: { items: [], truncated: false },
+          guardrailsChanged: EMPTY_LIST,
+          reviewLearnings: EMPTY_LIST,
           rulesetAdequacy: { enforceable: 4, not_hook_enforceable: 1, invalid: 2 },
         },
       }),
@@ -148,16 +149,26 @@ describe("Digest", () => {
           },
           sessions: { value: 1, priorValue: 0 },
           pendingReviewLearnings: 0,
-          correlations: [
-            { kind: "denial_cluster", paths: ["packages/git/a.ts", "packages/git/b.ts"], count: 3 },
-          ],
+          correlations: {
+            items: [
+              {
+                kind: "denial_cluster",
+                key: "packages/git",
+                paths: ["packages/git/a.ts", "packages/git/b.ts"],
+                count: 3,
+              },
+            ],
+            total: 1,
+            truncated: false,
+          },
         },
       }),
     });
     renderWithProviders(<Digest />);
 
     expect(await screen.findByText("Where denials clustered")).toBeDefined();
-    expect(screen.getByText("packages/git/a.ts")).toBeDefined();
+    // The badge names the cluster, which is also what its fact id is built from.
+    expect(screen.getByText("packages/git")).toBeDefined();
   });
 
   it("states that advisory rules are not measured instead of implying a score", async () => {
@@ -167,11 +178,31 @@ describe("Digest", () => {
     expect(await screen.findByText(/leave no machine-observable trace/)).toBeDefined();
   });
 
-  it("disables the newer-issue control on the current period", async () => {
+  it("disables the newer-issue control from the offset the server resolved", async () => {
     mockApi({ "GET /api/v1/digest": digest() });
     renderWithProviders(<Digest />);
 
     const newer = await screen.findByRole("button", { name: "Newer issue" });
     expect(newer.hasAttribute("disabled")).toBe(true);
+  });
+
+  it("enables the newer-issue control on a back issue the server actually served", async () => {
+    // The requested offset is not the authority: an out-of-range request is
+    // clamped, so the control must follow `period.offset` from the response.
+    mockApi({
+      "GET /api/v1/digest": digest({
+        period: {
+          unit: "week",
+          key: "2026-07-13",
+          start: "2026-07-13T00:00:00.000Z",
+          end: "2026-07-20T00:00:00.000Z",
+          offset: 1,
+        },
+      }),
+    });
+    renderWithProviders(<Digest />);
+
+    const newer = await screen.findByRole("button", { name: "Newer issue" });
+    expect(newer.hasAttribute("disabled")).toBe(false);
   });
 });

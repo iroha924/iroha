@@ -74,14 +74,9 @@ function monthStart(instant: Date, offset: number): Date {
   return start;
 }
 
-function periodEnd(unit: DigestPeriodUnit, start: Date): Date {
-  const end = new Date(start.getTime());
-  if (unit === "week") {
-    end.setDate(end.getDate() + 7);
-  } else {
-    end.setMonth(end.getMonth() + 1);
-  }
-  return end;
+/** Local midnight at which the `offset`-th period back begins. */
+function periodStart(unit: DigestPeriodUnit, instant: Date, offset: number): Date {
+  return unit === "week" ? weekStart(instant, offset) : monthStart(instant, offset);
 }
 
 function periodKey(unit: DigestPeriodUnit, start: Date): string {
@@ -94,6 +89,16 @@ function periodKey(unit: DigestPeriodUnit, start: Date): string {
  * is the current, still-incomplete period — the Digest is meant to be readable
  * mid-week, so its window deliberately extends past "now" and simply contains no
  * events yet for the days that have not happened.
+ *
+ * The end is the *next* period's start, anchored the same way, never this start
+ * plus one unit. Those differ: `setHours(0,0,0,0)` cannot produce a local midnight
+ * that does not exist, so on a day whose DST transition is at midnight it resolves
+ * an hour off — and advancing from that shifted start carries the shift into the
+ * end, while the next period recomputes midnight cleanly. Adjacent windows would
+ * then overlap by an hour and count one event in both (reproduced for
+ * `America/Asuncion` 2023-11-01 and `Asia/Tehran` 2021-03-22). Deriving the end
+ * from the same anchor makes the boundary shared by construction, so no overlap
+ * or gap is representable.
  */
 export function resolveDigestPeriod(
   unit: DigestPeriodUnit,
@@ -101,8 +106,8 @@ export function resolveDigestPeriod(
   clock: Clock,
 ): DigestPeriod {
   const now = clock.now();
-  const start = unit === "week" ? weekStart(now, offset) : monthStart(now, offset);
-  const end = periodEnd(unit, start);
+  const start = periodStart(unit, now, offset);
+  const end = periodStart(unit, now, offset - 1);
   return {
     unit,
     key: periodKey(unit, start),
@@ -115,9 +120,37 @@ export function resolveDigestPeriod(
 /**
  * The period immediately before `period`, for the prior-period comparison.
  * Re-resolved from the clock rather than derived by subtracting `period`'s own
- * duration, so the previous month is that month's real length and a week across
- * a DST transition keeps its calendar boundaries.
+ * duration, so the previous month is that month's real length.
  */
 export function priorDigestPeriod(period: DigestPeriod, clock: Clock): DigestPeriod {
   return resolveDigestPeriod(period.unit, period.offset + 1, clock);
+}
+
+/**
+ * The period a stored `key` names, or `null` when no period within
+ * `maxOffset` produces it.
+ *
+ * Resolved by walking offsets rather than parsing the key back into local
+ * boundaries: the key is *produced* by this module's anchoring, so re-deriving it
+ * the same way is the only way to be sure the two agree. An inverse parser would
+ * be a second implementation of the calendar rules, free to disagree exactly where
+ * it matters (DST, month length).
+ *
+ * This is what lets a composition name the period it was written for instead of
+ * re-resolving one from an offset the caller may have dropped — the bug where an
+ * omitted argument published last week's narrative as this week's issue.
+ */
+export function resolveDigestPeriodByKey(
+  unit: DigestPeriodUnit,
+  key: string,
+  clock: Clock,
+  maxOffset: number,
+): DigestPeriod | null {
+  for (let offset = 0; offset <= maxOffset; offset++) {
+    const period = resolveDigestPeriod(unit, offset, clock);
+    if (period.key === key) {
+      return period;
+    }
+  }
+  return null;
 }

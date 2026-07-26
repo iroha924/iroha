@@ -24,7 +24,10 @@ const SHARED = {
 };
 
 function settings(retentionDays: number | null) {
-  return ok({ shared: SHARED, local: { embeddingKeyPresent: false, retentionDays } });
+  return ok({
+    shared: SHARED,
+    local: { embeddingKeyPresent: false, retentionDays, digestPeriodUnit: "week" },
+  });
 }
 
 /** The select's rendered value; Base UI shows the raw value, not the item label. */

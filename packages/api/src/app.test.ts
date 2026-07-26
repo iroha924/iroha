@@ -255,19 +255,36 @@ describe("dashboard API", () => {
     const { app } = makeApp(repo.dir);
     const cookie = await exchange(app);
 
-    // An unknown unit, a negative offset, a fractional offset, one past the cap,
-    // and a duplicated param must each fall back to the default rather than 400.
-    for (const query of [
-      "unit=fortnight",
-      "offset=-1",
-      "offset=1.5",
-      "offset=999999",
-      "offset=abc",
-      "offset=1&offset=2",
-    ]) {
+    // An unknown unit, a fractional offset, and a non-numeric offset each fall back
+    // to the default rather than 400.
+    for (const query of ["unit=fortnight", "offset=1.5", "offset=abc"]) {
       const res = await get(app, `/api/v1/digest?${query}`, cookie);
       expect(res.status, query).toBe(200);
+      const json = (await res.json()) as { data: { period: { offset: number } } };
+      expect(json.data.period.offset, query).toBe(0);
     }
+
+    // A duplicated param reads the first value, as everywhere else — not a 400.
+    const duplicated = await get(app, "/api/v1/digest?offset=1&offset=2", cookie);
+    expect(duplicated.status).toBe(200);
+    const json = (await duplicated.json()) as { data: { period: { offset: number } } };
+    expect(json.data.period.offset).toBe(1);
+  });
+
+  it("clamps an out-of-range digest offset instead of silently serving the current period", async () => {
+    const repo = await setupApiRepo();
+    dir = repo.dir;
+    const { app } = makeApp(repo.dir);
+    const cookie = await exchange(app);
+
+    // Dropping the value would answer "999999 weeks ago" with *this* week.
+    const tooOld = await get(app, "/api/v1/digest?offset=999999", cookie);
+    const tooNew = await get(app, "/api/v1/digest?offset=-5", cookie);
+
+    const oldJson = (await tooOld.json()) as { data: { period: { offset: number } } };
+    const newJson = (await tooNew.json()) as { data: { period: { offset: number } } };
+    expect(oldJson.data.period.offset).toBe(520);
+    expect(newJson.data.period.offset).toBe(0);
   });
 
   it("windows a digest to a back issue", async () => {
@@ -280,10 +297,9 @@ describe("dashboard API", () => {
 
     expect(res.status).toBe(200);
     const json = (await res.json()) as {
-      data: { period: { offset: number; start: string; end: string }; hasNewer: boolean };
+      data: { period: { offset: number; start: string; end: string } };
     };
     expect(json.data.period.offset).toBe(2);
-    expect(json.data.hasNewer).toBe(true);
     expect(new Date(json.data.period.start).getTime()).toBeLessThan(
       new Date(json.data.period.end).getTime(),
     );

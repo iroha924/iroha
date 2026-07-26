@@ -199,7 +199,12 @@ describe("applyRetention", () => {
     target.execute = original;
 
     expect(outcome.status).toBe("pruned");
-    expect(outcome.pruned).toEqual({ sessions: 0, checkpoints: 0, eventLogRows: 0 });
+    expect(outcome.pruned).toEqual({
+      sessions: 0,
+      checkpoints: 0,
+      eventLogRows: 0,
+      digestIssues: 0,
+    });
     const remaining = await readRetentionStatus(db, REPO, CLOCK);
     expect(remaining.ok).toBe(true);
     if (!remaining.ok) return;

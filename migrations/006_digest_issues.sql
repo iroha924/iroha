@@ -1,9 +1,10 @@
 -- Composed Digest prose, one row per period.
 --
 -- Local index state, not canonical, and deliberately so. A Digest's headline
--- facts come from `tool_events`/`checkpoints`, which canonical.md §2 excludes
--- from canonical and `sync --rebuild` drops — so prose narrating them could not
--- be reconstructed from the committed files, and putting it in `.iroha/` would
+-- facts come from `tool_events`/`checkpoints`, which `sync --rebuild` drops and
+-- which canonical.md §2 keeps out of canonical (it excludes complete tool inputs
+-- and outputs) — so prose narrating them could not be reconstructed from the
+-- committed files, and putting it in `.iroha/` would
 -- smuggle a non-reconstructable artifact into a store whose §1 charter is that
 -- everything there is rebuildable. It also needs no approval gate: a Digest
 -- asserts no new team truth, it narrates already-recorded activity and
