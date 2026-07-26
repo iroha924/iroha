@@ -10,7 +10,7 @@ import { dispatchTool } from "./dispatch.js";
 import { TOOLS } from "./tools/index.js";
 
 export const SERVER_NAME = "iroha";
-export const SERVER_VERSION = "0.2.1";
+export const SERVER_VERSION = "0.2.2";
 
 /**
  * The server instructions. contracts/mcp.md §3 requires the first 512 characters
