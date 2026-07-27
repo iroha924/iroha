@@ -9,6 +9,17 @@ Entries are written by hand as part of the release, alongside the four version
 strings (`PLUGIN_VERSION`, the plugin `package.json`, `CLI_VERSION`, `SERVER_VERSION`)
 that `manifests.test.ts` asserts agree.
 
+## 0.3.3
+
+- The dashboard's Graph tab shows a coming-soon placeholder. The interactive work graph
+  was not good enough to look at, and shipping it in that state set the wrong expectation
+  for the rest of the dashboard. The tab and its route stay where they were, and the copy
+  says what is missing and what already works — relations are recorded and queryable, and
+  each knowledge entry lists its own on its detail page.
+- The dashboard bundle is smaller: 254 kB of JavaScript and 14 kB of CSS brotlied, down
+  from 299 kB and 16 kB, because React Flow no longer ships for a view nobody can reach.
+  The placeholder issues no relation query either.
+
 ## 0.3.2
 
 - Tool failures are recorded. `tool_events` has modelled a `failure` phase since the
