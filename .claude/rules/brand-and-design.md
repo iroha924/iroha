@@ -1,3 +1,9 @@
+---
+paths:
+  - "apps/dashboard/**"
+  - "packages/cli/src/**"
+---
+
 # iroha brand & design
 
 iroha's visual identity is **organic color** (an unbleached-cream ("kinari") base + a three-color ring). The UI avoids the "written by an AI" feel and stays warm, editorial, and restrained. **Depth comes from tone (the three layers of paper), not from shadow.**

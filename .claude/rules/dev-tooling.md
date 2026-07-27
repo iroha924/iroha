@@ -1,3 +1,21 @@
+---
+paths:
+  - "package.json"
+  - "packages/*/package.json"
+  - "apps/*/package.json"
+  - "pnpm-workspace.yaml"
+  - "knip.json"
+  - "mise.toml"
+  - ".size-limit.json"
+  - "_typos.toml"
+  - ".github/renovate.json"
+  - "commitlint.config.js"
+  - "lefthook.yml"
+  - ".markdownlint-cli2.jsonc"
+  - "scripts/**"
+  - "packages/plugin/src/build-release.ts"
+---
+
 # Local dev tooling: what each tool is for and when to reach for it
 
 The core build/verify loop is `pnpm` + `turbo` + `biome` + `vitest` + `tsdown` (documented in
@@ -167,4 +185,4 @@ the **trigger** (when to run it).
 
 - Core build/typecheck/test conventions: [[typescript-conventions]].
 - Everything under `.claude/**` is English: [[distributable-language]].
-- CI gates and the review bots: [[ci-review-bots]] and `~/.claude/rules/ci-discipline.md`.
+- CI gates and the review bots: the `pr-review-status` skill and `~/.claude/rules/ci-discipline.md`.

@@ -1,3 +1,11 @@
+---
+paths:
+  - ".github/workflows/**"
+  - ".semgrep/**"
+  - "osv-scanner.toml"
+  - ".gitleaksignore"
+---
+
 # CI security scanners: what runs, what each covers, and the overlaps
 
 iroha's CI runs several security scanners. They overlap on purpose (defense in depth), but knowing who
@@ -50,5 +58,5 @@ relying on it.
 
 ## Related
 
-- Review bots (Greptile / Codex) are a different axis from these scanners: [[ci-review-bots]].
+- Review bots (Greptile / Codex) are a different axis from these scanners: the `pr-review-status` skill.
 - Local, non-security dev tooling: [[dev-tooling]].

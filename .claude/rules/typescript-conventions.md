@@ -1,3 +1,16 @@
+---
+paths:
+  - "packages/*/src/**/*.ts"
+  - "packages/*/*.ts"
+  - "apps/*/src/**/*.ts"
+  - "apps/*/src/**/*.tsx"
+  - "apps/*/*.ts"
+  - "apps/e2e/tests/**/*.ts"
+  - "schemas/*.schema.json"
+  - "docs/contracts/compatibility.md"
+  - "biome.json"
+---
+
 # TypeScript / Zod / Node conventions (iroha)
 
 Implementation conventions specific to this repository. Not general TS practices — only the ways of writing that have actually been verified in this monorepo.
