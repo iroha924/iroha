@@ -26,7 +26,6 @@
     "ci:local": "act",
     "size": "pnpm --filter @iroha/dashboard build && size-limit",
     "format": "biome format --write .",
-    "changeset": "changeset",
     "cz": "czg",
     "deps:check": "taze -r",
     "dashboard": "pnpm build && node packages/cli/dist/bin.mjs dashboard",
@@ -37,7 +36,6 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "catalog:",
     "@biomejs/biome": "catalog:",
-    "@changesets/cli": "catalog:",
     "@commitlint/cli": "catalog:",
     "@commitlint/config-conventional": "catalog:",
     "@size-limit/file": "catalog:",
