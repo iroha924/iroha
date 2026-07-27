@@ -27,7 +27,6 @@
     // docs/install.md (linked from the README) is deliberately NOT excluded.
     "docs/architecture.md",
     "docs/contracts/**",
-    "packages/*/release/**",
-    "**/CHANGELOG.md"
+    "packages/*/release/**"
   ]
 }

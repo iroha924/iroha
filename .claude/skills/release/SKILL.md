@@ -29,9 +29,20 @@ a missed one fails CI:
 - `CLI_VERSION` in `packages/cli/src/index.ts` (the `iroha --version` string)
 - `SERVER_VERSION` in `packages/mcp/src/server.ts` (the MCP handshake version)
 
-Commit as its own PR (`chore(release): vX.Y.Z`), let CI go green, and merge.
+## 2. Write the changelog entry
 
-## 2. Local sanity check
+Add a `## X.Y.Z` section at the top of `CHANGELOG.md` describing what a user gets.
+`compatibility.md` §13 requires the version to match the changelog, and `release.yml`
+**fails the release** if the entry is missing — so this is a gate, not a courtesy.
+
+Write what changed for someone installing the package, not what the PRs were titled;
+the GitHub Release already carries the PR list via `--generate-notes`. A defect fix
+is worth a sentence on what was broken and since when, because that is what tells a
+reader whether they were affected.
+
+Commit both steps as one PR (`chore(release): vX.Y.Z`), let CI go green, and merge.
+
+## 3. Local sanity check
 
 ```bash
 pnpm check:package   # builds the release, then validates it with publint + attw
@@ -45,20 +56,20 @@ Confirm the assembled name/version and the file list look right. `check:package`
 this CLI package (see [[dev-tooling]]). Do **not** run a real `npm publish` locally — the release goes
 through the workflow so it is attested.
 
-## 3. Dry-run the Release workflow
+## 4. Dry-run the Release workflow
 
 GitHub → **Actions** → **Release** → **Run workflow**: `version: X.Y.Z`, `publish: false`.
 It builds the tarball, SHA-256 checksums, SBOM, and the GitHub build-provenance
 attestation **without publishing**; the version-consistency step fails fast if `version`
 does not match the built package. Confirm the run is green.
 
-## 4. Publish
+## 5. Publish
 
 Run the **Release** workflow again: `version: X.Y.Z`, `publish: true`. It publishes
 `@irohalabs/iroha@X.Y.Z` to npm over OIDC (trusted publishing → provenance is generated
 automatically) and creates the GitHub Release `vX.Y.Z`. No token is involved.
 
-## 5. Verify
+## 6. Verify
 
 ```bash
 # Cache-busting the registry directly (the npm CLI may cache an older 404):

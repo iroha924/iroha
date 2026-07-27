@@ -63,6 +63,15 @@ jobs:
             echo "::error::requested version $VERSION != built package version $built"
             exit 1
           fi
+          # compatibility.md §13 requires the version to match the changelog too.
+          # Checked here rather than left to the release skill: every version through
+          # 0.3.1 published without an entry, because nothing produced a changelog and
+          # nothing looked for one. Fail-closed, so a skipped entry blocks the release
+          # instead of being noticed afterwards.
+          if ! grep -qE "^## +${VERSION}( |$)" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## $VERSION' entry (compatibility.md §13)"
+            exit 1
+          fi
 
       - name: Pack the tarball
         working-directory: packages/plugin/release
