@@ -85,6 +85,12 @@ export const HOOK_EVENTS: readonly HookEventSpec[] = [
   { event: "UserPromptSubmit", timeoutSeconds: 2 },
   { event: "PreToolUse", timeoutSeconds: 1 },
   { event: "PostToolUse", timeoutSeconds: 1 },
+  // A failed tool call fires this instead of `PostToolUse`, so without it the
+  // `failure` phase `tool_events` models is never written and the Digest's
+  // stumbles section can only ever see guardrail denials. Codex has no equivalent
+  // event (contracts/hooks.md §3 has it derive failure from the PostToolUse
+  // response), so this is Claude-only until that derivation exists.
+  { event: "PostToolUseFailure", timeoutSeconds: 1, claudeOnly: true },
   { event: "PreCompact", timeoutSeconds: 1 },
   { event: "PostCompact", timeoutSeconds: 1 },
   { event: "Stop", timeoutSeconds: 2 },

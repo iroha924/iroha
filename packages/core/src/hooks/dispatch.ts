@@ -453,15 +453,40 @@ async function handleToolStarted(
   return denial === null ? noOutput : denyOutput(denial.ruleId, denial.reason);
 }
 
-/** A tool use is "meaningful" (checkpoint-worthy) when it mutates files or runs a command. */
-function isMeaningfulMutation(targets: readonly ToolTarget[]): boolean {
+/**
+ * Whether a tool use makes the Turn checkpoint-worthy, per `contracts/hooks.md`
+ * §6.6 — "a mutation tool **succeeded**" or "a build/test/migration command
+ * **ran**". The success condition belongs to the first clause only, which is why a
+ * failed `pnpm test` still qualifies: that is the turn whose unresolved work most
+ * needs recording.
+ *
+ * Every command qualifies, which is wider than §6.6's second clause and known to be
+ * so: it also fires for a read-only `curl` or `git status`, filling the record with
+ * near-empty Checkpoints. Narrowing it needs the command *category* §6.4 step 3
+ * calls for — mutation / validation / read-only, decided before arguments are
+ * discarded and with shell-aware tokenization. An attempt to approximate that from
+ * the program name alone leaked part of a credential into `target_summary` and
+ * simultaneously stopped `rm`, `git commit` and `terraform apply` from qualifying,
+ * so the approximation is not available: it is the category or nothing.
+ */
+function requiresCheckpoint(targets: readonly ToolTarget[], succeeded: boolean): boolean {
   return targets.some(
-    (t) => t.operation === "write" || t.operation === "delete" || t.kind === "command",
+    (t) =>
+      t.kind === "command" || (succeeded && (t.operation === "write" || t.operation === "delete")),
   );
 }
 
-async function handleToolCompleted(
-  event: EventOf<"TOOL_COMPLETED">,
+/**
+ * Records the settled outcome of a tool call, success or failure.
+ *
+ * The two conditions §6.6 states are not symmetric, and conflating them loses the
+ * case that matters most: a *mutation* qualifies only when it succeeded, but a
+ * build/test/migration command qualifies because it **ran**. A failed `pnpm test`
+ * is precisely the turn whose unresolved work needs recording, so gating the whole
+ * check on success would drop it.
+ */
+async function handleToolSettled(
+  event: EventOf<"TOOL_COMPLETED"> | EventOf<"TOOL_FAILED">,
   ctx: HookDispatchContext,
 ): Promise<HookOutput> {
   const sessionId = await resolveSessionId(ctx, event.platform, event.platformSessionId);
@@ -472,6 +497,7 @@ async function handleToolCompleted(
   if (turn === null) {
     return noOutput;
   }
+  const succeeded = event.kind === "TOOL_COMPLETED";
   const targets = await resolveTargets(event.payload.targets, ctx.repo.gitLocation.root, ctx.cwd);
   const primary = targets[0];
   await insertToolEvent(ctx.db, {
@@ -481,19 +507,19 @@ async function handleToolCompleted(
       ? {}
       : { externalToolUseId: event.payload.toolUseId }),
     toolName: event.payload.toolName,
-    phase: "post",
+    phase: succeeded ? "post" : "failure",
     ...(primary === undefined ? {} : { targetKind: primary.kind as ToolEventTargetKind }),
     ...(primary === undefined ? {} : { targetSummary: primary.value }),
     ...(event.payload.inputDigest === undefined ? {} : { inputDigest: event.payload.inputDigest }),
     ...(event.payload.responseDigest === undefined
       ? {}
       : { responseDigest: event.payload.responseDigest }),
-    status: "succeeded",
+    status: succeeded ? "succeeded" : "failed",
     ...(event.payload.durationMs === undefined ? {} : { durationMs: event.payload.durationMs }),
     occurredAt: event.occurredAt,
   });
 
-  if (isMeaningfulMutation(targets) && turn.checkpointState === "not_required") {
+  if (turn.checkpointState === "not_required" && requiresCheckpoint(targets, succeeded)) {
     await updateTurnCheckpointState(ctx.db, turn.id, "pending");
   }
   return noOutput;
@@ -602,7 +628,8 @@ export async function dispatchHookEvent(
     case "TOOL_STARTED":
       return handleToolStarted(event, ctx);
     case "TOOL_COMPLETED":
-      return handleToolCompleted(event, ctx);
+    case "TOOL_FAILED":
+      return handleToolSettled(event, ctx);
     case "TURN_STOPPED":
       return handleStop(event, ctx);
     case "SESSION_ENDED":

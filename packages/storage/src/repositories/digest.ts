@@ -427,13 +427,16 @@ export async function pruneDigestIssues(
  * Pending `review_learning` Candidates — the Digest's "you might be missing a
  * Rule" signal.
  *
- * This is deliberately a count of what `detectReviewLearnings` already found,
- * not a second pass over `review_comments`. That detector runs the recurrence
- * grouping on every Forge sync and files a Candidate for each recurrence it
- * judges durable; re-deriving the same recurrence here would be a parallel
+ * Counts the Candidates rather than re-deriving anything: `detectReviewLearnings`
+ * runs the recurrence grouping on every Forge sync and files a Candidate for each
+ * recurrence it judges durable, and re-deriving that here would be a parallel
  * implementation free to disagree with the queue the human actually reviews.
- * Reading the Candidates instead means the Digest reports exactly what iroha
- * detected.
+ *
+ * Forge is not the only producer. `create_checkpoint` also proposes candidates of
+ * this type, so the count is every pending review lesson, however it was found —
+ * which is what the "you might be missing a Rule" signal means. Do not describe it
+ * as recurrences only; measured on a repository with Forge disabled, all of them
+ * came from Checkpoints.
  *
  * Local, not team: `review_comments` are synced per clone and depend on who ran
  * `iroha sync`, so this number is not identical across teammates.

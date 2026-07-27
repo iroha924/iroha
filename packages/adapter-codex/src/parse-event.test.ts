@@ -280,7 +280,7 @@ describe("parseCodexEvent — apply_patch and Bash targets", () => {
     });
   });
 
-  it("never leaks an env-assignment secret through the command target", () => {
+  it("collapses an env-assignment prefix to the generic label (never leaks the secret)", () => {
     const { ctx } = makeFakeCtx();
     const event = unwrap(
       parseCodexEvent(

@@ -215,6 +215,42 @@ describe("runHook", () => {
     expect(secondStop.stdout).toBeUndefined();
   });
 
+  // §6.6 conditions a Checkpoint on success for a *mutation tool* only; a
+  // build/test/migration command qualifies because it **ran**. Gating both on
+  // success dropped exactly the turn worth recording — a failed validation and the
+  // unresolved work behind it.
+  it("requests a checkpoint after a validation command that failed", async () => {
+    repoDir = await initedRepo();
+    await hook(repoDir, "claude_code", {
+      session_id: "s1",
+      hook_event_name: "SessionStart",
+      source: "startup",
+    });
+    await hook(repoDir, "claude_code", {
+      session_id: "s1",
+      hook_event_name: "UserPromptSubmit",
+      prompt: "run the tests",
+      prompt_id: "p1",
+    });
+    await hook(repoDir, "claude_code", {
+      session_id: "s1",
+      hook_event_name: "PostToolUseFailure",
+      tool_name: "Bash",
+      tool_input: { command: "pnpm test" },
+      tool_use_id: "t1",
+    });
+
+    const stop = await hook(repoDir, "claude_code", {
+      session_id: "s1",
+      hook_event_name: "Stop",
+      stop_hook_active: false,
+    });
+    expect(parse(stop.stdout)).toStrictEqual({
+      decision: "block",
+      reason: expect.stringContaining("create_checkpoint"),
+    });
+  });
+
   it("does not request a checkpoint at Stop when the turn made no meaningful change", async () => {
     repoDir = await initedRepo();
     await hook(repoDir, "claude_code", {

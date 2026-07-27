@@ -128,7 +128,7 @@ describe("parseClaudeEvent — tool events and target extraction", () => {
     expect(event?.kind === "TOOL_STARTED" && event.payload.targets[0]?.value).toBe("pnpm");
   });
 
-  it("never leaks an env-assignment secret through the command target", () => {
+  it("collapses an env-assignment prefix to the generic label (never leaks the secret)", () => {
     const { ctx } = makeFakeCtx();
     const event = unwrap(
       parseClaudeEvent(
@@ -183,6 +183,76 @@ describe("parseClaudeEvent — tool events and target extraction", () => {
     expect(event).toMatchObject({
       payload: { targets: [{ kind: "mcp", value: "mcp__iroha__search", operation: "unknown" }] },
     });
+  });
+
+  // Without this mapping the `failure` phase that `tool_events` models is never
+  // written, so the Digest's stumbles section can only ever see guardrail denials —
+  // a repository with no guardrails configured shows an empty section however many
+  // tools actually failed.
+  it("maps PostToolUseFailure to TOOL_FAILED", () => {
+    const { ctx } = makeFakeCtx();
+    const event = unwrap(
+      parseClaudeEvent(
+        {
+          ...common,
+          hook_event_name: "PostToolUseFailure",
+          tool_name: "Bash",
+          tool_input: { command: "pnpm test" },
+          tool_use_id: "toolu_2",
+          duration_ms: 17,
+        },
+        ctx,
+      ),
+    );
+    expect(event).toMatchObject({
+      kind: "TOOL_FAILED",
+      payload: {
+        toolName: "Bash",
+        toolUseId: "toolu_2",
+        phase: "failure",
+        status: "failed",
+        durationMs: 17,
+      },
+    });
+  });
+
+  it("carries no response digest for a failure, since no response exists", () => {
+    const { ctx } = makeFakeCtx();
+    const event = unwrap(
+      parseClaudeEvent(
+        {
+          ...common,
+          hook_event_name: "PostToolUseFailure",
+          tool_name: "Edit",
+          tool_input: { file_path: "src/x.ts" },
+        },
+        ctx,
+      ),
+    );
+    expect(event).toMatchObject({ kind: "TOOL_FAILED" });
+    expect(
+      (event as { payload: { responseDigest?: string } }).payload.responseDigest,
+    ).toBeUndefined();
+  });
+
+  // The published docs do not spell out a complete PostToolUseFailure schema, so
+  // the raw shapes stay non-strict: an unknown field Claude adds later must not
+  // turn a recordable failure into a parse error.
+  it("ignores an undocumented field rather than rejecting the event", () => {
+    const { ctx } = makeFakeCtx();
+    const event = unwrap(
+      parseClaudeEvent(
+        {
+          ...common,
+          hook_event_name: "PostToolUseFailure",
+          tool_name: "Bash",
+          tool_input: { command: "false" },
+          error_message: "exit status 1",
+        },
+        ctx,
+      ),
+    );
+    expect(event).toMatchObject({ kind: "TOOL_FAILED" });
   });
 
   it("maps PostToolUse to TOOL_COMPLETED with a response digest and duration", () => {

@@ -140,6 +140,8 @@ const ja: Dict = {
   "graph.empty": "エンティティを 1 つ以上選んでグラフを表示します。",
   "graph.list": "隣接一覧（グラフの代替表示）",
   "nav.digest": "ダイジェスト",
+  "nav.primaryLabel": "メイン",
+  "nav.secondaryLabel": "設定と診断",
   "digest.title": "iroha ダイジェスト",
   "digest.periodWeek": "{date} の週",
   "digest.newer": "次の号",
@@ -167,9 +169,9 @@ const ja: Dict = {
   "digest.adequacy.invalid": "spec が不正",
   "digest.adequacyHint":
     "パスを持たない Guardrail は hook では強制できません（CI が強制層です）。spec が不正なものは読み飛ばされます。どちらも「エージェントがルールを破った」と同じくらい重要な情報です。",
-  "digest.pendingLearnings": "承認待ちの繰り返しレビュー指摘",
+  "digest.pendingLearnings": "承認待ちのレビュー学習",
   "digest.pendingLearningsHint":
-    "「ルールが足りていないかもしれない」というヒント。ローカルの Forge 同期由来なので、メンバー間で数値が異なることがあります。",
+    "「ルールが足りていないかもしれない」というヒント。Forge が検出した繰り返し指摘と、エージェントが Checkpoint から提案した学習の両方を含みます。どちらもローカルなので、メンバー間で数値が異なることがあります。",
   "digest.clusters": "拒否が集中した場所",
   "digest.noDenials": "Guardrail による拒否はありませんでした。",
   "digest.noTeamActivity": "この期間に承認されたナレッジはありません。",
@@ -327,6 +329,8 @@ const en: Dict = {
   "graph.empty": "Select one or more entities and load the graph.",
   "graph.list": "Neighbor list (accessible alternative)",
   "nav.digest": "Digest",
+  "nav.primaryLabel": "Main",
+  "nav.secondaryLabel": "Settings and diagnostics",
   "digest.title": "The iroha Digest",
   "digest.periodWeek": "Week of {date}",
   "digest.newer": "Newer issue",
@@ -356,9 +360,9 @@ const en: Dict = {
   "digest.adequacy.invalid": "Malformed spec",
   "digest.adequacyHint":
     "A Guardrail that names no paths cannot be enforced at the hook (CI is the enforcement layer), and a malformed spec is skipped. Either one is as much the story as the agent breaking a rule.",
-  "digest.pendingLearnings": "Recurring review lessons awaiting approval",
+  "digest.pendingLearnings": "Review lessons awaiting approval",
   "digest.pendingLearningsHint":
-    "The “you might be missing a rule” hint. It derives from your local Forge sync, so teammates can legitimately see different numbers.",
+    "The “you might be missing a rule” hint. Counts both recurrences Forge detected and lessons an agent proposed from a Checkpoint. Both are local, so teammates can legitimately see different numbers.",
   "digest.clusters": "Where denials clustered",
   "digest.noDenials": "No Guardrail denied anything this period.",
   "digest.noTeamActivity": "No knowledge was approved this period.",
