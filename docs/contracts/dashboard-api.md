@@ -306,6 +306,8 @@ Issue -> Session -> Commit/PR -> Review -> Knowledge
 
 React Flow renders up to 200 nodes per query (the §5 graph cap). Larger graphs use server-side expansion and explicit “load neighbors”. Color encodes entity type, not person performance.
 
+The view described here is built (`apps/dashboard/src/pages/Graph.tsx`) but not good enough to show, so `/graph` renders a coming-soon placeholder instead and issues no relation query. The §5 graph endpoints stay live; knowledge detail is where relations are visible meanwhile.
+
 ## 7. Local refresh behavior
 
 Realtime cross-device synchronization is out of scope. Within one dashboard:

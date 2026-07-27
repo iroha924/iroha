@@ -139,6 +139,10 @@ const ja: Dict = {
   "graph.pathNotFound": "2 つのエンティティ間に経路は見つかりませんでした。",
   "graph.empty": "エンティティを 1 つ以上選んでグラフを表示します。",
   "graph.list": "隣接一覧（グラフの代替表示）",
+  "graph.comingSoon": "近日公開",
+  "graph.parked": "ワークグラフは開発中です。",
+  "graph.parkedDetail":
+    "データ側はすでに動いています。関係は記録・クエリ可能で、ナレッジの詳細ページにはそのエンティティの関係が並びます。インタラクティブな表示は、この一覧より読みやすく仕上がった時点でここに入ります。",
   "nav.digest": "ダイジェスト",
   "nav.primaryLabel": "メイン",
   "nav.secondaryLabel": "設定と診断",
@@ -328,6 +332,10 @@ const en: Dict = {
   "graph.pathNotFound": "No path found between the two entities.",
   "graph.empty": "Select one or more entities and load the graph.",
   "graph.list": "Neighbor list (accessible alternative)",
+  "graph.comingSoon": "Coming soon",
+  "graph.parked": "The work graph is still in development.",
+  "graph.parkedDetail":
+    "The data side already works: relations are recorded and queryable, and each knowledge entry lists its own on its detail page. The interactive view lands here once it reads better than that list.",
   "nav.digest": "Digest",
   "nav.primaryLabel": "Main",
   "nav.secondaryLabel": "Settings and diagnostics",
