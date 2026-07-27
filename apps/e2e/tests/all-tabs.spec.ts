@@ -145,6 +145,19 @@ test.afterAll(async () => {
   }
 });
 
+/**
+ * Waits for the view to finish loading, not for the network to fall idle.
+ *
+ * `waitForLoadState("networkidle")` resolves before a query triggered by a
+ * component mount has settled, so a one-shot `innerText()` right after it reads
+ * "Loading" — which is what made this spec flaky, and what made the flake look like
+ * a stale build. The `Loading` component carries `.iroha-loading`, so waiting for it
+ * to detach is the honest signal. Playwright's own guidance is to avoid networkidle.
+ */
+async function settled(page: Page): Promise<void> {
+  await expect(page.locator(".iroha-loading")).toHaveCount(0);
+}
+
 /** Collects everything a broken page reports, so a failure names the cause. */
 function watch(page: Page): { problems: string[] } {
   const problems: string[] = [];
@@ -157,7 +170,14 @@ function watch(page: Page): { problems: string[] } {
     problems.push(`pageerror: ${error.message}`);
   });
   page.on("requestfailed", (request) => {
-    problems.push(`requestfailed: ${request.url()} ${request.failure()?.errorText ?? ""}`);
+    // Navigating away legitimately cancels an in-flight fetch, and this spec walks
+    // nine routes in a row — `ERR_ABORTED` here is the browser doing its job, not
+    // the app failing. Every other failure reason is still a problem.
+    const reason = request.failure()?.errorText ?? "";
+    if (reason.includes("ERR_ABORTED")) {
+      return;
+    }
+    problems.push(`requestfailed: ${request.url()} ${reason}`);
   });
   page.on("response", (response) => {
     if (response.url().includes("/api/") && response.status() >= 400) {
@@ -171,9 +191,8 @@ test("every tab renders against the real API with no errors", async ({ page }) =
   const { problems } = watch(page);
 
   await page.goto(launchUrl);
-  // The chrome only mounts once bootstrap resolves, so settle first: asserting a
-  // count and then re-querying races the app's own re-render.
-  await page.waitForLoadState("networkidle");
+  // The chrome only mounts once bootstrap resolves.
+  await settled(page);
 
   // Two landmarks in one header. An unlabelled second one is announced as another
   // bare "navigation", with nothing to tell a screen-reader user them apart.
@@ -189,9 +208,7 @@ test("every tab renders against the real API with no errors", async ({ page }) =
   // anything. Navigate by path and let the cookie carry the session.
   for (const tab of TABS) {
     await page.goto(`${origin}${tab.path}`);
-    // The app is a hash-free SPA served from one origin; wait for the network to
-    // settle so a fetch that 500s is attributed to this tab and not the next one.
-    await page.waitForLoadState("networkidle");
+    await settled(page);
 
     const main = page.locator("main");
     await expect(main, `${tab.nav} rendered no main region`).toBeVisible();
@@ -217,18 +234,21 @@ test("every tab renders against the real API with no errors", async ({ page }) =
   // Kept in this test rather than its own: Playwright gives each test a fresh
   // context, and the session cookie lives in the context, not the server.
   await page.goto(`${origin}/review`);
-  await page.waitForLoadState("networkidle");
+  await settled(page);
 
   const row = page.getByRole("link", { name: /Prefer parameterized SQL/ });
   await expect(row, "the seeded candidate is not linked from the review queue").toBeVisible();
   await row.click();
-  await page.waitForLoadState("networkidle");
+  await settled(page);
 
   await expect(page).toHaveURL(/\/review\/cand_/);
   await expect(page.locator("h1")).toHaveCount(1);
-  const detail = (await page.locator("main").innerText()).trim();
-  expect(detail).toContain("Prefer parameterized SQL");
-  expect(detail, "detail rendered a raw error boundary").not.toContain("Something went wrong");
+  // Web-first and auto-retrying: the loading state also renders exactly one h1, so
+  // the count above is not on its own a gate on the content having arrived.
+  await expect(page.locator("main")).toContainText("Prefer parameterized SQL");
+  await expect(page.locator("main"), "detail rendered a raw error boundary").not.toContainText(
+    "Something went wrong",
+  );
 
   expect(problems, `problems across tabs:\n${problems.join("\n")}`).toEqual([]);
 });
