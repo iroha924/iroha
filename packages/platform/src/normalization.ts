@@ -20,6 +20,20 @@ export interface ToolTarget {
 }
 
 /**
+ * Drops a leading `cd <dir>;` or `cd <dir> &&`, which describes navigation rather
+ * than work. Agents prefix most commands with one, so without this the record is a
+ * wall of identical `cd` labels — 22 of them in one measured Turn, saying nothing
+ * about what ran.
+ *
+ * The directory is matched only when it is a single token free of separators and
+ * quotes, so a path containing either simply does not match and the label stays
+ * `cd`: the same value as before, never a fragment of the path.
+ */
+function withoutLeadingChdir(command: string): string {
+  return command.replace(/^cd\s+[^\s;&|'"]+\s*(?:;|&&)\s*/, "");
+}
+
+/**
  * A safe, bounded classification of a shell command for a `command` tool target.
  * The full command is only ever kept as a digest; this value must never carry a
  * secret or an absolute path (contracts/hooks.md §8/§10). Shared by both adapters
@@ -33,7 +47,7 @@ export interface ToolTarget {
  * as the tool event's `inputDigest`.
  */
 export function classifyCommandTarget(command: string): string {
-  const leading = command.trim().split(/\s+/)[0] ?? "";
+  const leading = withoutLeadingChdir(command.trim()).split(/\s+/)[0] ?? "";
   // An env-assignment prefix (`VAR=value`) is never a program name — collapse it
   // *before* any path handling, because the assigned value can itself contain a
   // `/` whose tail would otherwise pass the bare-name check and leak.
