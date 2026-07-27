@@ -1,8 +1,7 @@
 ---
 paths:
   - "apps/dashboard/**"
-  - "packages/cli/src/render.ts"
-  - "packages/cli/src/commands/**"
+  - "packages/cli/src/**"
 ---
 
 # iroha brand & design

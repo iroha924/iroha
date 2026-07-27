@@ -13,6 +13,7 @@ paths:
   - "lefthook.yml"
   - ".markdownlint-cli2.jsonc"
   - "scripts/**"
+  - "packages/plugin/src/build-release.ts"
 ---
 
 # Local dev tooling: what each tool is for and when to reach for it

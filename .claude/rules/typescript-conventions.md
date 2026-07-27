@@ -6,6 +6,9 @@ paths:
   - "apps/*/src/**/*.tsx"
   - "apps/*/*.ts"
   - "apps/e2e/tests/**/*.ts"
+  - "schemas/*.schema.json"
+  - "docs/contracts/compatibility.md"
+  - "biome.json"
 ---
 
 # TypeScript / Zod / Node conventions (iroha)

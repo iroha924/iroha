@@ -20,9 +20,10 @@ Codex appears in **no GitHub status check** (the official docs position it as se
 # Reaction state: eyes = reviewing, +1 = done/clean
 gh api repos/iroha924/iroha/issues/<PR>/reactions \
   --jq '.[] | select(.user.login=="chatgpt-codex-connector[bot]") | .content'
-# The posted review, if any
+# The posted review, including its summary body — `/comments` returns only the
+# inline threads, so dropping `body` here loses the verdict-level guidance entirely
 gh api repos/iroha924/iroha/pulls/<PR>/reviews \
-  --jq '.[] | select(.user.login=="chatgpt-codex-connector[bot]") | {state, submitted_at}'
+  --jq '.[] | select(.user.login=="chatgpt-codex-connector[bot]") | {state, submitted_at, body}'
 # The findings themselves
 gh api repos/iroha924/iroha/pulls/<PR>/comments --jq '.[] | {user: .user.login, path, line, body}'
 ```
