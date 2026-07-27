@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import { CheckpointDetail } from "@/pages/CheckpointDetail.js";
 import { Digest } from "@/pages/Digest.js";
 import { Doctor } from "@/pages/Doctor.js";
-import { Graph } from "@/pages/Graph.js";
+import { GraphComingSoon } from "@/pages/GraphComingSoon.js";
 import { KnowledgeDetail } from "@/pages/KnowledgeDetail.js";
 import { KnowledgeList } from "@/pages/KnowledgeList.js";
 import { Overview } from "@/pages/Overview.js";
@@ -142,7 +142,7 @@ export function App() {
           <Route path="/review/:id" element={<ReviewDetail />} />
           <Route path="/knowledge" element={<KnowledgeList />} />
           <Route path="/knowledge/:id" element={<KnowledgeDetail />} />
-          <Route path="/graph" element={<Graph />} />
+          <Route path="/graph" element={<GraphComingSoon />} />
           <Route path="/search" element={<Search />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/doctor" element={<Doctor />} />
