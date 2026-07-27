@@ -151,7 +151,7 @@ iroha の開発に使っている技術を「何か / iroha での役割 / い�
 | **typos**（CI 専用） | タイポ検査。ツール名がタイポに見えるもの（`sherif`→sheriff 等）は `_typos.toml` に許可登録 | docs-lint job。ローカル未導入 |
 | **mdast-util-from-markdown** | 構造化 Markdown の正しいパース（naive な `#` 正規表現はコードフェンス内を誤検出する） | canonical 文書等の Markdown 検証 |
 
-## 15. CI レビューボット（`.claude/rules/ci-review-bots.md`）
+## 15. CI レビューボット（`.claude/skills/pr-review-status/`）
 
 | ボット | 観測方法 | トリガー |
 |---|---|---|

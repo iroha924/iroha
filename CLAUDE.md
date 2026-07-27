@@ -72,6 +72,11 @@ pnpm test:package
 
 Do not claim a command passed unless it was executed. Record skipped verification and the reason in the final response and in the Checkpoint fixture when applicable.
 
+After pushing to a pull request, a green `gh pr checks` is not the whole verdict: the Codex reviewer
+appears in no status check at all. Run the `pr-review-status` skill before reporting the work as
+done — it also decides whether a re-review is worth its rate limit, and how to reply without
+accidentally opening a cloud chat.
+
 ## Decision rule
 
 If a specification leaves a detail open:
@@ -100,12 +105,13 @@ A work package is complete only when:
 Packages doing subprocess execution, credential/secret handling, or path/symlink validation
 (`packages/git` and similar) have dedicated rules:
 
-- `.claude/rules/typescript-conventions.md` — always-loaded (no `paths` scope) — module resolution, `Result<T,E>` error handling, Zod 4 patterns, test/build conventions.
-- `.claude/rules/secure-subprocess-and-credentials.md` — path-scoped (`packages/*/src/**/*.ts`), auto-loads when Claude reads a matching file — env var allowlisting, never putting raw values in errors, locale-independent stderr parsing.
-- `.claude/rules/path-and-symlink-safety.md` — path-scoped (`packages/*/src/**/*.ts`), auto-loads when Claude reads a matching file — the `..`-before-symlink-resolution invariant and how to avoid re-breaking it.
+- `.claude/rules/typescript-conventions.md` — module resolution, `Result<T,E>` error handling, Zod 4 patterns, test/build conventions.
+- `.claude/rules/secure-subprocess-and-credentials.md` — env var allowlisting, never putting raw values in errors, locale-independent stderr parsing.
+- `.claude/rules/path-and-symlink-safety.md` — the `..`-before-symlink-resolution invariant and how to avoid re-breaking it.
 
-Those two path-scoped rules carry the thinking that must precede such a change; they auto-load
-when you open a matching file, so there is nothing to invoke.
+All three are path-scoped to the source they govern and auto-load when you open a matching file, so
+there is nothing to invoke. Every rule under `.claude/rules/` works this way except the few that must
+apply before any file is open — they carry no `paths` and are always loaded.
 
 To review a change, run the `iroha-review` skill (`.claude/skills/iroha-review/`) — the repository's
 single review pipeline. It runs the deterministic gate, then launches fresh-context reviewers in
