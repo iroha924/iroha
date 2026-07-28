@@ -40,6 +40,27 @@ describe("candidate read", () => {
     expect(result.value.items[0]?.type).toBe("decision");
   });
 
+  it("reports the full pending total, not the page size", async () => {
+    repo = await setupMcpRepo(random);
+    for (let i = 0; i < 3; i += 1) {
+      await seedCandidate(
+        repo.dbPath,
+        repo.repositoryId,
+        "decision",
+        decisionDraft(),
+        clock,
+        random,
+      );
+    }
+
+    const result = await listCandidateQueue({ cwd: repo.repoDir, clock, random, limit: 2 });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.items).toHaveLength(2);
+    expect(result.value.total).toBe(3);
+    expect(result.value.nextCursor).not.toBeNull();
+  });
+
   it("reports a valid draft as approvable with a canonical preview", async () => {
     repo = await setupMcpRepo(random);
     const { candidateId } = await seedCandidate(

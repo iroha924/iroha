@@ -25,6 +25,7 @@ import {
   listDashboardSessions,
   listDiagnosticsEvents,
   listKnowledge,
+  listRepositoryPeople,
   mcpSearch,
   proposalSchema,
   type RandomSource,
@@ -482,6 +483,19 @@ export function createApp(config: AppConfig) {
       responses: RESPONSES,
     }),
     (c) => respond(c, getOverview(useCaseCtx)),
+  );
+
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/v1/people",
+      tags: ["review"],
+      summary: "People an approval can be credited to",
+      description:
+        "Commit author names from this repository's recent Git history, alphabetical and excluding forge bots, plus `self` — the local `user.name` — for prefilling the reviewer field. Names carry no activity counts: this identifies people, it does not rank them. An empty list is a valid answer (a repository with no commits), and the reviewer field accepts a name that is not listed.",
+      responses: RESPONSES,
+    }),
+    (c) => respond(c, listRepositoryPeople(useCaseCtx)),
   );
 
   app.openapi(

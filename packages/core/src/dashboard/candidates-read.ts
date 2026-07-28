@@ -8,7 +8,12 @@ import type {
   TypedId,
 } from "@iroha/domain";
 import { err, IrohaError as IrohaErrorClass, ok, parseTypedId } from "@iroha/domain";
-import { type CandidateType, getCandidateById, listCandidatesPage } from "@iroha/storage";
+import {
+  type CandidateType,
+  countCandidates,
+  getCandidateById,
+  listCandidatesPage,
+} from "@iroha/storage";
 import { buildCanonicalDocumentFromCandidate, type CandidateDraft } from "./build-canonical.js";
 import { decodeCursor, encodeCursor, resolvePageSize } from "./cursor.js";
 import { withDashboardRepository } from "./with-repository.js";
@@ -30,6 +35,8 @@ export interface CandidateQueueItem {
 export interface CandidateQueuePage {
   items: CandidateQueueItem[];
   nextCursor: string | null;
+  /** Candidates at this status, for rendering numbered pages. */
+  total: number;
 }
 
 export interface ListCandidateQueueInput {
@@ -65,15 +72,21 @@ export async function listCandidateQueue(
   return withDashboardRepository(
     { cwd: input.cwd, clock: input.clock, random: input.random },
     async (ctx) => {
-      const rows = await listCandidatesPage(ctx.db, ctx.repo.repositoryId, {
-        status,
-        limit: pageSize + 1,
-        ...(beforeCreatedAt !== undefined && beforeId !== undefined
-          ? { beforeCreatedAt, beforeId }
-          : {}),
-      });
+      const [rows, total] = await Promise.all([
+        listCandidatesPage(ctx.db, ctx.repo.repositoryId, {
+          status,
+          limit: pageSize + 1,
+          ...(beforeCreatedAt !== undefined && beforeId !== undefined
+            ? { beforeCreatedAt, beforeId }
+            : {}),
+        }),
+        countCandidates(ctx.db, ctx.repo.repositoryId, status),
+      ]);
       if (!rows.ok) {
         return rows;
+      }
+      if (!total.ok) {
+        return total;
       }
       const page = rows.value.slice(0, pageSize);
       const last = page.at(-1);
@@ -94,7 +107,7 @@ export async function listCandidateQueue(
           revisionToken: row.revisionToken,
         };
       });
-      return ok({ items, nextCursor });
+      return ok({ items, nextCursor, total: total.value });
     },
   );
 }

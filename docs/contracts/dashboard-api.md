@@ -155,8 +155,13 @@ Raw prompt, transcript, assistant message, and full tool payload endpoints do no
 | `POST` | `/api/v1/candidates/:id/approve` | human approval + canonical publish |
 | `POST` | `/api/v1/candidates/:id/reject` | reject with optional reason |
 | `POST` | `/api/v1/candidates/:id/supersede` | replace pending/approved candidate relation |
+| `GET` | `/api/v1/people` | names an approval can be credited to |
 
 `GET /api/v1/candidates` query parameters: `cursor`, `limit`, `status` (`pending`|`approved`|`rejected`|`superseded`, default `pending`).
+
+Alongside the §4 cursor fields, the candidate list returns `total`: how many candidates exist at the requested `status`. The cursor stays opaque — `total` exists so the queue can render numbered pages, which a keyset cursor alone cannot express, and it is deliberately not an `offset` parameter.
+
+`GET /api/v1/people` returns `{ "names": [...], "self": "..." | null }`. `names` are distinct commit author names from recent Git history, sorted alphabetically, with forge bot accounts (`...[bot]`) removed; `self` is the local `git config user.name`, for prefilling the reviewer field. The source is Git rather than the `actors` table, which only the Forge sync writes and which carries no repository scope. Names never carry activity counts and are never ordered by contribution — this identifies people, it does not rank them. An empty `names` and a `null` `self` are both valid, and the reviewer field still accepts a name that is not on the list.
 
 Candidate reads return `revisionToken`. PATCH/approve/reject/supersede require the same token. A mismatch returns HTTP 409 `CONFLICT` with no automatic merge.
 

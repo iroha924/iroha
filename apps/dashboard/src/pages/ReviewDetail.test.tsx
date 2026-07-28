@@ -75,6 +75,65 @@ describe("ReviewDetail", () => {
     });
   });
 
+  it("prefills the reviewer from the local Git identity", async () => {
+    mockApi({
+      "GET /api/v1/candidates/cand_x": ok(candidate()),
+      "GET /api/v1/people": ok({ names: ["alice", "iroha924"], self: "iroha924" }),
+    });
+    renderDetail();
+
+    await waitFor(() => expect(screen.getByLabelText("Reviewer name")).toHaveValue("iroha924"));
+    expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
+  });
+
+  it("narrows the picker to names matching what was typed", async () => {
+    mockApi({
+      "GET /api/v1/candidates/cand_x": ok(candidate()),
+      "GET /api/v1/people": ok({ names: ["alice", "bob", "iroha924"], self: null }),
+    });
+    renderDetail();
+
+    const field = await screen.findByLabelText("Reviewer name");
+    await userEvent.click(field);
+    await userEvent.keyboard("iro");
+
+    await userEvent.click(screen.getByRole("combobox", { name: "Pick from list" }));
+    expect(await screen.findByRole("option", { name: "iroha924" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "alice" })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("option", { name: "iroha924" }));
+    await waitFor(() => expect(field).toHaveValue("iroha924"));
+  });
+
+  it("still approves under a name Git has never seen", async () => {
+    const fetchMock = mockApi({
+      "GET /api/v1/candidates/cand_x": ok(candidate()),
+      "GET /api/v1/people": ok({ names: ["alice"], self: null }),
+      "POST /api/v1/candidates/cand_x/approve": ok({
+        candidateId: "cand_x",
+        entityId: "dec_x",
+        canonicalPath: "decisions/dec_x.md",
+        type: "decision",
+        revision: 1,
+      }),
+    });
+    renderDetail();
+
+    await userEvent.click(await screen.findByLabelText("Reviewer name"));
+    await userEvent.keyboard("someone-new");
+
+    const approve = screen.getByRole("button", { name: "Approve" });
+    expect(approve).toBeEnabled();
+    await userEvent.click(approve);
+
+    await waitFor(() => {
+      const body = fetchMock.mock.calls.find((c) => String(c[0]).includes("/approve"))?.[1] as
+        | RequestInit
+        | undefined;
+      expect(String(body?.body)).toContain("someone-new");
+    });
+  });
+
   it("blocks approval and warns when a secret is detected", async () => {
     mockApi({
       "GET /api/v1/candidates/cand_x": ok(

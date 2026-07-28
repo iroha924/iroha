@@ -409,6 +409,28 @@ export async function listCandidatesPage(
   }
 }
 
+/**
+ * How many candidates the queue holds at `status`, so the Review page can show
+ * numbered pages. Kept separate from `listCandidatesPage` rather than folded
+ * in as a window function: the page query is a keyset read whose `LIMIT`
+ * deliberately never sees the rest of the set.
+ */
+export async function countCandidates(
+  db: Executor,
+  repositoryId: TypedId<"repo">,
+  status: CandidateStatus,
+): Promise<Result<number, IrohaError>> {
+  try {
+    const result = await db.execute({
+      sql: "SELECT COUNT(*) AS c FROM candidates WHERE repository_id = ? AND status = ?",
+      args: [repositoryId, status],
+    });
+    return ok(Number(result.rows[0]?.c ?? 0));
+  } catch (cause) {
+    return err(mapLibsqlError(cause, "Failed to count candidates"));
+  }
+}
+
 export interface UpdateCandidateStatusInput {
   from: CandidateStatus;
   to: CandidateStatus;

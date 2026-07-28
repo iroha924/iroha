@@ -189,10 +189,24 @@ test("approve a fixture candidate, write canonical, and read it as approved know
   await page.getByRole("link", { name: DECISION_TITLE }).click();
   await expect(page).toHaveURL(/\/review\/[^/]+$/);
 
-  // Approval is gated on a reviewer name; the button is disabled until it is set.
+  // The reviewer field arrives prefilled from the repository's Git identity, so
+  // approval is already unblocked. Clearing it re-asserts the gate: the name is
+  // what lands in the canonical `approved_by`, and it may not be empty.
   const approveButton = page.getByRole("button", { name: "Approve" });
+  const reviewerField = page.getByLabel("Reviewer name");
+  await expect(reviewerField).not.toHaveValue("");
+  await reviewerField.fill("");
   await expect(approveButton).toBeDisabled();
-  await page.getByLabel("Reviewer name").fill("E2E Reviewer");
+
+  // Open the people picker so its popup actually mounts: an overlay that
+  // injects a runtime <style> is refused by `style-src 'self'`, and nothing but
+  // this journey's CSP collector would notice.
+  await page.getByRole("combobox", { name: "Pick from list" }).click();
+  await expect(page.getByRole("option", { name: "iroha e2e" })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  // A name Git has never seen is still accepted: the field stays free text.
+  await reviewerField.fill("E2E Reviewer");
   await expect(approveButton).toBeEnabled();
   await approveButton.click();
 
