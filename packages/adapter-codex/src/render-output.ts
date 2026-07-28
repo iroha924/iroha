@@ -12,6 +12,15 @@ function contextEventName(kind: NormalizedEvent["kind"]): string | undefined {
       return "SessionStart";
     case "PROMPT_SUBMITTED":
       return "UserPromptSubmit";
+    // §6.6's suggestion path. Verified against the official docs for Claude
+    // Code, which documents `additionalContext` on Stop; mirrored here on the
+    // same key names this adapter already shares, but **not** verified against
+    // Codex's own documentation. If Codex ignores the field the suggestion is
+    // simply not delivered, which is the same outcome as omitting the case —
+    // so mirroring costs nothing and omitting would leave a command-only Turn
+    // with neither a block nor a reminder.
+    case "TURN_STOPPED":
+      return "Stop";
     default:
       return undefined;
   }

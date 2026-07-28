@@ -251,6 +251,153 @@ describe("runHook", () => {
     });
   });
 
+  // A successful command cannot be told apart from a read-only poll here, so it
+  // suggests rather than blocks: the Turn ends and the agent decides.
+  it("suggests a checkpoint at Stop after a command that succeeded, without blocking", async () => {
+    repoDir = await initedRepo();
+    await hook(repoDir, "claude_code", {
+      session_id: "s1",
+      hook_event_name: "SessionStart",
+      source: "startup",
+    });
+    await hook(repoDir, "claude_code", {
+      session_id: "s1",
+      hook_event_name: "UserPromptSubmit",
+      prompt: "check the build",
+      prompt_id: "p1",
+    });
+    await hook(repoDir, "claude_code", {
+      session_id: "s1",
+      hook_event_name: "PostToolUse",
+      tool_name: "Bash",
+      tool_input: { command: "git status" },
+      tool_response: { success: true },
+      tool_use_id: "t1",
+    });
+
+    const stop = await hook(repoDir, "claude_code", {
+      session_id: "s1",
+      hook_event_name: "Stop",
+      stop_hook_active: false,
+    });
+
+    const parsed = parse(stop.stdout) as {
+      hookSpecificOutput: { hookEventName: string; additionalContext: string };
+      decision?: string;
+    };
+    expect(parsed.hookSpecificOutput.hookEventName).toBe("Stop");
+    expect(parsed.hookSpecificOutput.additionalContext).toContain("create_checkpoint");
+    // Suggestion only: it must not block, and the Turn must not stay open.
+    expect(parsed.decision).toBeUndefined();
+    expect(await turnStatuses(repoDir)).toStrictEqual(["completed"]);
+  });
+
+  // Codex reports every settled tool as succeeded (§4 defers TOOL_FAILED to P1),
+  // so the success split cannot be applied there without reading a failed
+  // `pnpm test` as a success. Every Codex command keeps the required path.
+  it("still requires a checkpoint for a Codex command, where failure is not observable", async () => {
+    repoDir = await initedRepo();
+    await hook(repoDir, "codex", {
+      session_id: "s1",
+      hook_event_name: "SessionStart",
+      source: "startup",
+    });
+    await hook(repoDir, "codex", {
+      session_id: "s1",
+      hook_event_name: "UserPromptSubmit",
+      prompt: "run the tests",
+      turn_id: "p1",
+    });
+    await hook(repoDir, "codex", {
+      session_id: "s1",
+      hook_event_name: "PostToolUse",
+      tool_name: "Bash",
+      tool_input: { command: "pnpm test" },
+      tool_response: { ok: false },
+      tool_use_id: "t1",
+    });
+
+    const stop = await hook(repoDir, "codex", {
+      session_id: "s1",
+      hook_event_name: "Stop",
+      stop_hook_active: false,
+    });
+    expect(parse(stop.stdout)).toStrictEqual({
+      decision: "block",
+      reason: expect.stringContaining("create_checkpoint"),
+    });
+  });
+
+  // A command that never settled leaves a `started` row behind. Suggesting on it
+  // would reintroduce the empty reminders the split exists to remove.
+  it("does not suggest a checkpoint for a command that never completed", async () => {
+    repoDir = await initedRepo();
+    await hook(repoDir, "claude_code", {
+      session_id: "s1",
+      hook_event_name: "SessionStart",
+      source: "startup",
+    });
+    await hook(repoDir, "claude_code", {
+      session_id: "s1",
+      hook_event_name: "UserPromptSubmit",
+      prompt: "maybe run something",
+      prompt_id: "p1",
+    });
+    // PreToolUse only — the user never approved it, so no PostToolUse arrives.
+    await hook(repoDir, "claude_code", {
+      session_id: "s1",
+      hook_event_name: "PreToolUse",
+      tool_name: "Bash",
+      tool_input: { command: "rm -rf /tmp/x" },
+      tool_use_id: "t1",
+    });
+
+    const stop = await hook(repoDir, "claude_code", {
+      session_id: "s1",
+      hook_event_name: "Stop",
+      stop_hook_active: false,
+    });
+    expect(stop.stdout).toBeUndefined();
+  });
+
+  // §6.6 step 4 promises the suggestion never repeats because the Turn ends.
+  it("suggests only once when Stop is delivered twice", async () => {
+    repoDir = await initedRepo();
+    await hook(repoDir, "claude_code", {
+      session_id: "s1",
+      hook_event_name: "SessionStart",
+      source: "startup",
+    });
+    await hook(repoDir, "claude_code", {
+      session_id: "s1",
+      hook_event_name: "UserPromptSubmit",
+      prompt: "check the build",
+      prompt_id: "p1",
+    });
+    await hook(repoDir, "claude_code", {
+      session_id: "s1",
+      hook_event_name: "PostToolUse",
+      tool_name: "Bash",
+      tool_input: { command: "git status" },
+      tool_response: { success: true },
+      tool_use_id: "t1",
+    });
+
+    const first = await hook(repoDir, "claude_code", {
+      session_id: "s1",
+      hook_event_name: "Stop",
+      stop_hook_active: false,
+    });
+    expect(first.stdout).toBeDefined();
+
+    const second = await hook(repoDir, "claude_code", {
+      session_id: "s1",
+      hook_event_name: "Stop",
+      stop_hook_active: false,
+    });
+    expect(second.stdout).toBeUndefined();
+  });
+
   it("does not request a checkpoint at Stop when the turn made no meaningful change", async () => {
     repoDir = await initedRepo();
     await hook(repoDir, "claude_code", {

@@ -12,6 +12,10 @@ function contextEventName(kind: NormalizedEvent["kind"]): string | undefined {
       return "SessionStart";
     case "PROMPT_SUBMITTED":
       return "UserPromptSubmit";
+    // Stop accepts `additionalContext` too, which is how §6.6's suggestion path
+    // reaches the agent without a `decision: block` continuation.
+    case "TURN_STOPPED":
+      return "Stop";
     default:
       return undefined;
   }

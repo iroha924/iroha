@@ -592,6 +592,40 @@ export async function listToolEventsByTurn(
 }
 
 /**
+ * Whether this Turn actually ran a command to completion, for the Stop hook's
+ * decision between requiring a Checkpoint and merely suggesting one
+ * (contracts/hooks.md §6.6). `EXISTS` with `LIMIT 1` rather than counting: the
+ * answer is a boolean and the hook is on a latency budget.
+ *
+ * `status = 'succeeded'` is load-bearing, not decoration. `handleToolStarted`
+ * inserts a command row at PreToolUse with `status = 'started'`, and a Guardrail
+ * denial inserts one with `status = 'denied'`; a command cancelled at the
+ * permission prompt leaves the former behind forever. Matching any command-shaped
+ * row would suggest a Checkpoint for a command that never ran — reintroducing
+ * exactly the empty reminders §6.6's split exists to remove. A failed command
+ * needs no row here either: it takes the required path instead.
+ *
+ * A read against `idx_tool_events_turn_time`'s leading column. Safe on the hook
+ * path where an INSERT is not — WAL admits concurrent readers, so this does not
+ * wait on the `busy_timeout` that made a second write blow the budget.
+ */
+export async function turnRanSuccessfulCommand(
+  db: Executor,
+  turnId: TypedId<"trn">,
+): Promise<Result<boolean, IrohaError>> {
+  try {
+    const result = await db.execute({
+      sql: `SELECT 1 FROM tool_events
+        WHERE turn_id = ? AND target_kind = 'command' AND status = 'succeeded' LIMIT 1`,
+      args: [turnId],
+    });
+    return ok(result.rows.length > 0);
+  } catch (cause) {
+    return err(mapLibsqlError(cause, "Failed to read turn tool events"));
+  }
+}
+
+/**
  * Batched `listToolEventsByTurn`: one query for many turns, grouped by `turn_id`
  * in memory. Each turn's events keep `ORDER BY occurred_at` — the global result
  * is occurred_at-ordered, so each turn_id group is too (same as the per-turn
