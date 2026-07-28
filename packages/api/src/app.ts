@@ -169,6 +169,7 @@ const candidatesQuery = z.object({
 const knowledgeQuery = z.object({
   limit: queryParam("Max knowledge items to return"),
   cursor: queryParam("Opaque pagination cursor"),
+  offset: queryParam("Rows to skip, for numbered pages; ignored when a cursor is given"),
 });
 const relationsQuery = z.object({ limit: queryParam("Max relations to return") });
 const eventsQuery = z.object({ limit: queryParam("Max events to return (1-100, default 30)") });
@@ -733,6 +734,7 @@ export function createApp(config: AppConfig) {
         listKnowledge({
           ...useCaseCtx,
           ...numOpt("limit", firstOf(q.limit)),
+          ...numOpt("offset", firstOf(q.offset)),
           ...strOpt("cursor", firstOf(q.cursor)),
           ...enumArrOpt("statuses", c.req.queries("status"), [
             "approved",

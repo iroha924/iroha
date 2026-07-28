@@ -195,7 +195,9 @@ Approval invokes the exact transaction in `contracts/canonical.md`. The API does
 | `POST` | `/api/v1/graph/query` | graph roots, types, direction, depth |
 | `GET` | `/api/v1/graph/path` | bounded path between two IDs |
 
-`GET /api/v1/knowledge` query parameters: `cursor`, `limit`, `status` (repeatable; `approved`|`superseded`|`archived`, default `approved`), `type` (repeatable; one of the seven knowledge `entity_type`s). Values outside these sets are ignored, and `type` never widens beyond the knowledge set.
+`GET /api/v1/knowledge` query parameters: `cursor`, `limit`, `offset`, `status` (repeatable; `approved`|`superseded`|`archived`, default `approved`), `type` (repeatable; one of the seven knowledge `entity_type`s). Values outside these sets are ignored, and `type` never widens beyond the knowledge set. The response carries `total` alongside `items` and `nextCursor`, so the page can number itself.
+
+`offset` addresses a row position and is ignored when `cursor` is given. The dropped-row hazard recorded for the review queue does not apply here: that queue shrinks under the reader because deciding a candidate removes it, whereas this list only grows — approving adds a row and superseding changes a status. The page and `total` are still read in one transaction, so a concurrent `sync` cannot make the count disagree with the rows it is counting.
 
 Graph query limits: depth 4, 200 edges, 200 nodes. UI must show truncation.
 

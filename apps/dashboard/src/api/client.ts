@@ -67,6 +67,8 @@ export interface KnowledgeListParams {
   cursor?: string;
   statuses?: KnowledgeStatusFilter[];
   types?: string[];
+  limit?: number;
+  offset?: number;
 }
 export interface SessionListParams {
   cursor?: string;
@@ -181,7 +183,13 @@ export const api = {
   knowledge: (params: KnowledgeListParams = {}) =>
     request<KnowledgeListPage>(
       "GET",
-      `/v1/knowledge${queryString({ cursor: params.cursor, status: params.statuses, type: params.types })}`,
+      `/v1/knowledge${queryString({
+        cursor: params.cursor,
+        status: params.statuses,
+        type: params.types,
+        limit: params.limit === undefined ? undefined : String(params.limit),
+        offset: params.offset === undefined ? undefined : String(params.offset),
+      })}`,
     ),
   knowledgeDetail: (id: string) => request<KnowledgeDetailData>("GET", `/v1/knowledge/${id}`),
 
