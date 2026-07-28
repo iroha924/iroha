@@ -1,4 +1,3 @@
-import { validateBodyForType } from "@iroha/canonical";
 import type {
   CheckpointInput,
   Clock,
@@ -20,6 +19,7 @@ import {
   updateTurnCheckpointState,
 } from "@iroha/storage";
 import { runIdempotentWrite } from "./idempotency.js";
+import { validateProposalBody } from "./proposal-body.js";
 import { type FieldRedaction, redactField, redactProposal, redactReference } from "./redact.js";
 import { verifySessionToken } from "./verify-session-token.js";
 import { withMcpRepository } from "./with-repository.js";
@@ -166,20 +166,6 @@ async function redactCheckpoint(
     if (!result.ok) {
       return err(result.error);
     }
-    // Same gate as `propose_knowledge`: a body that cannot become a canonical
-    // document is rejected while the agent can still rewrite it, not at approval.
-    const body = validateBodyForType(
-      result.value.proposal.type,
-      result.value.proposal.title,
-      result.value.proposal.body,
-    );
-    if (!body.ok) {
-      return err(
-        new IrohaErrorClass("INVALID_INPUT", `proposals[${index}]: ${body.error.message}`, {
-          ...(body.error.details === undefined ? {} : { details: body.error.details }),
-        }),
-      );
-    }
     proposals.push(result.value.proposal);
     redactions.push(...result.value.redactions);
   }
@@ -194,6 +180,33 @@ async function redactCheckpoint(
     proposals,
     redactions,
   });
+}
+
+/**
+ * The same gate as `propose_knowledge`: a body that cannot become a canonical
+ * document is rejected while the agent can still rewrite it, not at approval.
+ *
+ * Runs inside the idempotent write rather than beside the redaction, so a retry
+ * of a key that already committed still short-circuits to its stored result
+ * (`contracts/mcp.md` §6.6 step 9) — otherwise upgrading past the release that
+ * added this check would turn a settled write into `INVALID_INPUT`.
+ */
+function validateProposalBodies(
+  proposals: CheckpointInput["proposals"],
+  redactions: readonly FieldRedaction[],
+): Result<void, IrohaError> {
+  for (const [index, proposal] of proposals.entries()) {
+    const body = validateProposalBody(
+      proposal,
+      redactions,
+      `proposals[${index}]`,
+      `proposals[${index}]: `,
+    );
+    if (!body.ok) {
+      return err(body.error);
+    }
+  }
+  return ok(undefined);
 }
 
 function storedToData(responseJson: string): McpCreateCheckpointData {
@@ -318,6 +331,13 @@ export async function mcpCreateCheckpoint(
           resultEntityId: data.checkpointId,
         }),
         work: async (tx) => {
+          const bodies = validateProposalBodies(
+            redacted.value.proposals,
+            redacted.value.redactions,
+          );
+          if (!bodies.ok) {
+            return err(bodies.error);
+          }
           const entity = await insertEntity(tx, {
             id: checkpointId,
             repositoryId,

@@ -29,13 +29,15 @@ This is a pnpm workspace monorepo; internal packages depend on each other with `
 
 ### `pnpm dashboard` — verify iroha itself
 
-This repository dogfoods its own `.iroha/`, so from the repo root:
+This repository dogfoods its own `.iroha/`, but does not commit it — the memory it accumulates here is dogfooding output, not shared team memory (see the root `.gitignore`). So a fresh checkout initializes it once:
 
 ```bash
+pnpm build                                  # once, so the CLI binary exists
+node packages/cli/dist/bin.mjs init         # once per checkout: writes .iroha/
 pnpm dashboard
 ```
 
-This builds everything, serves the dashboard at `http://127.0.0.1:<random-port>`, and opens the browser. The URL carries the launch token in its fragment (`#token=…`), which the SPA exchanges once for an HttpOnly session cookie.
+`init` is a no-op on a checkout that already has `.iroha/`, so only the first run needs it. `pnpm dashboard` builds everything, serves the dashboard at `http://127.0.0.1:<random-port>`, and opens the browser. The URL carries the launch token in its fragment (`#token=…`), which the SPA exchanges once for an HttpOnly session cookie.
 
 ### `iroha` command — dogfood in another project
 

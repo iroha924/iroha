@@ -24,17 +24,37 @@ describe("message catalogs", () => {
     }
   });
 
-  // The badge labels this repository renders from database enum values. A value
-  // arriving with no key is the defect these keys were added to fix, so the list
-  // is pinned rather than derived from the catalog it is checking.
+  // Each list is transcribed from the declaration that produces the value, named
+  // beside it — never from the catalog, which would make this check circular and
+  // pass on exactly the omission it exists to catch.
   it.each([
+    // migrations/001_initial.sql session_runs.status, plus turns.status ("failed")
     ["runstatus", ["active", "completed", "interrupted", "abandoned", "failed"]],
+    // migrations/001_initial.sql checkpoints.outcome
     ["outcome", ["completed", "partial", "blocked", "no_change"]],
+    // schemas/checkpoint-v1.schema.json $defs.validationItem.result
     ["vresult", ["passed", "failed", "not_run"]],
+    // packages/domain/src/schemas/checkpoint.ts referenceSchema.type
     ["reftype", ["issue", "pull_request", "review", "commit", "file", "symbol", "url", "document"]],
+    // migrations/001_initial.sql event_log.outcome
     ["evoutcome", ["success", "warning", "failure", "denied"]],
-    ["dcheck", ["ok", "warning", "error"]],
-    ["ktype", ["decision", "rule", "concept", "insight", "incident", "pattern", "review_learning"]],
+    // packages/core/src/doctor.ts DoctorCheckStatus
+    ["dcheck", ["ok", "warning", "error", "blocked"]],
+    // migrations/001_initial.sql candidates.candidate_type
+    [
+      "ktype",
+      [
+        "session_summary",
+        "decision",
+        "rule",
+        "concept",
+        "insight",
+        "incident",
+        "pattern",
+        "review_learning",
+      ],
+    ],
+    // migrations/001_initial.sql agent_sessions.platform
     ["platform", ["claude_code", "codex"]],
   ])("covers every %s value", (prefix, values) => {
     for (const value of values) {

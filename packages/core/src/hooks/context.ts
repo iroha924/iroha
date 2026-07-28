@@ -75,13 +75,18 @@ export function formatSessionContext(input: SessionContextInput): string {
     }
   }
 
-  lines.push(
+  // The footer is reserved out of the budget and appended after truncation, not
+  // pushed onto `lines`. Ten approved rules with 1,000-character summaries reach
+  // the cap on their own, and trimming from the end took the closing tag and the
+  // content-language line §9 requires on every SessionStart.
+  const footer = [
     "",
     "Use the iroha MCP search tool for full sources. Create a checkpoint after meaningful work.",
     `Write checkpoint and proposal content in ${KNOWLEDGE_LANGUAGE_NAMES[input.knowledgeLanguage]} (config.default_language), whatever language this session is in.`,
     "[/iroha]",
-  );
+  ].join("\n");
 
-  const text = lines.join("\n");
-  return text.length > MAX_CONTEXT_CHARS ? text.slice(0, MAX_CONTEXT_CHARS) : text;
+  const body = lines.join("\n");
+  const budget = MAX_CONTEXT_CHARS - footer.length;
+  return (body.length > budget ? body.slice(0, budget) : body) + footer;
 }

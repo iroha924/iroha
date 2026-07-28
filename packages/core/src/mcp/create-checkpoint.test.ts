@@ -81,6 +81,36 @@ describe("mcpCreateCheckpoint", () => {
     }
   });
 
+  // Redaction replaces the whole field, so the template check sees a placeholder
+  // and would blame a missing H1 — false, and unfixable by editing headings.
+  it("blames the redaction, not the headings, when a secret is in a conforming body", async () => {
+    repo = await setupMcpRepo(random);
+    const seedDb = await openDatabase(repo.dbPath);
+    expect(seedDb.ok).toBe(true);
+    if (!seedDb.ok) return;
+    const seeded = await seedSessionWithToken(seedDb.value, repo, clock, random);
+    await closeDatabase(seedDb.value);
+
+    const result = await mcpCreateCheckpoint({
+      cwd: repo.repoDir,
+      clock,
+      random,
+      input: baseInput(seeded.token, "idem-key-000000000013", {
+        proposals: [
+          {
+            ...SAMPLE_PROPOSAL,
+            body: SAMPLE_PROPOSAL.body.replace("A hosted database.", SECRET_BLOCK),
+          },
+        ],
+      }),
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.message).toContain("secret was detected");
+    expect(result.error.message).not.toContain("H1");
+  }, 15000);
+
   it("rejects a proposal whose body is not a canonical body, naming its index", async () => {
     repo = await setupMcpRepo(random);
     const seedDb = await openDatabase(repo.dbPath);

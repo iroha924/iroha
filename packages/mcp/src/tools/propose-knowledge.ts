@@ -20,7 +20,7 @@ const proposeKnowledgeInputSchema = z.strictObject({
 export const proposeKnowledgeTool = defineTool({
   name: "propose_knowledge",
   description:
-    "Create one pending knowledge candidate outside a checkpoint. Never writes canonical files; the candidate stays local and pending until a human approves it. Idempotent by idempotencyKey.",
+    "Create one pending knowledge candidate outside a checkpoint. Never writes canonical files; the candidate stays local and pending until a human approves it. Idempotent by idempotencyKey. The body must be a canonical body: an H1 equal to the title, then that type's required H2 sections (decision: Context, Decision, Rationale, Consequences, Alternatives considered; rule: Rule, Scope, Rationale, Examples, Exceptions; insight: Observation, Evidence, Implication, Recommended action; incident: Summary, Impact, Timeline, Root cause, Resolution, Prevention; pattern: Problem, Pattern, When to use, When not to use, Examples; review_learning: Review finding, Why it matters, Resolution, Generalized learning; concept: Definition, Domain context, Examples, Related concepts).",
   annotations: { idempotentHint: true },
   inputSchema: proposeKnowledgeInputSchema,
   handler: (input, ctx) =>

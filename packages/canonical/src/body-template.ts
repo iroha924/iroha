@@ -86,11 +86,16 @@ export function validateBodyForType(
   // otherwise make the template unsatisfiable rather than merely unmet.
   if (firstH1.text.trim().normalize("NFC") !== title.trim().normalize("NFC")) {
     return err(
-      new IrohaError("INVALID_INPUT", "Canonical document body's first H1 must equal the title", {
-        // The heading is compared as rendered text, so inline Markdown in the
-        // title (`\`code\``) must be backslash-escaped in the H1 to match.
-        details: { expected: title, actual: firstH1.text },
-      }),
+      new IrohaError(
+        "INVALID_INPUT",
+        // Both values go in the message, not only in `details`: the MCP failure
+        // envelope drops `details`, and without them the caller is told the
+        // headings disagree but not how. The heading is compared as rendered
+        // text, so inline Markdown in a title must be backslash-escaped to match.
+        `Canonical document body's first H1 must equal the title. Expected "${title}", got "${firstH1.text}"` +
+          " (a title containing inline Markdown must be backslash-escaped in the H1)",
+        { details: { expected: title, actual: firstH1.text } },
+      ),
     );
   }
 

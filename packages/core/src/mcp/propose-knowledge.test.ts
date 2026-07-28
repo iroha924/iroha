@@ -80,7 +80,8 @@ describe("mcpProposeKnowledge", () => {
     {
       case: "a body missing a required section",
       body: PROPOSAL.body.replace("## Exceptions\nNone.", ""),
-      expected: "Exceptions",
+      // The distinctive phrase: the no-H1 message also lists every section name.
+      expected: "missing required section(s): Exceptions",
     },
   ])(
     "rejects $case before writing a candidate",
@@ -141,6 +142,44 @@ describe("mcpProposeKnowledge", () => {
     const candidates = await listCandidatesByStatus(db.value, repo.repositoryId, "pending");
     expect(candidates.ok && candidates.value.length).toBe(1);
     await closeDatabase(db.value);
+  }, 15000);
+
+  // A key that already committed must short-circuit before the body gate runs:
+  // otherwise upgrading past the release that added the gate turns a settled
+  // write into INVALID_INPUT on retry (contracts/mcp.md §6.6 step 9).
+  it("returns the stored result for a committed key even if the retry body is invalid", async () => {
+    repo = await setupMcpRepo(random);
+    const seedDb = await openDatabase(repo.dbPath);
+    if (!seedDb.ok) return;
+    const seeded = await seedSessionWithToken(seedDb.value, repo, clock, random);
+    await closeDatabase(seedDb.value);
+
+    const key = "idem-propose-00000012";
+    const first = await mcpProposeKnowledge({
+      cwd: repo.repoDir,
+      clock,
+      random,
+      sessionToken: seeded.token,
+      idempotencyKey: key,
+      proposal: PROPOSAL,
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+
+    // The shape a 0.3.5 client stored before the gate existed.
+    const retry = await mcpProposeKnowledge({
+      cwd: repo.repoDir,
+      clock,
+      random,
+      sessionToken: seeded.token,
+      idempotencyKey: key,
+      proposal: { ...PROPOSAL, body: "plain prose with no headings at all" },
+    });
+
+    expect(retry.ok).toBe(true);
+    if (!retry.ok) return;
+    expect(retry.value.deduplicated).toBe(true);
+    expect(retry.value.candidateId).toBe(first.value.candidateId);
   }, 15000);
 
   it("is idempotent on retry with the same key", async () => {

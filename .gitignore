@@ -19,4 +19,4 @@ playwright-report/
 # ADR-006 is unchanged — a git-tracked `.iroha/` is still the shared canonical
 # source for repositories that install iroha; it is the sharing that is absent
 # here, not the design.
-.iroha/
+/.iroha/

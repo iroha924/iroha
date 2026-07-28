@@ -1,4 +1,3 @@
-import { validateBodyForType } from "@iroha/canonical";
 import type {
   Clock,
   IrohaError,
@@ -18,6 +17,7 @@ import {
   updateCandidateStatus,
 } from "@iroha/storage";
 import { runIdempotentWrite } from "./idempotency.js";
+import { validateProposalBody } from "./proposal-body.js";
 import { type FieldRedaction, redactProposal } from "./redact.js";
 import { verifySessionToken } from "./verify-session-token.js";
 import { withMcpRepository } from "./with-repository.js";
@@ -192,20 +192,6 @@ export async function mcpProposeKnowledge(
         return err(redacted.error);
       }
 
-      // Reject a non-conforming body here rather than at approval. Approval runs
-      // the same check, but by then the agent that could rewrite the body is gone
-      // and the candidate is stuck in the queue (contracts/canonical.md §7).
-      // Read entirely from the redacted proposal: that is the text that gets
-      // stored, so it is the text that must satisfy the template.
-      const body = validateBodyForType(
-        redacted.value.proposal.type,
-        redacted.value.proposal.title,
-        redacted.value.proposal.body,
-      );
-      if (!body.ok) {
-        return err(body.error);
-      }
-
       const candidateId = makeTypedId("cand", ctx.clock, ctx.random);
       const nowIso = ctx.clock.now().toISOString();
 
@@ -220,6 +206,18 @@ export async function mcpProposeKnowledge(
         // idempotency record's `result_entity_id` (which FKs `entities`).
         toStored: (data) => ({ responseJson: JSON.stringify(data) }),
         work: async (tx) => {
+          // Inside `work`, so a retry of a key that already committed still
+          // short-circuits to its stored result (contracts/mcp.md §6.6 step 9).
+          const body = validateProposalBody(
+            redacted.value.proposal,
+            redacted.value.redactions,
+            "proposal",
+            "",
+          );
+          if (!body.ok) {
+            return err(body.error);
+          }
+
           // Detect duplicates against the pre-insert snapshot, excluding the
           // candidate we are about to supersede.
           const existing = await listCandidatesByType(tx, repositoryId, input.proposal.type);
