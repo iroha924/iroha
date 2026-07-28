@@ -63,14 +63,23 @@ describe("ReviewDetail", () => {
     expect(field.rows).toBe(30);
     if (!toggle) {
       expect(screen.queryByText(/Show all/)).toBeNull();
+      expect(field.className).toContain("field-sizing-fixed");
       return;
     }
+
+    // `rows` alone proves nothing: the Textarea ships `field-sizing-content`,
+    // which sizes to the content and makes `rows` inert. jsdom loads no CSS, so
+    // the class that overrides it is the observable part of the mechanism.
+    expect(field.className).toContain("field-sizing-fixed");
 
     const expand = screen.getByText(`Show all ${lines} lines`);
     fireEvent.click(expand);
     expect(field.rows).toBe(lines);
+    expect(field.className).not.toContain("field-sizing-fixed");
+
     fireEvent.click(screen.getByText("Collapse"));
     expect(field.rows).toBe(30);
+    expect(field.className).toContain("field-sizing-fixed");
   });
 
   it("enables approval only after a reviewer name is entered, then approves via keyboard", async () => {

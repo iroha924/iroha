@@ -40,6 +40,17 @@ function collectHeadings(body: string): Heading[] {
 }
 
 /**
+ * The heading is caller-supplied and may fill the body's 20,000-character budget,
+ * and this text reaches the model through the MCP envelope's `content` item, which
+ * §4 requires to stay concise. `details` keeps the untruncated value.
+ */
+const MAX_ECHOED_HEADING = 120;
+
+function excerpt(text: string): string {
+  return text.length > MAX_ECHOED_HEADING ? `${text.slice(0, MAX_ECHOED_HEADING)}…` : text;
+}
+
+/**
  * Validates the Markdown body template, per contracts/canonical.md §7: "The
  * first H1 must equal `title`. Required H2 sections are validated by the
  * canonical parser after JSON Schema validation." Uses an actual Markdown
@@ -67,6 +78,13 @@ export function validateBodyForType(
   const headings = collectHeadings(body);
   const required = REQUIRED_H2_SECTIONS[type] ?? [];
 
+  // Both sides of the H1 comparison are trimmed, so a whitespace-only title would
+  // match a bare `#` and approve a blank-titled document. The schemas only bound
+  // the raw length, so this is the check that keeps §7's equality meaningful.
+  if (title.trim().length === 0) {
+    return err(new IrohaError("INVALID_INPUT", "Canonical document title is blank"));
+  }
+
   const firstH1 = headings.find((heading) => heading.depth === 1);
   if (firstH1 === undefined) {
     return err(
@@ -92,7 +110,7 @@ export function validateBodyForType(
         // envelope drops `details`, and without them the caller is told the
         // headings disagree but not how. The heading is compared as rendered
         // text, so inline Markdown in a title must be backslash-escaped to match.
-        `Canonical document body's first H1 must equal the title. Expected "${title}", got "${firstH1.text}"` +
+        `Canonical document body's first H1 must equal the title. Expected "${title}", got "${excerpt(firstH1.text)}"` +
           " (a title containing inline Markdown must be backslash-escaped in the H1)",
         { details: { expected: title, actual: firstH1.text } },
       ),

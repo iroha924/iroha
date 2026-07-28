@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/select.js";
 import { Textarea } from "@/components/ui/textarea.js";
 import { useI18n } from "@/i18n/index.js";
+import { cn } from "@/lib/utils";
 
 /** Tall enough to read a section without scrolling, short enough not to bury the buttons. */
 const COLLAPSED_BODY_ROWS = 30;
@@ -167,7 +168,12 @@ export function ReviewDetail() {
               value={body}
               onChange={(e) => setBody(e.target.value)}
               rows={bodyExpanded ? bodyLines : COLLAPSED_BODY_ROWS}
-              className="bg-paper-inset font-mono text-[13px]"
+              // Textarea carries `field-sizing-content`, which sizes to the content
+              // and makes `rows` inert — the fold does nothing without overriding it.
+              className={cn(
+                "bg-paper-inset font-mono text-[13px]",
+                !bodyExpanded && "field-sizing-fixed overflow-auto",
+              )}
             />
             {bodyLines > COLLAPSED_BODY_ROWS && (
               <Button
