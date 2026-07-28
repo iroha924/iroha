@@ -218,13 +218,14 @@ The subsequent `SessionStart` with source `compact` injects approved rules and t
 A Turn **requires** a Checkpoint when at least one is true:
 
 - a mutation tool succeeded;
-- a command **failed**;
+- a command **failed**, or ran on a platform that cannot report failure;
 - an approved Guardrail was evaluated as warning/deny;
 - the agent explicitly created knowledge proposals;
 - the Turn is already marked `checkpoint_state=pending`.
 
 A Turn is **suggested** a Checkpoint, without being required one, when a command
-succeeded and nothing above applies.
+**settled successfully** and nothing above applies. A command still `started`, or
+denied by a Guardrail, does not count: it never ran.
 
 The two command cases split because the hook cannot tell a build/test/migration
 command from a read-only `curl` or `git status`; that needs the command category
@@ -240,14 +241,22 @@ so a Checkpoint saying nothing happened is worse than no Checkpoint. The agent
 holds the whole Turn and can see what a command was for, so the suggestion asks
 it rather than forcing it.
 
+The proxy needs failure to be observable, and §4's matrix defers Codex's
+`TOOL_FAILED` to "derive from `PostToolUse` response" at P1 — so `parseCodexEvent`
+reports every settled tool as succeeded. Applying the split there would read a
+failed `pnpm test` as a success, so on a platform that cannot report failure every
+command keeps the required path. Codex therefore keeps the noise this split
+removes for Claude, until its adapter can tell the two apart.
+
 Behavior:
 
 1. if no Checkpoint is required or suggested, complete the Turn and return `{}`;
 2. if saved, complete the Turn and return `{}`;
 3. if required and `stop_hook_active=false`, return one continuation request;
-4. if suggested and `stop_hook_active=false`, complete the Turn and return the
-   suggestion as `additionalContext` — this never blocks and never repeats,
-   because the Turn ends;
+4. if suggested, the Turn is still `active`, and `stop_hook_active=false`,
+   complete the Turn and return the suggestion as `additionalContext` — this
+   never blocks, and never repeats because the Turn is no longer active when a
+   second Stop arrives;
 5. if `stop_hook_active=true`, never block again; leave a dirty marker and allow stop;
 6. never parse the transcript to decide.
 

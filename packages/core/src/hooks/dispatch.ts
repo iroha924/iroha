@@ -27,7 +27,7 @@ import {
   type SessionRunEndReason,
   type ToolEventTargetKind,
   touchAgentSessionLastSeen,
-  turnRanCommand,
+  turnRanSuccessfulCommand,
   updateTurnCheckpointState,
   withTransaction,
 } from "@iroha/storage";
@@ -477,13 +477,35 @@ async function handleToolStarted(
  * a validation that found something does not. A successful command takes the
  * suggestion path instead, which asks the agent — which, unlike this layer, can
  * see what the command was for.
+ *
+ * That proxy needs failure to be observable, and on Codex it is not: §4's matrix
+ * defers `TOOL_FAILED` to "derive from `PostToolUse` response" at P1, so
+ * `parseCodexEvent` reports every settled tool as `succeeded`. Applying the
+ * split there would read a failed `pnpm test` as a success and quietly drop the
+ * case this predicate exists to keep. So the split is conditional: where failure
+ * cannot be seen, every command requires a Checkpoint, exactly as before. That
+ * leaves Codex with the noise this change removes for Claude — the honest cost
+ * of not inventing a failure signal the adapter does not have.
  */
-function requiresCheckpoint(targets: readonly ToolTarget[], succeeded: boolean): boolean {
+function requiresCheckpoint(
+  targets: readonly ToolTarget[],
+  succeeded: boolean,
+  failureObservable: boolean,
+): boolean {
   return targets.some((t) =>
     t.kind === "command"
-      ? !succeeded
+      ? !failureObservable || !succeeded
       : succeeded && (t.operation === "write" || t.operation === "delete"),
   );
+}
+
+/**
+ * Whether this platform can report a failed tool as failed. Claude emits
+ * `PostToolUseFailure`; Codex has no failure event and normalizes every
+ * `PostToolUse` as succeeded (§4).
+ */
+function commandFailureObservable(platform: NormalizedEvent["platform"]): boolean {
+  return platform === "claude_code";
 }
 
 /**
@@ -529,7 +551,10 @@ async function handleToolSettled(
     occurredAt: event.occurredAt,
   });
 
-  if (turn.checkpointState === "not_required" && requiresCheckpoint(targets, succeeded)) {
+  if (
+    turn.checkpointState === "not_required" &&
+    requiresCheckpoint(targets, succeeded, commandFailureObservable(event.platform))
+  ) {
     await updateTurnCheckpointState(ctx.db, turn.id, "pending");
   }
   return noOutput;
@@ -574,19 +599,26 @@ async function handleStop(
     return continuationOutput(CONTINUATION_REASON);
   }
 
-  // Nothing demanded a Checkpoint, but a command ran and this layer cannot tell
-  // which kind (§6.6 step 3b). Suggest rather than block, and let the Turn end
-  // either way — the reminder reaches the agent without a continuation.
-  if (turn.checkpointState === "not_required" && !event.payload.stopHookActive) {
-    const ranCommand = await turnRanCommand(ctx.db, turn.id);
+  // Nothing demanded a Checkpoint, but a command succeeded and this layer cannot
+  // tell which kind (§6.6 step 4). Suggest rather than block: the Turn ends and
+  // the reminder reaches the agent without a continuation.
+  //
+  // Gated on the Turn still being `active`, which is what makes §6.6's "never
+  // repeats" true. `currentTurn` returns the latest Turn whatever its status, so
+  // a second Stop delivered before the next prompt — a hook retry — would
+  // otherwise find the same completed Turn and emit the suggestion again.
+  if (
+    turn.status === "active" &&
+    turn.checkpointState === "not_required" &&
+    !event.payload.stopHookActive
+  ) {
+    const ranCommand = await turnRanSuccessfulCommand(ctx.db, turn.id);
     if (ranCommand.ok && ranCommand.value) {
-      if (turn.status === "active") {
-        await closeTurn(ctx.db, turn.id, {
-          from: "active",
-          to: "completed",
-          stoppedAt: ctx.clock.now().toISOString(),
-        });
-      }
+      await closeTurn(ctx.db, turn.id, {
+        from: "active",
+        to: "completed",
+        stoppedAt: ctx.clock.now().toISOString(),
+      });
       return contextOutput(SUGGESTION_CONTEXT);
     }
   }
