@@ -592,6 +592,31 @@ export async function listToolEventsByTurn(
 }
 
 /**
+ * Whether this Turn ran anything recorded as a command, for the Stop hook's
+ * decision between requiring a Checkpoint and merely suggesting one
+ * (contracts/hooks.md §6.6). `EXISTS` with `LIMIT 1` rather than counting: the
+ * answer is a boolean and the hook is on a latency budget.
+ *
+ * A read against `idx_tool_events_turn_time`'s leading column. Safe on the hook
+ * path where an INSERT is not — WAL admits concurrent readers, so this does not
+ * wait on the `busy_timeout` that made a second write blow the budget.
+ */
+export async function turnRanCommand(
+  db: Executor,
+  turnId: TypedId<"trn">,
+): Promise<Result<boolean, IrohaError>> {
+  try {
+    const result = await db.execute({
+      sql: "SELECT 1 FROM tool_events WHERE turn_id = ? AND target_kind = 'command' LIMIT 1",
+      args: [turnId],
+    });
+    return ok(result.rows.length > 0);
+  } catch (cause) {
+    return err(mapLibsqlError(cause, "Failed to read turn tool events"));
+  }
+}
+
+/**
  * Batched `listToolEventsByTurn`: one query for many turns, grouped by `turn_id`
  * in memory. Each turn's events keep `ORDER BY occurred_at` — the global result
  * is occurred_at-ordered, so each turn_id group is too (same as the per-turn

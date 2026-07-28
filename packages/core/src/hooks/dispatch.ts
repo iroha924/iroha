@@ -27,6 +27,7 @@ import {
   type SessionRunEndReason,
   type ToolEventTargetKind,
   touchAgentSessionLastSeen,
+  turnRanCommand,
   updateTurnCheckpointState,
   withTransaction,
 } from "@iroha/storage";
@@ -454,25 +455,34 @@ async function handleToolStarted(
 }
 
 /**
- * Whether a tool use makes the Turn checkpoint-worthy, per `contracts/hooks.md`
- * §6.6 — "a mutation tool **succeeded**" or "a build/test/migration command
- * **ran**". The success condition belongs to the first clause only, which is why a
- * failed `pnpm test` still qualifies: that is the turn whose unresolved work most
- * needs recording.
+ * Whether a tool use makes the Turn checkpoint-**required** (`contracts/hooks.md`
+ * §6.6): a mutation succeeded, or a command failed.
  *
- * Every command qualifies, which is wider than §6.6's second clause and known to be
- * so: it also fires for a read-only `curl` or `git status`, filling the record with
- * near-empty Checkpoints. Narrowing it needs the command *category* §6.4 step 3
- * calls for — mutation / validation / read-only, decided before arguments are
- * discarded and with shell-aware tokenization. An attempt to approximate that from
- * the program name alone leaked part of a credential into `target_summary` and
- * simultaneously stopped `rm`, `git commit` and `terraform apply` from qualifying,
- * so the approximation is not available: it is the category or nothing.
+ * The two halves take opposite success conditions on purpose. A mutation matters
+ * when it landed. A command matters when it did *not*: a failed `pnpm test` is
+ * the turn whose unresolved work most needs recording, and gating it on success
+ * would drop exactly that turn.
+ *
+ * A command that **succeeded** is deliberately not here, and that is the whole
+ * of this predicate's history. §6.6 asks for a build/test/migration command, and
+ * this layer cannot tell one from a read-only `curl` or `git status` — that needs
+ * the command *category* §6.4 step 3 calls for, and approximating it from the
+ * program name was tried and leaked part of a credential into `target_summary`
+ * while also dropping `rm`, `git commit` and `terraform apply`. So it is the
+ * category or nothing, and requiring a Checkpoint for every command was the
+ * "nothing" branch: measured filling the record with 15 Checkpoints across 17
+ * turns in one session, 11 recording only that something was being waited on.
+ *
+ * Failure is the proxy that survives without a classifier. Polling succeeds;
+ * a validation that found something does not. A successful command takes the
+ * suggestion path instead, which asks the agent — which, unlike this layer, can
+ * see what the command was for.
  */
 function requiresCheckpoint(targets: readonly ToolTarget[], succeeded: boolean): boolean {
-  return targets.some(
-    (t) =>
-      t.kind === "command" || (succeeded && (t.operation === "write" || t.operation === "delete")),
+  return targets.some((t) =>
+    t.kind === "command"
+      ? !succeeded
+      : succeeded && (t.operation === "write" || t.operation === "delete"),
   );
 }
 
@@ -530,6 +540,20 @@ const CONTINUATION_REASON =
   "Include implementation, validation, decisions, and unresolved items. " +
   "Do not invent work that did not occur.";
 
+/**
+ * The command case, which this layer cannot classify (see `requiresCheckpoint`).
+ * Injected as context rather than returned as a continuation: the agent holds
+ * the whole turn and can tell a `pnpm test` run from a `curl` poll, which is
+ * exactly what the missing command category would have decided. Phrased so that
+ * "nothing happened" is an acceptable answer — a Checkpoint saying only that a
+ * turn waited on CI is worse than no Checkpoint, because it lands in the same
+ * review queue a human has to read.
+ */
+const SUGGESTION_CONTEXT =
+  "This turn ran a command. If it produced something worth keeping — an implementation, " +
+  "a decision, a validation result, a discovery — save an iroha checkpoint with the " +
+  "create_checkpoint MCP tool. If it did not, finish without one.";
+
 async function handleStop(
   event: EventOf<"TURN_STOPPED">,
   ctx: HookDispatchContext,
@@ -548,6 +572,23 @@ async function handleStop(
   // stays active so the agent can still save it.
   if (turn.checkpointState === "pending" && !event.payload.stopHookActive) {
     return continuationOutput(CONTINUATION_REASON);
+  }
+
+  // Nothing demanded a Checkpoint, but a command ran and this layer cannot tell
+  // which kind (§6.6 step 3b). Suggest rather than block, and let the Turn end
+  // either way — the reminder reaches the agent without a continuation.
+  if (turn.checkpointState === "not_required" && !event.payload.stopHookActive) {
+    const ranCommand = await turnRanCommand(ctx.db, turn.id);
+    if (ranCommand.ok && ranCommand.value) {
+      if (turn.status === "active") {
+        await closeTurn(ctx.db, turn.id, {
+          from: "active",
+          to: "completed",
+          stoppedAt: ctx.clock.now().toISOString(),
+        });
+      }
+      return contextOutput(SUGGESTION_CONTEXT);
+    }
   }
 
   // Otherwise the Turn ends now (§6.6 steps 1/2/4: no checkpoint required, one

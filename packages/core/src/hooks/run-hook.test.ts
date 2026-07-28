@@ -251,6 +251,47 @@ describe("runHook", () => {
     });
   });
 
+  // A successful command cannot be told apart from a read-only poll here, so it
+  // suggests rather than blocks: the Turn ends and the agent decides.
+  it("suggests a checkpoint at Stop after a command that succeeded, without blocking", async () => {
+    repoDir = await initedRepo();
+    await hook(repoDir, "claude_code", {
+      session_id: "s1",
+      hook_event_name: "SessionStart",
+      source: "startup",
+    });
+    await hook(repoDir, "claude_code", {
+      session_id: "s1",
+      hook_event_name: "UserPromptSubmit",
+      prompt: "check the build",
+      prompt_id: "p1",
+    });
+    await hook(repoDir, "claude_code", {
+      session_id: "s1",
+      hook_event_name: "PostToolUse",
+      tool_name: "Bash",
+      tool_input: { command: "git status" },
+      tool_response: { success: true },
+      tool_use_id: "t1",
+    });
+
+    const stop = await hook(repoDir, "claude_code", {
+      session_id: "s1",
+      hook_event_name: "Stop",
+      stop_hook_active: false,
+    });
+
+    const parsed = parse(stop.stdout) as {
+      hookSpecificOutput: { hookEventName: string; additionalContext: string };
+      decision?: string;
+    };
+    expect(parsed.hookSpecificOutput.hookEventName).toBe("Stop");
+    expect(parsed.hookSpecificOutput.additionalContext).toContain("create_checkpoint");
+    // Suggestion only: it must not block, and the Turn must not stay open.
+    expect(parsed.decision).toBeUndefined();
+    expect(await turnStatuses(repoDir)).toStrictEqual(["completed"]);
+  });
+
   it("does not request a checkpoint at Stop when the turn made no meaningful change", async () => {
     repoDir = await initedRepo();
     await hook(repoDir, "claude_code", {
