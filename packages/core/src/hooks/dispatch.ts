@@ -614,12 +614,24 @@ async function handleStop(
   ) {
     const ranCommand = await turnRanSuccessfulCommand(ctx.db, turn.id);
     if (ranCommand.ok && ranCommand.value) {
-      await closeTurn(ctx.db, turn.id, {
+      // The close is what claims the suggestion, so its result decides whether
+      // to emit. `closeTurn`'s update is guarded on `status = 'active'`, so of
+      // two Stop processes that both read the Turn as active exactly one
+      // affects a row; the loser gets CONFLICT and stays silent. Ignoring the
+      // result would let both emit, and would also re-emit on any later Stop
+      // after a failed close left the Turn active.
+      //
+      // Not covered by a test. Two `Stop` invocations from outside serialize —
+      // the second reads the Turn as already `completed` and never reaches
+      // here — so an end-to-end test passes whether or not this gate exists,
+      // which is worse than no test. The gate stands on the guarded update
+      // being the only thing that can claim the Turn.
+      const closed = await closeTurn(ctx.db, turn.id, {
         from: "active",
         to: "completed",
         stoppedAt: ctx.clock.now().toISOString(),
       });
-      return contextOutput(SUGGESTION_CONTEXT);
+      return closed.ok ? contextOutput(SUGGESTION_CONTEXT) : noOutput;
     }
   }
 
