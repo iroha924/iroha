@@ -59,6 +59,7 @@ export interface CandidateListParams {
   cursor?: string;
   status?: CandidateStatusFilter;
   limit?: number;
+  offset?: number;
 }
 export interface DigestParams {
   unit?: DigestPeriodUnit;
@@ -159,6 +160,7 @@ export const api = {
         cursor: params.cursor,
         status: params.status,
         limit: params.limit === undefined ? undefined : String(params.limit),
+        offset: params.offset === undefined ? undefined : String(params.offset),
       })}`,
     ),
   people: () => request<RepositoryPeopleData>("GET", "/v1/people"),

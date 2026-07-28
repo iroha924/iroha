@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { decisionDraft, seedCandidate, VALID_DECISION_BODY } from "../test-helpers/candidate.js";
 import { type McpTestRepo, setupMcpRepo } from "../test-helpers/mcp-repo.js";
 import { removeTempDir } from "../test-helpers/tmp-repo.js";
+import { rejectCandidate } from "./candidate-review.js";
 import { getCandidateDetail, listCandidateQueue } from "./candidates-read.js";
 
 const clock = new FixedClock(new Date("2026-01-01T00:00:00.000Z"));
@@ -38,6 +39,87 @@ describe("candidate read", () => {
     if (!result.ok) return;
     expect(result.value.items.map((item) => item.id)).toContain(candidateId);
     expect(result.value.items[0]?.type).toBe("decision");
+  });
+
+  // Without this, dropping the status predicate from the count query leaves
+  // every core dashboard test green while the UI paginates over rows that the
+  // requested tab does not contain.
+  it("counts only the requested status, not every candidate", async () => {
+    repo = await setupMcpRepo(random);
+    const pending = [];
+    for (let i = 0; i < 3; i += 1) {
+      pending.push(
+        await seedCandidate(
+          repo.dbPath,
+          repo.repositoryId,
+          "decision",
+          decisionDraft(),
+          clock,
+          random,
+        ),
+      );
+    }
+    const doomed = await seedCandidate(
+      repo.dbPath,
+      repo.repositoryId,
+      "decision",
+      decisionDraft(),
+      clock,
+      random,
+    );
+    const rejected = await rejectCandidate({
+      cwd: repo.repoDir,
+      clock,
+      random,
+      candidateId: doomed.candidateId,
+      revisionToken: doomed.revisionToken,
+    });
+    expect(rejected.ok).toBe(true);
+
+    const pendingPage = await listCandidateQueue({ cwd: repo.repoDir, clock, random });
+    const rejectedPage = await listCandidateQueue({
+      cwd: repo.repoDir,
+      clock,
+      random,
+      status: "rejected",
+    });
+
+    expect(pendingPage.ok && pendingPage.value.total).toBe(pending.length);
+    expect(rejectedPage.ok && rejectedPage.value.total).toBe(1);
+  });
+
+  it("skips to a later page by offset without walking the cursor", async () => {
+    repo = await setupMcpRepo(random);
+    const seeded = [];
+    for (let i = 0; i < 5; i += 1) {
+      seeded.push(
+        await seedCandidate(
+          repo.dbPath,
+          repo.repositoryId,
+          "decision",
+          decisionDraft(),
+          clock,
+          random,
+        ),
+      );
+    }
+
+    const firstPage = await listCandidateQueue({ cwd: repo.repoDir, clock, random, limit: 2 });
+    const thirdPage = await listCandidateQueue({
+      cwd: repo.repoDir,
+      clock,
+      random,
+      limit: 2,
+      offset: 4,
+    });
+
+    expect(firstPage.ok).toBe(true);
+    expect(thirdPage.ok).toBe(true);
+    if (!firstPage.ok || !thirdPage.ok) return;
+    expect(thirdPage.value.items).toHaveLength(1);
+    expect(thirdPage.value.total).toBe(seeded.length);
+    // The offset page is genuinely further in, not the first page again.
+    expect(thirdPage.value.items[0]?.id).not.toBe(firstPage.value.items[0]?.id);
   });
 
   it("reports the full pending total, not the page size", async () => {

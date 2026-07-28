@@ -86,6 +86,44 @@ describe("ReviewDetail", () => {
     expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
   });
 
+  // Prefilling writes a name into the same field the picker filters on, so
+  // sharing one piece of state between them leaves only the prefilled name.
+  it("still offers everyone in the picker when the field was prefilled", async () => {
+    mockApi({
+      "GET /api/v1/candidates/cand_x": ok(candidate()),
+      "GET /api/v1/people": ok({ names: ["alice", "bob", "iroha924"], self: "iroha924" }),
+    });
+    renderDetail();
+    await waitFor(() => expect(screen.getByLabelText("Reviewer name")).toHaveValue("iroha924"));
+
+    await userEvent.click(screen.getByRole("combobox", { name: "Pick from list" }));
+
+    expect(await screen.findByRole("option", { name: "alice" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "bob" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "iroha924" })).toBeInTheDocument();
+  });
+
+  // Choosing a name is not a search for it; reopening must not show one entry.
+  it("restores the whole list after a name is picked", async () => {
+    mockApi({
+      "GET /api/v1/candidates/cand_x": ok(candidate()),
+      "GET /api/v1/people": ok({ names: ["alice", "bob", "iroha924"], self: null }),
+    });
+    renderDetail();
+
+    const field = await screen.findByLabelText("Reviewer name");
+    await userEvent.click(field);
+    await userEvent.keyboard("ali");
+    await userEvent.click(screen.getByRole("combobox", { name: "Pick from list" }));
+    await userEvent.click(await screen.findByRole("option", { name: "alice" }));
+    await waitFor(() => expect(field).toHaveValue("alice"));
+
+    await userEvent.click(screen.getByRole("combobox", { name: "Pick from list" }));
+
+    expect(await screen.findByRole("option", { name: "bob" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "iroha924" })).toBeInTheDocument();
+  });
+
   it("narrows the picker to names matching what was typed", async () => {
     mockApi({
       "GET /api/v1/candidates/cand_x": ok(candidate()),

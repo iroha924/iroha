@@ -101,7 +101,7 @@ Rules:
 - unknown request fields rejected;
 - RFC 3339 UTC timestamps;
 - IDs remain strings;
-- cursor pagination, default 30, maximum 100;
+- cursor pagination, default 30, maximum 100. `GET /api/v1/candidates` additionally accepts `offset`, because the Review queue renders numbered pages and a keyset cursor cannot be computed for a page the client has never fetched — numbering over cursors alone would mean requesting every intervening page. `cursor` wins if both are sent;
 - deterministic sort with ID tie-breaker;
 - errors do not contain SQL, stack traces, absolute paths, or secret values;
 - all user-visible errors have stable codes.
@@ -157,11 +157,17 @@ Raw prompt, transcript, assistant message, and full tool payload endpoints do no
 | `POST` | `/api/v1/candidates/:id/supersede` | replace pending/approved candidate relation |
 | `GET` | `/api/v1/people` | names an approval can be credited to |
 
-`GET /api/v1/candidates` query parameters: `cursor`, `limit`, `status` (`pending`|`approved`|`rejected`|`superseded`, default `pending`).
+`GET /api/v1/candidates` query parameters: `cursor`, `offset`, `limit`, `status` (`pending`|`approved`|`rejected`|`superseded`, default `pending`).
 
-Alongside the §4 cursor fields, the candidate list returns `total`: how many candidates exist at the requested `status`. The cursor stays opaque — `total` exists so the queue can render numbered pages, which a keyset cursor alone cannot express, and it is deliberately not an `offset` parameter.
+The candidate list also returns `total`: how many candidates exist at the requested `status`. The page and `total` are read inside one transaction, so they always describe the same snapshot — otherwise a concurrent write could make the count disagree with the rows and the queue would render a page that is not there.
 
-`GET /api/v1/people` returns `{ "names": [...], "self": "..." | null }`. `names` are distinct commit author names from recent Git history, sorted alphabetically, with forge bot accounts (`...[bot]`) removed; `self` is the local `git config user.name`, for prefilling the reviewer field. The source is Git rather than the `actors` table, which only the Forge sync writes and which carries no repository scope. Names never carry activity counts and are never ordered by contribution — this identifies people, it does not rank them. An empty `names` and a `null` `self` are both valid, and the reviewer field still accepts a name that is not on the list.
+`GET /api/v1/people` returns `{ "names": [...], "self": "..." | null }`, the names an approval may be credited to.
+
+- `names` are distinct commit author names from the last 2000 commits reachable from **any** ref (not only HEAD — someone who has committed on a feature branch can still review), in code-point order. Ordering is never by contribution and no activity count is returned: this identifies people, it does not rank them.
+- A name is omitted when it ends in `[bot]` (GitHub's naming for App accounts), exceeds the 120-character limit the approve endpoint enforces on `displayName`, or contains control characters. The bot rule is deliberately this narrow: an open-ended list of bot spellings never converges, and the field accepts a typed name anyway.
+- `self` is the local `git config user.name` when it passes those same rules, for prefilling the reviewer field; otherwise `null`.
+- The source is Git rather than the `actors` table, which only the Forge sync writes and which carries no repository scope.
+- An empty `names` and a `null` `self` are both valid, and the reviewer field still accepts a name that is not on the list.
 
 Candidate reads return `revisionToken`. PATCH/approve/reject/supersede require the same token. A mismatch returns HTTP 409 `CONFLICT` with no automatic merge.
 

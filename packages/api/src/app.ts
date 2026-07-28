@@ -164,6 +164,7 @@ const candidatesQuery = z.object({
   status: queryParam("pending | approved | rejected | superseded"),
   limit: queryParam("Max candidates to return"),
   cursor: queryParam("Opaque pagination cursor"),
+  offset: queryParam("Rows to skip; ignored when `cursor` is given", "40"),
 });
 // `status`/`type` are repeatable filters read via `c.req.queries()` in the handler
 // (`enumArrOpt` keeps the valid values and drops the rest), so they are documented
@@ -492,7 +493,7 @@ export function createApp(config: AppConfig) {
       tags: ["review"],
       summary: "People an approval can be credited to",
       description:
-        "Commit author names from this repository's recent Git history, alphabetical and excluding forge bots, plus `self` — the local `user.name` — for prefilling the reviewer field. Names carry no activity counts: this identifies people, it does not rank them. An empty list is a valid answer (a repository with no commits), and the reviewer field accepts a name that is not listed.",
+        "Commit author names from this repository's last 2000 commits across all refs, in code-point order, plus `self` — the local `user.name` — for prefilling the reviewer field. Omits names ending in `[bot]`, longer than the 120 characters `displayName` allows, or containing control characters. Names carry no activity counts and are never ordered by contribution: this identifies people, it does not rank them. An empty list is a valid answer (a repository with no commits), and the reviewer field accepts a name that is not listed.",
       responses: RESPONSES,
     }),
     (c) => respond(c, listRepositoryPeople(useCaseCtx)),
@@ -598,6 +599,8 @@ export function createApp(config: AppConfig) {
       path: "/api/v1/candidates",
       tags: ["review"],
       summary: "List the review queue",
+      description:
+        "Returns `total` alongside the page so a client can render numbered pages. Two ways to position: `cursor` (the §4 keyset default, stable across concurrent writes) or `offset` (what numbered pages need, since a cursor cannot be computed for a page the client has not fetched). `cursor` wins if both are sent. The page and `total` are read in one transaction, so they always describe the same snapshot.",
       request: { query: candidatesQuery },
       responses: RESPONSES,
     }),
@@ -615,6 +618,9 @@ export function createApp(config: AppConfig) {
           ]),
           ...numOpt("limit", firstOf(q.limit)),
           ...strOpt("cursor", firstOf(q.cursor)),
+          // Integer-only and clamped at 0: a fractional or negative offset
+          // would reach SQL as a position no page can be built from.
+          ...intOpt("offset", firstOf(q.offset), 0, Number.MAX_SAFE_INTEGER),
         }),
       );
     },

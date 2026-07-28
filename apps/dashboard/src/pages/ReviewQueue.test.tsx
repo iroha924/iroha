@@ -4,8 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 import { ReviewQueue } from "@/pages/ReviewQueue.js";
 import { mockApi, ok, renderWithProviders } from "@/test-utils.js";
 
-function statusOf(url: string): string | null {
-  return new URL(url, "http://x").searchParams.get("status");
+function paramOf(url: string, key: string): string | null {
+  return new URL(url, "http://x").searchParams.get(key);
 }
 
 function rows(from: number, count: number) {
@@ -21,24 +21,16 @@ function rows(from: number, count: number) {
   }));
 }
 
-/** A `fetch` mock that answers `/candidates` from the cursor it was given. */
-function mockPagedCandidates(
-  pages: Array<{ cursor: string | null; count: number }>,
-  total: number,
-) {
+/** Serves `/candidates` from `offset`, the way the real endpoint does. */
+function mockOffsetCandidates(total: number, pageSize = 10) {
   const fn = vi.fn(async (input: string | URL | Request) => {
     const url = new URL(String(input), "http://x");
-    const cursor = url.searchParams.get("cursor");
-    const index = pages.findIndex((_p, i) =>
-      i === 0 ? cursor === null : pages[i - 1]?.cursor === cursor,
-    );
-    const page = pages[index] ?? pages[0];
-    if (page === undefined) throw new Error("no page");
-    const from = pages.slice(0, index === -1 ? 0 : index).reduce((n, p) => n + p.count, 1);
+    const offset = Number(url.searchParams.get("offset") ?? "0");
+    const count = Math.max(0, Math.min(pageSize, total - offset));
     return new Response(
       JSON.stringify({
         ok: true,
-        data: { items: rows(from, page.count), nextCursor: page.cursor, total },
+        data: { items: rows(offset + 1, count), nextCursor: null, total },
         meta: { requestId: "req_test" },
       }),
       { status: 200, headers: { "Content-Type": "application/json" } },
@@ -56,66 +48,95 @@ describe("ReviewQueue", () => {
     renderWithProviders(<ReviewQueue />);
     await screen.findByText(/No candidates awaiting review/);
 
-    // The default request carries the pending status.
-    expect(fn.mock.calls.some((c) => statusOf(String(c[0])) === "pending")).toBe(true);
+    expect(fn.mock.calls.some((c) => paramOf(String(c[0]), "status") === "pending")).toBe(true);
 
     await userEvent.click(screen.getByRole("button", { name: "Approved" }));
     await waitFor(() =>
-      expect(fn.mock.calls.some((c) => statusOf(String(c[0])) === "approved")).toBe(true),
+      expect(fn.mock.calls.some((c) => paramOf(String(c[0]), "status") === "approved")).toBe(true),
     );
   });
 
   it("requests ten rows and numbers the pages from the reported total", async () => {
-    const fn = mockPagedCandidates([{ cursor: "c1", count: 10 }], 26);
+    const fn = mockOffsetCandidates(26);
     renderWithProviders(<ReviewQueue />);
 
     await screen.findByText("candidate 1");
     expect(screen.getAllByText(/^candidate \d+$/)).toHaveLength(10);
-    // 26 candidates at ten per page is three pages, and the range reads 1-10.
     expect(screen.getByRole("button", { name: "3" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "4" })).not.toBeInTheDocument();
     expect(screen.getByText("1–10 / 26")).toBeInTheDocument();
-    expect(new URL(String(fn.mock.calls[0]?.[0]), "http://x").searchParams.get("limit")).toBe("10");
+    expect(paramOf(String(fn.mock.calls[0]?.[0]), "limit")).toBe("10");
   });
 
-  it("walks the cursor forward to reach a deep-linked page", async () => {
-    mockPagedCandidates(
-      [
-        { cursor: "c1", count: 10 },
-        { cursor: null, count: 10 },
-      ],
-      20,
-    );
-    renderWithProviders(<ReviewQueue />, ["/?status=pending&page=2"]);
+  // The whole point of offset over a walked cursor: page 5 is one request,
+  // and the four pages before it are never fetched.
+  it("reaches a deep-linked page in a single request", async () => {
+    const fn = mockOffsetCandidates(200);
+    renderWithProviders(<ReviewQueue />, ["/?status=pending&page=5"]);
 
-    // Page 2 is only reachable by fetching page 1 first, so its rows arrive late.
-    expect(await screen.findByText("candidate 11")).toBeInTheDocument();
+    expect(await screen.findByText("candidate 41")).toBeInTheDocument();
+    expect(fn.mock.calls).toHaveLength(1);
+    expect(paramOf(String(fn.mock.calls[0]?.[0]), "offset")).toBe("40");
+  });
+
+  it("pages forward from a numbered button without refetching earlier pages", async () => {
+    const fn = mockOffsetCandidates(50);
+    renderWithProviders(<ReviewQueue />);
+    await screen.findByText("candidate 1");
+    const before = fn.mock.calls.length;
+
+    await userEvent.click(screen.getByRole("button", { name: "4" }));
+
+    expect(await screen.findByText("candidate 31")).toBeInTheDocument();
     expect(screen.queryByText("candidate 1")).not.toBeInTheDocument();
+    const offsets = fn.mock.calls.slice(before).map((c) => paramOf(String(c[0]), "offset"));
+    expect(offsets).toContain("30");
+    expect(offsets).not.toContain("10");
+    expect(offsets).not.toContain("20");
   });
 
   it("falls back to the last existing page when the URL asks beyond the queue", async () => {
-    mockPagedCandidates([{ cursor: null, count: 4 }], 4);
+    mockOffsetCandidates(4);
     renderWithProviders(<ReviewQueue />, ["/?status=pending&page=9"]);
 
-    // Four candidates are a single page, so page 9 renders page 1 rather than
-    // an empty list, and no pagination bar is drawn at all.
     expect(await screen.findByText("candidate 1")).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "pagination" })).not.toBeInTheDocument();
   });
 
+  it("treats a non-integer page in the URL as the first page", async () => {
+    const fn = mockOffsetCandidates(30);
+    renderWithProviders(<ReviewQueue />, ["/?status=pending&page=2.5"]);
+
+    expect(await screen.findByText("candidate 1")).toBeInTheDocument();
+    expect(paramOf(String(fn.mock.calls[0]?.[0]), "offset")).toBe("0");
+  });
+
   it("resets to the first page when the status filter changes", async () => {
-    mockPagedCandidates(
-      [
-        { cursor: "c1", count: 10 },
-        { cursor: null, count: 10 },
-      ],
-      20,
-    );
+    mockOffsetCandidates(20);
     renderWithProviders(<ReviewQueue />, ["/?status=pending&page=2"]);
     await screen.findByText("candidate 11");
 
     await userEvent.click(screen.getByRole("button", { name: "Rejected" }));
 
     await waitFor(() => expect(screen.getByText("candidate 1")).toBeInTheDocument());
+  });
+
+  // A page number that outran the queue must not render a bordered box with
+  // nothing in it, which is what keying the empty state on `total` produced.
+  it("shows the empty state, not an empty frame, when a page has no rows", async () => {
+    globalThis.fetch = vi.fn(async () => {
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          data: { items: [], nextCursor: null, total: 4 },
+          meta: { requestId: "req_test" },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+    renderWithProviders(<ReviewQueue />);
+
+    expect(await screen.findByText(/No candidates awaiting review/)).toBeInTheDocument();
+    expect(screen.queryByRole("list")).not.toBeInTheDocument();
   });
 });

@@ -1,4 +1,4 @@
-import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api, type CandidateStatusFilter } from "@/api/client.js";
@@ -45,14 +45,20 @@ function pageWindow(current: number, count: number): Array<number | null> {
   return withGaps;
 }
 
+/** A page number from the URL: whole, at least 1, and never NaN. */
+function parsePage(raw: string | null): number {
+  const n = Number(raw ?? "1");
+  return Number.isInteger(n) && n >= 1 ? n : 1;
+}
+
 /**
  * Review queue (contracts/dashboard-api.md §6): candidates by status, ten per page.
  *
  * Status and page live in the URL, per the §2 state rules, so a page is
  * linkable and changing the filter cannot leave a stale page number behind.
- * The API cursor is opaque rather than an offset, so page N is the Nth fetched
- * keyset page and reaching it walks forward from the first — hence the effect
- * below rather than a direct jump.
+ * Pages are addressed by `offset` rather than by walking the keyset cursor
+ * forward: any page is one request, so there is no chain to replay on a deep
+ * link and no repeated fetch of the pages before it.
  */
 export function ReviewQueue() {
   const { t } = useI18n();
@@ -64,49 +70,36 @@ export function ReviewQueue() {
   )
     ? (statusParam as CandidateStatusFilter)
     : "pending";
-  const requestedPage = Math.max(1, Number(params.get("page") ?? "1") || 1);
+  const requestedPage = parsePage(params.get("page"));
 
-  const q = useInfiniteQuery({
-    queryKey: ["candidates", status],
-    queryFn: ({ pageParam }) =>
-      api.candidates({
-        ...(pageParam !== undefined ? { cursor: pageParam } : {}),
-        status,
-        limit: PAGE_SIZE,
-      }),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (last) => last.nextCursor ?? undefined,
+  const q = useQuery({
+    queryKey: ["candidates", status, requestedPage],
+    queryFn: () =>
+      api.candidates({ status, limit: PAGE_SIZE, offset: (requestedPage - 1) * PAGE_SIZE }),
     refetchInterval: 5000,
-    // Keep the current rows on screen while a status change refetches.
+    // Keep the current rows on screen while a status or page change refetches.
     placeholderData: keepPreviousData,
   });
 
-  const total = q.data?.pages[0]?.total ?? 0;
+  const total = q.data?.total ?? 0;
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   // The queue shrinks under the reader — approving a candidate removes it, and
-  // the list polls — so the page in the URL can outrun the queue. Fall back to
-  // the last page that exists instead of rendering nothing.
-  const page = Math.min(requestedPage, pageCount);
-
-  const loadedPages = q.data?.pages.length ?? 0;
-  const needsMore = loadedPages > 0 && loadedPages < page && q.hasNextPage;
-
-  // Walk forward until the requested page is loaded: a deep link to page 3
-  // costs three round-trips because the cursor cannot be computed for a page
-  // the client has not seen.
+  // the list polls — so the page in the URL can outrun the queue. The offset is
+  // built from the URL, so correcting the display alone would leave the request
+  // asking past the end; rewrite the URL and let the query follow it.
   useEffect(() => {
-    if (needsMore && !q.isFetchingNextPage) {
-      void q.fetchNextPage();
+    if (q.data !== undefined && requestedPage > pageCount) {
+      setParams({ status, page: String(pageCount) }, { replace: true });
     }
-  }, [needsMore, q.isFetchingNextPage, q.fetchNextPage]);
+  }, [q.data, requestedPage, pageCount, status, setParams]);
 
-  const items = q.data?.pages[page - 1]?.items ?? [];
+  const page = Math.min(requestedPage, pageCount);
+  const items = q.data?.items ?? [];
   // The default queue view is the pending tab; any other tab is a filtered view.
   const filtered = status !== "pending";
 
   const goTo = (next: number) => {
-    const clamped = Math.min(Math.max(1, next), pageCount);
-    setParams({ status, page: String(clamped) });
+    setParams({ status, page: String(Math.min(Math.max(1, next), pageCount)) });
   };
   const hrefFor = (next: number) =>
     `?status=${status}&page=${Math.min(Math.max(1, next), pageCount)}`;
@@ -133,7 +126,10 @@ export function ReviewQueue() {
       {q.isPending && <Loading />}
       {q.isError && <ErrorState />}
       {q.data !== undefined &&
-        (total === 0 ? (
+        // Keyed on the rows, not on `total`: the two can only disagree if the
+        // page number outran the queue, and an empty page is still "nothing to
+        // show here" rather than a bordered box with nothing in it.
+        (items.length === 0 ? (
           <EmptyState message={filtered ? t("common.noMatches") : t("review.empty")} />
         ) : (
           <>
@@ -152,11 +148,6 @@ export function ReviewQueue() {
                   </Link>
                 </li>
               ))}
-              {items.length === 0 && needsMore && (
-                <li className="px-5 py-4">
-                  <Loading />
-                </li>
-              )}
             </ul>
 
             {pageCount > 1 && (

@@ -1,27 +1,55 @@
+import type { IrohaError, Result } from "@iroha/domain";
+import { err, ok } from "@iroha/domain";
 import { runGit } from "./run-git.js";
 
 export interface RepositoryPeople {
-  /** Distinct commit author names, alphabetical, bots excluded. */
+  /** Names an approval may be credited to, sorted deterministically. */
   names: string[];
-  /** `git config user.name`, or `null` when it is not configured. */
+  /** The local Git identity, or `null` when it is unset or unusable as a reviewer. */
   self: string | null;
 }
 
 /**
  * How far back author names are collected. The whole history would be
  * unbounded output through `runGit`'s 10 MiB buffer, and the people who can
- * plausibly review today are the recent ones; a repository whose last two
- * thousand commits do not include someone can still have them typed in by
- * hand, since the reviewer field stays free text.
+ * plausibly review today are the recent ones; anyone the scan misses can still
+ * be typed in, since the reviewer field stays free text.
  */
 const AUTHOR_SCAN_COMMITS = 2000;
 
 /**
- * Forge account names Git records as an author but no human answers for.
- * Left in, they outnumber the real reviewers in any repository with an
- * automated dependency updater.
+ * GitHub names every App account this way (`dependabot[bot]`,
+ * `renovate[bot]`). Deliberately only this suffix: an open-ended list of bot
+ * spellings never converges, and the field accepts a typed name anyway, so a
+ * bot that slips through costs a reader one wrong-looking row rather than a
+ * defect. `docs/contracts/dashboard-api.md` states the same narrow rule.
  */
-const BOT_NAME = /\[bot\]$/;
+const FORGE_APP_NAME = /\[bot\]$/;
+
+/**
+ * `approveRequestSchema.actor.displayName` in `@iroha/api` bounds the reviewer
+ * name at 120 characters. Git author names are unbounded, so offering a longer
+ * one would let the picker produce a value its own approve call then rejects
+ * with a 400 the UI cannot explain.
+ */
+const MAX_REVIEWER_NAME_LENGTH = 120;
+
+/** C0/C1 controls. A real author name has none; an escape sequence garbles every reader of the canonical file. */
+const CONTROL_CHARACTER = /\p{Cc}/u;
+
+function exitCodeOf(error: IrohaError): number | null | undefined {
+  return (error.details as { exitCode?: number | null } | undefined)?.exitCode;
+}
+
+/** Whether a name can actually be committed as `approved_by.display_name`. */
+function isSelectableReviewer(name: string): boolean {
+  return (
+    name !== "" &&
+    name.length <= MAX_REVIEWER_NAME_LENGTH &&
+    !CONTROL_CHARACTER.test(name) &&
+    !FORGE_APP_NAME.test(name)
+  );
+}
 
 /**
  * The people this repository can attribute an approval to, for the Review
@@ -32,37 +60,61 @@ const BOT_NAME = /\[bot\]$/;
  * never synced a GitHub forge, and it carries no `repository_id` to scope a
  * read by. Git history needs no network and is present wherever `.iroha/` is.
  *
- * Neither half is required: a repository with no commits yields no names, and
- * `user.name` may be unset. Both degrade to an empty list plus `null` rather
- * than an error, because the field they feed accepts a typed name anyway — so
- * there is no failure for a caller to handle, and this returns a plain value
- * rather than a `Result` that could only ever be `ok`.
+ * `--no-show-signature` is load-bearing, not tidiness: under
+ * `log.showSignature = true` Git writes signature-verification text to the
+ * same **stdout** as the formatted output, so lines like
+ * `~/.ssh/allowed_signers:1: invalid key` would be read as people and served
+ * over HTTP. `runGit` redacts absolute paths only on its failure path, and
+ * this is the first caller to hand raw success stdout to an API response.
+ *
+ * `--all` rather than the HEAD-only default: someone who has only committed on
+ * a feature branch is still a person who can review. It also makes an unborn
+ * HEAD exit 0 with no output instead of 128, so there is no "no commits yet"
+ * failure to special-case.
  */
-export async function readRepositoryPeople(cwd: string): Promise<RepositoryPeople> {
+export async function readRepositoryPeople(
+  cwd: string,
+): Promise<Result<RepositoryPeople, IrohaError>> {
   const [authors, configured] = await Promise.all([
-    runGit(["log", `--max-count=${AUTHOR_SCAN_COMMITS}`, "--format=%aN"], { cwd }),
+    runGit(
+      ["log", "--all", "--no-show-signature", `--max-count=${AUTHOR_SCAN_COMMITS}`, "--format=%aN"],
+      { cwd },
+    ),
     runGit(["config", "--get", "user.name"], { cwd }),
   ]);
 
-  // `git config --get` exits 1 for an unset key and `git log` exits 128 on an
-  // unborn HEAD; both are ordinary states here, not failures to report.
-  const self = configured.ok && configured.value.trim() !== "" ? configured.value.trim() : null;
+  if (!authors.ok) {
+    return err(authors.error);
+  }
+  // Exit 1 is `git config`'s "this key is unset", the one expected non-answer.
+  // Every other failure — no git binary, dubious ownership, a timeout — is
+  // reported rather than folded into an empty list, which would be
+  // indistinguishable from a repository that simply has no people.
+  if (!configured.ok && exitCodeOf(configured.error) !== 1) {
+    return err(configured.error);
+  }
+
+  const configuredName = configured.ok ? configured.value.trim() : "";
+  const self = isSelectableReviewer(configuredName) ? configuredName : null;
 
   const names = new Set<string>();
-  if (authors.ok) {
-    for (const line of authors.value.split(/\r?\n/)) {
-      const name = line.trim();
-      if (name !== "" && !BOT_NAME.test(name)) {
-        names.add(name);
-      }
+  for (const line of authors.value.split(/\r?\n/)) {
+    const name = line.trim();
+    if (isSelectableReviewer(name)) {
+      names.add(name);
     }
   }
+  // Added after the loop but through the same predicate: a `ci-runner[bot]`
+  // identity must not reach the list by way of being the local one.
   if (self !== null) {
     names.add(self);
   }
 
-  // Alphabetical, never by commit count: ordering people by how much they
-  // committed is the individual ranking CLAUDE.md forbids, and it would be
-  // visible in the picker even without a number next to each name.
-  return { names: Array.from(names).sort((a, b) => a.localeCompare(b)), self };
+  // Code-point order, not `localeCompare`: this package pins `LC_ALL=C` so Git
+  // reads the same everywhere, and a list whose order depends on the server's
+  // ICU build would undo that for no gain.
+  return ok({
+    names: Array.from(names).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
+    self,
+  });
 }

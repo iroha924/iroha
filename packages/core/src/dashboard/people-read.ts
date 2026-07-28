@@ -20,10 +20,9 @@ export interface ListRepositoryPeopleInput {
  * Unlike its sibling dashboard reads this opens no database: the names come
  * from Git history, and the `actors` table cannot answer the question — it is
  * written only by the Forge sync and has no `repository_id` to scope by. The
- * repository is still resolved first, so an uninitialized directory fails the
- * same `NOT_INITIALIZED` way every other dashboard endpoint does, and so the
- * Git calls run at the working-tree root rather than wherever the server
- * happens to have been launched.
+ * repository is still resolved first, so this refuses the same way every other
+ * dashboard endpoint does, and so the Git calls run at the working-tree root
+ * rather than wherever the server happens to have been launched.
  */
 export async function listRepositoryPeople(
   input: ListRepositoryPeopleInput,
@@ -33,5 +32,8 @@ export async function listRepositoryPeople(
     return repoResult;
   }
   const people = await readRepositoryPeople(repoResult.value.gitLocation.root);
-  return ok({ names: people.names, self: people.self });
+  if (!people.ok) {
+    return people;
+  }
+  return ok({ names: people.value.names, self: people.value.self });
 }

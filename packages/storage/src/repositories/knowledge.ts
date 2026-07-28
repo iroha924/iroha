@@ -377,6 +377,8 @@ export interface ListCandidatesPageFilter {
   /** Keyset cursor: return rows strictly older than this `(created_at, id)` pair. */
   beforeCreatedAt?: string;
   beforeId?: TypedId<"cand">;
+  /** Rows to skip, for the review queue's numbered pages. Ignored when a cursor is given. */
+  offset?: number;
 }
 
 /**
@@ -384,6 +386,12 @@ export interface ListCandidatesPageFilter {
  * (`GET /api/v1/candidates`). Same deterministic `created_at DESC, id DESC`
  * order as `listCandidatesByStatus`, plus a `(created_at, id)` cursor so paging
  * stays stable across reloads (contracts/dashboard-api.md §4).
+ *
+ * `offset` is the alternative the Review queue's numbered pages need: a cursor
+ * cannot be computed for a page the client has never fetched, so numbering over
+ * cursors alone means walking every intervening page. The two are mutually
+ * exclusive — a cursor already encodes a position, so an offset on top of it
+ * would skip rows from that position rather than from the start.
  */
 export async function listCandidatesPage(
   db: Executor,
@@ -392,15 +400,20 @@ export async function listCandidatesPage(
 ): Promise<Result<CandidateRow[], IrohaError>> {
   const conditions = ["repository_id = ?", "status = ?"];
   const args: Array<string | number> = [repositoryId, filter.status];
-  if (filter.beforeCreatedAt !== undefined && filter.beforeId !== undefined) {
+  const usingCursor = filter.beforeCreatedAt !== undefined && filter.beforeId !== undefined;
+  if (usingCursor) {
     conditions.push("(created_at, id) < (?, ?)");
-    args.push(filter.beforeCreatedAt, filter.beforeId);
+    args.push(filter.beforeCreatedAt as string, filter.beforeId as TypedId<"cand">);
   }
   args.push(filter.limit);
+  const skip = !usingCursor && filter.offset !== undefined && filter.offset > 0;
+  if (skip) {
+    args.push(filter.offset as number);
+  }
   try {
     const result = await db.execute({
       sql: `SELECT * FROM candidates WHERE ${conditions.join(" AND ")}
-        ORDER BY created_at DESC, id DESC LIMIT ?`,
+        ORDER BY created_at DESC, id DESC LIMIT ?${skip ? " OFFSET ?" : ""}`,
       args,
     });
     return ok(result.rows.map(rowToCandidate));

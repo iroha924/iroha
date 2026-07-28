@@ -441,6 +441,62 @@ describe("dashboard API", () => {
     expect(raw.status).toBe(404);
   });
 
+  it("pages the candidate queue by offset and reports the status-scoped total", async () => {
+    const repo = await setupApiRepo();
+    dir = repo.dir;
+    const { app } = makeApp(repo.dir);
+    const cookie = await exchange(app);
+    await seedDecision(repo.dbPath, repo.repositoryId);
+    await seedDecision(repo.dbPath, repo.repositoryId);
+    await seedDecision(repo.dbPath, repo.repositoryId);
+
+    const first = await get(app, "/api/v1/candidates?limit=2", cookie);
+    const j1 = (await first.json()) as { data: { items: { id: string }[]; total: number } };
+    expect(j1.data.items.length).toBe(2);
+    expect(j1.data.total).toBe(3);
+
+    const third = await get(app, "/api/v1/candidates?limit=2&offset=2", cookie);
+    const j3 = (await third.json()) as { data: { items: { id: string }[]; total: number } };
+    expect(j3.data.items.length).toBe(1);
+    expect(j3.data.total).toBe(3);
+    const seen = new Set(j1.data.items.map((i) => i.id));
+    expect(j3.data.items.every((i) => !seen.has(i.id))).toBe(true);
+
+    // Query leniency (§4): a fractional or negative offset is dropped/clamped
+    // rather than rejected, so the caller gets the first page, not a 400.
+    const fractional = await get(app, "/api/v1/candidates?limit=2&offset=1.5", cookie);
+    expect(fractional.status).toBe(200);
+    const jf = (await fractional.json()) as { data: { items: { id: string }[] } };
+    expect(jf.data.items.map((i) => i.id)).toEqual(j1.data.items.map((i) => i.id));
+
+    const negative = await get(app, "/api/v1/candidates?limit=2&offset=-5", cookie);
+    expect(negative.status).toBe(200);
+    const jn = (await negative.json()) as { data: { items: { id: string }[] } };
+    expect(jn.data.items.map((i) => i.id)).toEqual(j1.data.items.map((i) => i.id));
+  });
+
+  it("serves the repository's people, and only to an authenticated caller", async () => {
+    const repo = await setupApiRepo();
+    dir = repo.dir;
+    const { app } = makeApp(repo.dir);
+
+    const unauth = await app.request("/api/v1/people", { headers: { Host: HOST } });
+    expect(unauth.status).toBe(401);
+
+    const cookie = await exchange(app);
+    const response = await get(app, "/api/v1/people", cookie);
+    expect(response.status).toBe(200);
+    const json = (await response.json()) as {
+      ok: boolean;
+      data: { names: string[]; self: string | null };
+    };
+    expect(json.ok).toBe(true);
+    // setupApiRepo configures this identity and makes no commits, so it is the
+    // whole answer: present as `self` and, through it, in the list.
+    expect(json.data.self).toBe("iroha test");
+    expect(json.data.names).toEqual(["iroha test"]);
+  });
+
   it("filters the knowledge list by type and status, and the candidate queue by status", async () => {
     const repo = await setupApiRepo();
     dir = repo.dir;

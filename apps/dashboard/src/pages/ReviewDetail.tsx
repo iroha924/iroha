@@ -35,6 +35,10 @@ export function ReviewDetail() {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [reviewer, setReviewer] = useState("");
+  // What the reviewer field was last *typed* into, which is not the same thing
+  // as its value: prefilling and picking from the list both set a name without
+  // expressing an intent to search. Empty means "no search, show everyone".
+  const [nameQuery, setNameQuery] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
 
   // Sync the editable form from the loaded draft when navigating to a candidate
@@ -49,6 +53,8 @@ export function ReviewDetail() {
   // The reviewer is almost always the person at the keyboard, so the local Git
   // identity seeds the field. Only while it is still untouched: retyping over a
   // deliberate edit on a later fetch would be worse than not prefilling at all.
+  // `nameQuery` is left alone, so the prefilled name does not narrow the picker
+  // down to itself and hide everyone else.
   useEffect(() => {
     const self = people.data?.self;
     if (self !== undefined && self !== null) {
@@ -112,12 +118,12 @@ export function ReviewDetail() {
   if (q.isError || q.data === undefined) return <ErrorState />;
   const d = q.data;
   const secretBlocked = !d.validation.secretsClean;
-  // The typed name narrows the list rather than constraining it: the field is
-  // free text so a name Git has never seen still approves. Matching is a plain
+  // Typing narrows the list rather than constraining it: the field is free text
+  // so a name Git has never seen still approves. Matching is a plain
   // case-insensitive substring over names already in memory — these are forge
   // account names, so there is no request to debounce and no composition to
   // wait out.
-  const query = reviewer.trim().toLowerCase();
+  const query = nameQuery.trim().toLowerCase();
   const allPeople = people.data?.names ?? [];
   const matchingPeople =
     query === "" ? allPeople : allPeople.filter((name) => name.toLowerCase().includes(query));
@@ -211,14 +217,21 @@ export function ReviewDetail() {
             <Input
               id="reviewer"
               value={reviewer}
-              onChange={(e) => setReviewer(e.target.value)}
+              onChange={(e) => {
+                setReviewer(e.target.value);
+                setNameQuery(e.target.value);
+              }}
               className="w-56"
             />
             {matchingPeople.length > 0 && (
               <Select
                 value=""
                 onValueChange={(value) => {
-                  if (value !== null) setReviewer(value);
+                  if (value === null) return;
+                  setReviewer(value);
+                  // Picking is not searching: clear the query so the list stays
+                  // whole and the next open is not narrowed to the chosen name.
+                  setNameQuery("");
                 }}
               >
                 <SelectTrigger className="w-44" aria-label={t("review.reviewerPick")}>
