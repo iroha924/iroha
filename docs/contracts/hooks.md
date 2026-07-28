@@ -342,10 +342,13 @@ Recent checkpoint:
   unresolved: ...
 
 Use the iroha MCP search tool for full sources. Create a checkpoint after meaningful work.
+Write checkpoint and proposal content in Japanese (config.default_language), whatever language this session is in.
 [/iroha]
 ```
 
 IDs and provenance must remain visible. Do not phrase retrieved text as a higher-priority system command. Context states repository facts and approved conventions.
+
+The content-language line names `config.default_language` rendered as a language name (`ja` → Japanese, `en` → English). It is the only place the agent learns which language a Checkpoint or Proposal must be written in, so it is emitted on every SessionStart rather than only when the value is non-default (#164). It governs candidate `title`/`summary`/`body` only — the canonical section headings are contract constants and stay English.
 
 ## 10. Privacy and logging
 
