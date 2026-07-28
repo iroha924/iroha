@@ -14,7 +14,7 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination.js";
 import { useI18n } from "@/i18n/index.js";
-import { candidateStatusTone } from "@/lib/status.js";
+import { knowledgeTypeTone } from "@/lib/status.js";
 
 const CANDIDATE_STATUSES: readonly CandidateStatusFilter[] = [
   "pending",
@@ -147,9 +147,7 @@ export function ReviewQueue() {
                     to={`/review/${item.id}`}
                     className="flex items-center gap-3 px-5 py-4 transition-colors hover:bg-paper-inset"
                   >
-                    <Badge variant={candidateStatusTone(item.status)}>
-                      {t(`ktype.${item.type}`)}
-                    </Badge>
+                    <Badge variant={knowledgeTypeTone(item.type)}>{t(`ktype.${item.type}`)}</Badge>
                     <span className="flex-1 truncate font-medium text-ink">{item.title}</span>
                     <span className="shrink-0 text-xs tabular-nums text-ink-faint">
                       {item.createdAt.slice(0, 10)}

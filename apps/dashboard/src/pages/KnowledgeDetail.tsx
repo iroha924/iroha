@@ -5,7 +5,7 @@ import { BackLink, ErrorState, Loading } from "@/components/brand.js";
 import { Markdown } from "@/components/markdown.js";
 import { Badge } from "@/components/ui/badge.js";
 import { useI18n } from "@/i18n/index.js";
-import { knowledgeStatusTone } from "@/lib/status.js";
+import { knowledgeStatusTone, knowledgeTypeTone } from "@/lib/status.js";
 
 /** Canonical frontmatter is snake_case free-form JSON (`unknown` over the wire), narrowed defensively. */
 interface Actor {
@@ -83,7 +83,7 @@ export function KnowledgeDetail() {
         {d.title}
       </h1>
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-ink-muted">
-        <Badge variant="neutral">{t(`ktype.${d.type}`)}</Badge>
+        <Badge variant={knowledgeTypeTone(d.type)}>{t(`ktype.${d.type}`)}</Badge>
         <Badge variant={knowledgeStatusTone(d.status)}>{t(`status.${d.status}`)}</Badge>
         <span className="tabular-nums">
           {t("knowledge.authority")} {d.authority}

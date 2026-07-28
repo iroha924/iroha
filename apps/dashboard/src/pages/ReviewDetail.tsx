@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/select.js";
 import { Textarea } from "@/components/ui/textarea.js";
 import { useI18n } from "@/i18n/index.js";
+import { knowledgeTypeTone } from "@/lib/status.js";
 import { cn } from "@/lib/utils";
 
 /** Tall enough to read a section without scrolling, short enough not to bury the buttons. */
@@ -154,7 +155,7 @@ export function ReviewDetail() {
 
       <Card>
         <CardContent className="space-y-4">
-          <Badge variant="pending" className="w-fit">
+          <Badge variant={knowledgeTypeTone(d.type)} className="w-fit">
             {t(`ktype.${d.type}`)}
           </Badge>
           <div className="space-y-1.5">

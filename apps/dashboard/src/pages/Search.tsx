@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge.js";
 import { Button } from "@/components/ui/button.js";
 import { Input } from "@/components/ui/input.js";
 import { useI18n } from "@/i18n/index.js";
+import { knowledgeTypeTone } from "@/lib/status.js";
 import { cn } from "@/lib/utils";
 
 /**
@@ -112,7 +113,7 @@ export function Search() {
                 className="block px-5 py-4 transition-colors hover:bg-paper-inset"
               >
                 <div className="flex items-center gap-2.5">
-                  <Badge variant="neutral">{t(`ktype.${r.type}`)}</Badge>
+                  <Badge variant={knowledgeTypeTone(r.type)}>{t(`ktype.${r.type}`)}</Badge>
                   <span className="font-medium text-ink">{r.title}</span>
                 </div>
                 {r.summary !== null && (

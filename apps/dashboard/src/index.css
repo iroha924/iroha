@@ -45,6 +45,20 @@
   --color-warn-tint: #f0e7d6;
 
   --color-clay: #bc9870;
+  --color-clay-tint: #f1e7d9;
+
+  /* The fourth badge colour brand-and-design.md left room for: a muted violet,
+     desaturated to sit beside the earth tones rather than jump out of them. */
+  --color-iris: #6d5b86;
+  --color-iris-tint: #e8e3ee;
+
+  /* Two more traditional tones so each knowledge type reads as its own colour:
+     ai (藍, indigo) and taikou (退紅, a faded rose). Both muted to the same
+     chroma range as matcha and clay so the set still looks like one family. */
+  --color-ai: #4a5b6e;
+  --color-ai-tint: #e2e7ec;
+  --color-taikou: #a4595f;
+  --color-taikou-tint: #f2e2e3;
 
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;

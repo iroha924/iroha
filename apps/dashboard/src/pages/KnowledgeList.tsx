@@ -13,6 +13,7 @@ import {
 } from "@/components/brand.js";
 import { Badge } from "@/components/ui/badge.js";
 import { useI18n } from "@/i18n/index.js";
+import { knowledgeTypeTone } from "@/lib/status.js";
 
 const KNOWLEDGE_STATUSES: readonly KnowledgeStatusFilter[] = ["approved", "superseded", "archived"];
 
@@ -99,7 +100,7 @@ export function KnowledgeList() {
                     to={`/knowledge/${item.id}`}
                     className="flex items-center gap-3 px-5 py-4 transition-colors hover:bg-paper-inset"
                   >
-                    <Badge variant="neutral">{t(`ktype.${item.type}`)}</Badge>
+                    <Badge variant={knowledgeTypeTone(item.type)}>{t(`ktype.${item.type}`)}</Badge>
                     <span className="flex-1 truncate font-medium text-ink">{item.title}</span>
                     <span className="shrink-0 text-xs tabular-nums text-ink-faint">
                       {t("knowledge.authority")} {item.authority}
