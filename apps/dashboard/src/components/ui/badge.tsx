@@ -30,10 +30,10 @@ const badgeVariants = cva(
         // clay is decoration-only per brand-and-design.md, so it tints the surface
         // and the label stays sumi ink rather than becoming clay-coloured text.
         clay: "bg-clay-tint text-ink",
-        iris: "bg-iris-tint text-iris",
         amber: "bg-warn-tint text-warn",
-        ai: "bg-ai-tint text-ai",
-        taikou: "bg-taikou-tint text-taikou",
+        fuji: "bg-fuji-tint text-fuji",
+        suou: "bg-suou-tint text-suou",
+        asagi: "bg-asagi-tint text-asagi",
       },
     },
     defaultVariants: {

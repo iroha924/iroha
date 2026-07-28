@@ -10,18 +10,7 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart.js";
 import { useI18n } from "@/i18n/index.js";
-
-// The seven canonical knowledge types, each with a brand chart colour. Order and
-// colours are stable so the composition chart reads consistently.
-const KNOWLEDGE_TYPES = [
-  { key: "decision", color: "var(--chart-1)" },
-  { key: "rule", color: "var(--chart-2)" },
-  { key: "concept", color: "var(--chart-3)" },
-  { key: "insight", color: "var(--chart-4)" },
-  { key: "incident", color: "var(--chart-5)" },
-  { key: "pattern", color: "var(--color-ink-muted)" },
-  { key: "review_learning", color: "var(--color-matcha-active)" },
-] as const;
+import { KNOWLEDGE_TYPES } from "@/lib/status.js";
 
 function MiniStat({ label, value }: { label: string; value: number }) {
   return (
