@@ -462,17 +462,17 @@ describe("dashboard API", () => {
     const seen = new Set(j1.data.items.map((i) => i.id));
     expect(j3.data.items.every((i) => !seen.has(i.id))).toBe(true);
 
-    // Query leniency (§4): a fractional or negative offset is dropped/clamped
-    // rather than rejected, so the caller gets the first page, not a 400.
-    const fractional = await get(app, "/api/v1/candidates?limit=2&offset=1.5", cookie);
-    expect(fractional.status).toBe(200);
-    const jf = (await fractional.json()) as { data: { items: { id: string }[] } };
-    expect(jf.data.items.map((i) => i.id)).toEqual(j1.data.items.map((i) => i.id));
-
-    const negative = await get(app, "/api/v1/candidates?limit=2&offset=-5", cookie);
-    expect(negative.status).toBe(200);
-    const jn = (await negative.json()) as { data: { items: { id: string }[] } };
-    expect(jn.data.items.map((i) => i.id)).toEqual(j1.data.items.map((i) => i.id));
+    // Query leniency (§4): a bad offset is dropped or clamped rather than
+    // rejected, so the caller gets the first page instead of a 400.
+    for (const bad of ["1.5", "-5", "abc", "1e400"]) {
+      const response = await get(app, `/api/v1/candidates?limit=2&offset=${bad}`, cookie);
+      expect(response.status, `offset=${bad}`).toBe(200);
+      const body = (await response.json()) as { data: { items: { id: string }[] } };
+      expect(
+        body.data.items.map((i) => i.id),
+        `offset=${bad}`,
+      ).toEqual(j1.data.items.map((i) => i.id));
+    }
   });
 
   it("serves the repository's people, and only to an authenticated caller", async () => {

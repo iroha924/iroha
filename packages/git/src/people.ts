@@ -10,10 +10,11 @@ export interface RepositoryPeople {
 }
 
 /**
- * How far back author names are collected. The whole history would be
- * unbounded output through `runGit`'s 10 MiB buffer, and the people who can
- * plausibly review today are the recent ones; anyone the scan misses can still
- * be typed in, since the reviewer field stays free text.
+ * How far back author names are collected. This caps the number of lines, not
+ * their length — Git bounds neither, so a history of pathologically long author
+ * names can still overrun `runGit`'s 10 MiB buffer and fail the read. That
+ * degrades to no picker rather than to no approval, since the reviewer field
+ * stays free text, which is also why anyone the scan misses can be typed in.
  */
 const AUTHOR_SCAN_COMMITS = 2000;
 
@@ -27,15 +28,32 @@ const AUTHOR_SCAN_COMMITS = 2000;
 const FORGE_APP_NAME = /\[bot\]$/;
 
 /**
- * `approveRequestSchema.actor.displayName` in `@iroha/api` bounds the reviewer
- * name at 120 characters. Git author names are unbounded, so offering a longer
- * one would let the picker produce a value its own approve call then rejects
- * with a 400 the UI cannot explain.
+ * `actorSchema.displayName` in `@iroha/api` bounds the reviewer name at 120
+ * characters. Git author names are unbounded, so offering a longer one would
+ * let the picker produce a value its own approve call then rejects with a 400
+ * the UI cannot explain.
  */
 const MAX_REVIEWER_NAME_LENGTH = 120;
 
-/** C0/C1 controls. A real author name has none; an escape sequence garbles every reader of the canonical file. */
-const CONTROL_CHARACTER = /\p{Cc}/u;
+/**
+ * Characters that make a name misread rather than merely odd: C0/C1 controls,
+ * the bidirectional overrides and isolates, and the two zero-width characters
+ * with no linguistic role. A name carrying one of these is committed verbatim
+ * into `approved_by.display_name`, so U+202E reverses the rendering of every
+ * later line of that canonical file, and a zero-width space produces a second
+ * picker entry indistinguishable from the real one.
+ *
+ * Not the whole of `\p{Cf}`: ZWNJ (U+200C) and ZWJ (U+200D) are required to
+ * spell names correctly in Persian and Indic scripts, and rejecting them would
+ * cost real people their names to buy very little.
+ *
+ * This is hygiene on a suggestion list, not a boundary — the approve endpoint
+ * applies no such filter, so a typed or posted name bypasses it entirely. Nor
+ * does it close visual spoofing in general: homoglyphs (Cyrillic `а` for Latin
+ * `a`) are ordinary letters and no character class reaches them. Do not grow
+ * this into a confusables table; that problem has no end.
+ */
+const UNRENDERABLE_CHARACTER = /[\p{Cc}\u202A-\u202E\u2066-\u2069\u200B\uFEFF]/u;
 
 function exitCodeOf(error: IrohaError): number | null | undefined {
   return (error.details as { exitCode?: number | null } | undefined)?.exitCode;
@@ -46,7 +64,7 @@ function isSelectableReviewer(name: string): boolean {
   return (
     name !== "" &&
     name.length <= MAX_REVIEWER_NAME_LENGTH &&
-    !CONTROL_CHARACTER.test(name) &&
+    !UNRENDERABLE_CHARACTER.test(name) &&
     !FORGE_APP_NAME.test(name)
   );
 }
@@ -60,29 +78,40 @@ function isSelectableReviewer(name: string): boolean {
  * never synced a GitHub forge, and it carries no `repository_id` to scope a
  * read by. Git history needs no network and is present wherever `.iroha/` is.
  *
- * `--no-show-signature` is load-bearing, not tidiness: under
- * `log.showSignature = true` Git writes signature-verification text to the
- * same **stdout** as the formatted output, so lines like
- * `~/.ssh/allowed_signers:1: invalid key` would be read as people and served
- * over HTTP. `runGit` redacts absolute paths only on its failure path, and
- * this is the first caller to hand raw success stdout to an API response.
+ * Two flags exist to stop configuration from rewriting the stdout this parses,
+ * and both are load-bearing rather than tidiness. Under `log.showSignature`
+ * Git writes signature-verification text to the same stdout as the formatted
+ * output, so lines like `~/.ssh/allowed_signers:1: invalid key` would be read
+ * as people and served over HTTP — and `runGit` redacts absolute paths only on
+ * its failure path, so nothing else would catch it. Under
+ * `i18n.logOutputEncoding` Git re-encodes the author ident, so a name arrives
+ * as mojibake that passes every filter here and gets committed as someone's
+ * spelling. `git config` is not re-encoded, which is how that one shows itself:
+ * the same person appears twice, once correct and once corrupted.
  *
  * `--all` rather than the HEAD-only default: someone who has only committed on
- * a feature branch is still a person who can review. It also makes an unborn
- * HEAD exit 0 with no output instead of 128, so there is no "no commits yet"
- * failure to special-case.
+ * a feature branch is still a person who can review. It costs a wider failure
+ * surface — one unresolvable ref anywhere under `refs/` fails the whole walk
+ * with exit 128 — so a failed `--all` retries from HEAD rather than taking the
+ * endpoint down over a dangling remote branch. Only when both fail is it
+ * reported, which keeps a genuinely broken repository distinguishable from one
+ * that simply has no people.
  */
 export async function readRepositoryPeople(
   cwd: string,
 ): Promise<Result<RepositoryPeople, IrohaError>> {
-  const [authors, configured] = await Promise.all([
-    runGit(
-      ["log", "--all", "--no-show-signature", `--max-count=${AUTHOR_SCAN_COMMITS}`, "--format=%aN"],
-      { cwd },
-    ),
+  const logArgs = [
+    "--no-show-signature",
+    "--encoding=UTF-8",
+    `--max-count=${AUTHOR_SCAN_COMMITS}`,
+    "--format=%aN",
+  ];
+  const [allRefs, configured] = await Promise.all([
+    runGit(["log", "--all", ...logArgs], { cwd }),
     runGit(["config", "--get", "user.name"], { cwd }),
   ]);
 
+  const authors = allRefs.ok ? allRefs : await runGit(["log", ...logArgs], { cwd });
   if (!authors.ok) {
     return err(authors.error);
   }
@@ -110,9 +139,12 @@ export async function readRepositoryPeople(
     names.add(self);
   }
 
-  // Code-point order, not `localeCompare`: this package pins `LC_ALL=C` so Git
-  // reads the same everywhere, and a list whose order depends on the server's
-  // ICU build would undo that for no gain.
+  // UTF-16 code-unit order, not `localeCompare`: this package pins `LC_ALL=C`
+  // so Git reads the same everywhere, and a list whose order depends on the
+  // server's ICU build would undo that for no gain. Code-unit rather than
+  // code-point is not a considered choice, only what `<` on JS strings does;
+  // the two differ solely for astral characters and either is deterministic,
+  // which is the property being bought.
   return ok({
     names: Array.from(names).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
     self,

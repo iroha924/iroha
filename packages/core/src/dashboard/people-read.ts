@@ -4,7 +4,7 @@ import { readRepositoryPeople } from "@iroha/git";
 import { resolveInitializedRepository } from "../resolve-repository.js";
 
 export interface RepositoryPeopleData {
-  /** Names an approval can be attributed to, alphabetical. */
+  /** Names an approval can be attributed to, in the order `@iroha/git` returns them. */
   names: string[];
   /** The local Git identity, for prefilling the reviewer field. */
   self: string | null;

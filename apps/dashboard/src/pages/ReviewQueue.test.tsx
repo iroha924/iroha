@@ -1,5 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { Link } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { ReviewQueue } from "@/pages/ReviewQueue.js";
 import { mockApi, ok, renderWithProviders } from "@/test-utils.js";
@@ -109,6 +110,45 @@ describe("ReviewQueue", () => {
 
     expect(await screen.findByText("candidate 1")).toBeInTheDocument();
     expect(paramOf(String(fn.mock.calls[0]?.[0]), "offset")).toBe("0");
+  });
+
+  // `keepPreviousData` keeps the outgoing view on screen across a key change,
+  // so the page clamp must not judge the incoming page number against it. A
+  // cold mount never hits this, which is why the clamp test above misses it.
+  it("keeps a deep-linked page reached from a shorter queue", async () => {
+    const totals: Record<string, number> = { pending: 200, rejected: 2 };
+    globalThis.fetch = vi.fn(async (input: string | URL | Request) => {
+      const url = new URL(String(input), "http://x");
+      const status = url.searchParams.get("status") ?? "pending";
+      const offset = Number(url.searchParams.get("offset") ?? "0");
+      const total = totals[status] ?? 0;
+      const count = Math.max(0, Math.min(10, total - offset));
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          data: { items: rows(offset + 1, count), nextCursor: null, total },
+          meta: { requestId: "req_test" },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+
+    function Harness() {
+      return (
+        <>
+          <Link to="/?status=pending&page=15">deep link</Link>
+          <ReviewQueue />
+        </>
+      );
+    }
+    renderWithProviders(<Harness />, ["/?status=rejected&page=1"]);
+    await screen.findByText("candidate 1");
+
+    await userEvent.click(screen.getByRole("link", { name: "deep link" }));
+
+    // Page 15 of the pending queue starts at row 141; landing on row 1 means
+    // the clamp fired against the rejected view's page count.
+    expect(await screen.findByText("candidate 141")).toBeInTheDocument();
   });
 
   it("resets to the first page when the status filter changes", async () => {

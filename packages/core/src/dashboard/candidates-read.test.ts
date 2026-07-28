@@ -122,6 +122,76 @@ describe("candidate read", () => {
     expect(thirdPage.value.items[0]?.id).not.toBe(firstPage.value.items[0]?.id);
   });
 
+  // Stated in the contract, the route description and the storage docstring;
+  // inverting the precedence must break something.
+  it("lets the cursor win when both a cursor and an offset are given", async () => {
+    repo = await setupMcpRepo(random);
+    for (let i = 0; i < 5; i += 1) {
+      await seedCandidate(
+        repo.dbPath,
+        repo.repositoryId,
+        "decision",
+        decisionDraft(),
+        clock,
+        random,
+      );
+    }
+
+    const first = await listCandidateQueue({ cwd: repo.repoDir, clock, random, limit: 2 });
+    expect(first.ok).toBe(true);
+    if (!first.ok || first.value.nextCursor === null) return;
+
+    const withBoth = await listCandidateQueue({
+      cwd: repo.repoDir,
+      clock,
+      random,
+      limit: 2,
+      cursor: first.value.nextCursor,
+      offset: 100,
+    });
+    const cursorOnly = await listCandidateQueue({
+      cwd: repo.repoDir,
+      clock,
+      random,
+      limit: 2,
+      cursor: first.value.nextCursor,
+    });
+
+    expect(withBoth.ok).toBe(true);
+    expect(cursorOnly.ok).toBe(true);
+    if (!withBoth.ok || !cursorOnly.ok) return;
+    // Honouring the offset instead would skip past the end and return nothing.
+    expect(withBoth.value.items.map((i) => i.id)).toEqual(cursorOnly.value.items.map((i) => i.id));
+    expect(withBoth.value.items.length).toBeGreaterThan(0);
+  });
+
+  it("ignores a fractional offset rather than failing the query", async () => {
+    repo = await setupMcpRepo(random);
+    for (let i = 0; i < 3; i += 1) {
+      await seedCandidate(
+        repo.dbPath,
+        repo.repositoryId,
+        "decision",
+        decisionDraft(),
+        clock,
+        random,
+      );
+    }
+
+    const result = await listCandidateQueue({
+      cwd: repo.repoDir,
+      clock,
+      random,
+      limit: 2,
+      offset: 1.5,
+    });
+
+    // Reaching SQLite it would raise a datatype mismatch and surface as a 500.
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.items).toHaveLength(2);
+  });
+
   it("reports the full pending total, not the page size", async () => {
     repo = await setupMcpRepo(random);
     for (let i = 0; i < 3; i += 1) {

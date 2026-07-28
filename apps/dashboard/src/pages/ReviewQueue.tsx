@@ -87,11 +87,18 @@ export function ReviewQueue() {
   // the list polls — so the page in the URL can outrun the queue. The offset is
   // built from the URL, so correcting the display alone would leave the request
   // asking past the end; rewrite the URL and let the query follow it.
+  //
+  // Only against data that belongs to the current key. `keepPreviousData` keeps
+  // the outgoing view on screen across a status or page change, so without this
+  // guard the clamp compares the incoming page number to the outgoing view's
+  // page count — and a deep link into a long queue, arrived at while a short
+  // one is displayed, gets rewritten to page 1 with `replace` erasing the way
+  // back.
   useEffect(() => {
-    if (q.data !== undefined && requestedPage > pageCount) {
+    if (q.data !== undefined && !q.isPlaceholderData && requestedPage > pageCount) {
       setParams({ status, page: String(pageCount) }, { replace: true });
     }
-  }, [q.data, requestedPage, pageCount, status, setParams]);
+  }, [q.data, q.isPlaceholderData, requestedPage, pageCount, status, setParams]);
 
   const page = Math.min(requestedPage, pageCount);
   const items = q.data?.items ?? [];
@@ -155,12 +162,13 @@ export function ReviewQueue() {
                 <span className="text-xs tabular-nums text-ink-faint">
                   {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} / {total}
                 </span>
-                <Pagination className="mx-0 w-auto justify-end">
+                <Pagination className="mx-0 w-auto justify-end" aria-label={t("common.pagination")}>
                   <PaginationContent>
                     <PaginationItem>
                       <PaginationPrevious
                         href={hrefFor(page - 1)}
                         text={t("common.previous")}
+                        aria-label={t("common.previousPage")}
                         aria-disabled={page === 1}
                         className={page === 1 ? "pointer-events-none opacity-40" : undefined}
                         onClick={(e) => {
@@ -193,6 +201,7 @@ export function ReviewQueue() {
                       <PaginationNext
                         href={hrefFor(page + 1)}
                         text={t("common.next")}
+                        aria-label={t("common.nextPage")}
                         aria-disabled={page === pageCount}
                         className={
                           page === pageCount ? "pointer-events-none opacity-40" : undefined

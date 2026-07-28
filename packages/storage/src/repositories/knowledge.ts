@@ -400,20 +400,31 @@ export async function listCandidatesPage(
 ): Promise<Result<CandidateRow[], IrohaError>> {
   const conditions = ["repository_id = ?", "status = ?"];
   const args: Array<string | number> = [repositoryId, filter.status];
-  const usingCursor = filter.beforeCreatedAt !== undefined && filter.beforeId !== undefined;
-  if (usingCursor) {
+  // Bound as one value rather than a boolean so the pair stays narrowed: a
+  // `usingCursor` flag would compile only with casts, which stop protecting
+  // this line the moment the two fields' optionality diverges.
+  const cursor =
+    filter.beforeCreatedAt !== undefined && filter.beforeId !== undefined
+      ? { createdAt: filter.beforeCreatedAt, id: filter.beforeId }
+      : null;
+  if (cursor !== null) {
     conditions.push("(created_at, id) < (?, ?)");
-    args.push(filter.beforeCreatedAt as string, filter.beforeId as TypedId<"cand">);
+    args.push(cursor.createdAt, cursor.id);
   }
   args.push(filter.limit);
-  const skip = !usingCursor && filter.offset !== undefined && filter.offset > 0;
-  if (skip) {
-    args.push(filter.offset as number);
+  // A non-integer would reach SQLite as a datatype mismatch and surface as a
+  // 500; the offset is a row position, so anything else is not one.
+  const skip =
+    cursor === null && filter.offset !== undefined && Number.isInteger(filter.offset)
+      ? Math.max(0, filter.offset)
+      : 0;
+  if (skip > 0) {
+    args.push(skip);
   }
   try {
     const result = await db.execute({
       sql: `SELECT * FROM candidates WHERE ${conditions.join(" AND ")}
-        ORDER BY created_at DESC, id DESC LIMIT ?${skip ? " OFFSET ?" : ""}`,
+        ORDER BY created_at DESC, id DESC LIMIT ?${skip > 0 ? " OFFSET ?" : ""}`,
       args,
     });
     return ok(result.rows.map(rowToCandidate));

@@ -493,7 +493,7 @@ export function createApp(config: AppConfig) {
       tags: ["review"],
       summary: "People an approval can be credited to",
       description:
-        "Commit author names from this repository's last 2000 commits across all refs, in code-point order, plus `self` — the local `user.name` — for prefilling the reviewer field. Omits names ending in `[bot]`, longer than the 120 characters `displayName` allows, or containing control characters. Names carry no activity counts and are never ordered by contribution: this identifies people, it does not rank them. An empty list is a valid answer (a repository with no commits), and the reviewer field accepts a name that is not listed.",
+        "Commit author names from this repository's last 2000 commits across all refs, in UTF-16 code-unit order, plus `self` — the local `user.name` — for prefilling the reviewer field. Omits names ending in `[bot]`, longer than the 120 characters `displayName` allows, or carrying a character that would make them misread (C0/C1 controls, bidirectional overrides and isolates, the zero-width space). ZWNJ and ZWJ are kept — they spell real names in Persian and Indic scripts. This is hygiene on a suggestion list, not a boundary. Names carry no activity counts and are never ordered by contribution: this identifies people, it does not rank them. An empty list is a valid answer (a repository with no commits), and the reviewer field accepts a name that is not listed.",
       responses: RESPONSES,
     }),
     (c) => respond(c, listRepositoryPeople(useCaseCtx)),
@@ -600,7 +600,7 @@ export function createApp(config: AppConfig) {
       tags: ["review"],
       summary: "List the review queue",
       description:
-        "Returns `total` alongside the page so a client can render numbered pages. Two ways to position: `cursor` (the §4 keyset default, stable across concurrent writes) or `offset` (what numbered pages need, since a cursor cannot be computed for a page the client has not fetched). `cursor` wins if both are sent. The page and `total` are read in one transaction, so they always describe the same snapshot.",
+        "Returns `total` alongside the page so a client can render numbered pages. Two ways to position: `cursor` (the §4 keyset default, which names a row and so survives concurrent writes) or `offset` (what numbered pages need, since a cursor cannot be computed for a page the client has not fetched). `cursor` wins if both are sent. The page and `total` are read in one transaction, so they describe the same snapshot — but only within a request: because `offset` addresses a position, a write between two page requests shifts the window, so one forward pass can skip or repeat a row. Page by `cursor` to enumerate every candidate exactly once.",
       request: { query: candidatesQuery },
       responses: RESPONSES,
     }),

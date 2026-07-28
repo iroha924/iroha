@@ -30,7 +30,15 @@ export function ReviewDetail() {
   const queryClient = useQueryClient();
 
   const q = useQuery({ queryKey: ["candidate", id], queryFn: () => api.candidate(id) });
-  const people = useQuery({ queryKey: ["people"], queryFn: () => api.people() });
+  // The repository's people change on the order of commits, not of navigations,
+  // and this is the only dashboard read that forks a subprocess — two `git`
+  // processes, one walking every ref. Without a stale window it re-ran on every
+  // mount and every window focus.
+  const people = useQuery({
+    queryKey: ["people"],
+    queryFn: () => api.people(),
+    staleTime: 5 * 60 * 1000,
+  });
 
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -247,6 +255,11 @@ export function ReviewDetail() {
               </Select>
             )}
           </div>
+          {/* An absent picker otherwise reads as "this repository has no
+              people", which is a legitimate answer, so say which one it is. */}
+          {people.isError && (
+            <p className="text-xs text-warn">{t("review.reviewerPickUnavailable")}</p>
+          )}
         </div>
         <Button type="button" onClick={() => approve.mutate()} disabled={!canApprove}>
           {t("review.approve")}
