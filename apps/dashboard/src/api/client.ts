@@ -4,7 +4,6 @@ import type {
   CandidateDetailData,
   CandidateQueuePage,
   CandidateStatusChangeData,
-  CheckpointDetailData,
   DiagnosticsEventsData,
   DigestData,
   DigestPeriodUnit,
@@ -19,8 +18,6 @@ import type {
   OverviewData,
   RepositoryConfig,
   RepositoryPeopleData,
-  RunDetailData,
-  SessionDetailData,
   SessionListPage,
   SettingsData,
   SyncCanonicalResult,
@@ -53,7 +50,7 @@ export type CandidateStatusFilter = "pending" | "approved" | "rejected" | "super
 /** Knowledge entity statuses the API's `status` filter accepts (mirrors the canonical status enum). */
 export type KnowledgeStatusFilter = "approved" | "superseded" | "archived";
 /** Agent platforms the API's Session `platform` filter accepts. */
-export type SessionPlatformFilter = "claude_code" | "codex";
+type SessionPlatformFilter = "claude_code" | "codex";
 
 export interface CandidateListParams {
   cursor?: string;
@@ -201,10 +198,6 @@ export const api = {
         to: params.to,
       })}`,
     ),
-  sessionDetail: (id: string) => request<SessionDetailData>("GET", `/v1/sessions/${id}`),
-  runDetail: (sessionId: string, runId: string) =>
-    request<RunDetailData>("GET", `/v1/sessions/${sessionId}/runs/${runId}`),
-  checkpoint: (id: string) => request<CheckpointDetailData>("GET", `/v1/checkpoints/${id}`),
 
   settings: () => request<SettingsData>("GET", "/v1/settings"),
   updateSharedConfig: (config: RepositoryConfig) =>

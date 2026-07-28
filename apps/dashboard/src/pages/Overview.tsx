@@ -1,9 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
 import { Bar, BarChart, Cell, XAxis, YAxis } from "recharts";
 import { api } from "@/api/client.js";
 import { EmptyState, ErrorState, Loading, PageHeader } from "@/components/brand.js";
-import { Badge } from "@/components/ui/badge.js";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card.js";
 import {
   type ChartConfig,
@@ -12,7 +10,6 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart.js";
 import { useI18n } from "@/i18n/index.js";
-import { runStatusTone } from "@/lib/status.js";
 
 // The seven canonical knowledge types, each with a brand chart colour. Order and
 // colours are stable so the composition chart reads consistently.
@@ -122,72 +119,9 @@ export function Overview() {
         </Card>
       </div>
 
-      <div className="mt-6 grid gap-6 sm:grid-cols-3">
+      <div className="mt-6 grid gap-6 sm:grid-cols-2">
         <MiniStat label={t("overview.approved")} value={d.approvedKnowledge} />
-        <MiniStat label={t("overview.sessions")} value={d.sessions} />
         <MiniStat label={t("overview.dirty")} value={d.openDirtyMarkers} />
-      </div>
-
-      <div className="mt-8 grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("overview.recentSessions")}</CardTitle>
-          </CardHeader>
-          <CardContent className="px-0">
-            {d.recentSessions.length === 0 ? (
-              <EmptyState message={t("sessions.empty")} />
-            ) : (
-              <ul className="divide-y divide-hairline">
-                {d.recentSessions.map((s) => (
-                  <li key={s.id}>
-                    <Link
-                      to={`/sessions/${s.id}`}
-                      className="flex items-center justify-between gap-3 px-6 py-3 transition-colors hover:bg-paper-inset"
-                    >
-                      <span className="flex items-center gap-2.5">
-                        <Badge variant={runStatusTone(s.latestRunStatus)}>
-                          {s.latestRunStatus === null
-                            ? t(`platform.${s.platform}`)
-                            : t(`runstatus.${s.latestRunStatus}`)}
-                        </Badge>
-                        <span className="text-sm font-medium text-ink">{s.platform}</span>
-                      </span>
-                      <span className="text-xs tabular-nums text-ink-faint">
-                        {s.lastSeenAt.slice(0, 10)}
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("overview.status")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <dl className="space-y-3 text-sm">
-              <div className="flex justify-between border-b border-hairline pb-2.5">
-                <dt className="text-ink-muted">{t("overview.oldestPending")}</dt>
-                <dd className="tabular-nums text-ink">
-                  {d.oldestPendingCreatedAt?.slice(0, 10) ?? t("common.none")}
-                </dd>
-              </div>
-              <div className="flex justify-between border-b border-hairline pb-2.5">
-                <dt className="text-ink-muted">{t("overview.lastSync")}</dt>
-                <dd className="tabular-nums text-ink">
-                  {d.lastCanonicalSyncAt?.slice(0, 10) ?? t("common.none")}
-                </dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-ink-muted">{t("overview.dirty")}</dt>
-                <dd className="tabular-nums text-ink">{d.openDirtyMarkers}</dd>
-              </div>
-            </dl>
-          </CardContent>
-        </Card>
       </div>
     </section>
   );

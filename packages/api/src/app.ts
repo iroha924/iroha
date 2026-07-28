@@ -9,13 +9,10 @@ import {
   editCandidate,
   getBootstrap,
   getCandidateDetail,
-  getCheckpointDetail,
   getDigest,
   getEntityRelations,
   getKnowledgeDetail,
   getOverview,
-  getRunDetail,
-  getSessionDetail,
   getSettings,
   getSyncStatus,
   graphPath,
@@ -196,11 +193,6 @@ const mutationHeaders = z.object({
 });
 
 const idParam = z.object({ id: z.string().openapi({ param: { name: "id", in: "path" } }) });
-const runParam = z.object({
-  id: z.string().openapi({ param: { name: "id", in: "path" } }),
-  runId: z.string().openapi({ param: { name: "runId", in: "path" } }),
-});
-
 // Response envelopes for the OpenAPI document (contracts/dashboard-api.md §4). Responses
 // are not validated at runtime — the handlers answer through `respond()`, whose
 // dynamic status the literal-typed response union cannot express — so these
@@ -554,43 +546,6 @@ export function createApp(config: AppConfig) {
         }),
       );
     },
-  );
-
-  app.openapi(
-    createRoute({
-      method: "get",
-      path: "/api/v1/sessions/{id}",
-      tags: ["sessions"],
-      summary: "Session detail",
-      request: { params: idParam },
-      responses: RESPONSES,
-    }),
-    (c) => respond(c, getSessionDetail({ ...useCaseCtx, sessionId: c.req.valid("param").id })),
-  );
-
-  app.openapi(
-    createRoute({
-      method: "get",
-      path: "/api/v1/sessions/{id}/runs/{runId}",
-      tags: ["sessions"],
-      summary: "Run detail",
-      request: { params: runParam },
-      responses: RESPONSES,
-    }),
-    (c) => respond(c, getRunDetail({ ...useCaseCtx, runId: c.req.valid("param").runId })),
-  );
-
-  app.openapi(
-    createRoute({
-      method: "get",
-      path: "/api/v1/checkpoints/{id}",
-      tags: ["sessions"],
-      summary: "Checkpoint detail",
-      request: { params: idParam },
-      responses: RESPONSES,
-    }),
-    (c) =>
-      respond(c, getCheckpointDetail({ ...useCaseCtx, checkpointId: c.req.valid("param").id })),
   );
 
   app.openapi(
