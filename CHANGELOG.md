@@ -9,6 +9,32 @@ Entries are written by hand as part of the release, alongside the four version
 strings (`PLUGIN_VERSION`, the plugin `package.json`, `CLI_VERSION`, `SERVER_VERSION`)
 that `manifests.test.ts` asserts agree.
 
+## 0.3.4
+
+- The review queue pages ten candidates at a time instead of growing into one long
+  column with a "load more" button. Page numbers and the status filter live in the URL,
+  so a page is linkable and reloading keeps your place. Any page is a single request:
+  `GET /api/v1/candidates` now takes an `offset` and returns `total` alongside the rows.
+  Because an offset names a position rather than a row, a single forward pass through
+  the pages can skip or repeat a candidate while the queue changes underneath — the row
+  moves to an adjacent page rather than disappearing, and `cursor` paging is still there
+  for a client that needs to enumerate every candidate exactly once.
+- The reviewer field on a candidate offers the repository's people instead of asking you
+  to retype a name every time. It prefills with your local `git config user.name` and
+  narrows as you type, and it stays free text, so a name Git has never seen still
+  approves. The list comes from recent commit authors across all refs — a teammate who
+  has only committed on a feature branch is still there — via the new
+  `GET /api/v1/people`. Names are never ordered by how much anyone committed and carry
+  no activity counts.
+- A name that Git reports is no longer trusted verbatim. Under `log.showSignature` Git
+  interleaves signature-verification text into the same output the author names come
+  from, which could put a line such as `~/.ssh/allowed_signers:1: invalid key` in front
+  of you as a person to credit; under `i18n.logOutputEncoding` it re-encodes the author
+  ident, so an accented name arrived as mojibake that would have been committed as
+  someone's spelling. Both are closed. Names carrying bidirectional overrides or
+  zero-width characters are dropped too, since they are written verbatim into a
+  Git-tracked file and would otherwise garble it for every later reader.
+
 ## 0.3.3
 
 - The dashboard's Graph tab shows a coming-soon placeholder. The interactive work graph
