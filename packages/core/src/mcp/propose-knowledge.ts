@@ -1,3 +1,4 @@
+import { validateBodyForType } from "@iroha/canonical";
 import type {
   Clock,
   IrohaError,
@@ -189,6 +190,20 @@ export async function mcpProposeKnowledge(
       const redacted = await redactProposal(input.proposal, "proposal");
       if (!redacted.ok) {
         return err(redacted.error);
+      }
+
+      // Reject a non-conforming body here rather than at approval. Approval runs
+      // the same check, but by then the agent that could rewrite the body is gone
+      // and the candidate is stuck in the queue (contracts/canonical.md §7).
+      // Read entirely from the redacted proposal: that is the text that gets
+      // stored, so it is the text that must satisfy the template.
+      const body = validateBodyForType(
+        redacted.value.proposal.type,
+        redacted.value.proposal.title,
+        redacted.value.proposal.body,
+      );
+      if (!body.ok) {
+        return err(body.error);
       }
 
       const candidateId = makeTypedId("cand", ctx.clock, ctx.random);

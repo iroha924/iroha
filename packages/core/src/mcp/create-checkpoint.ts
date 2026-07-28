@@ -1,3 +1,4 @@
+import { validateBodyForType } from "@iroha/canonical";
 import type {
   CheckpointInput,
   Clock,
@@ -164,6 +165,20 @@ async function redactCheckpoint(
     const result = await redactProposal(proposal, `proposals[${index}]`);
     if (!result.ok) {
       return err(result.error);
+    }
+    // Same gate as `propose_knowledge`: a body that cannot become a canonical
+    // document is rejected while the agent can still rewrite it, not at approval.
+    const body = validateBodyForType(
+      result.value.proposal.type,
+      result.value.proposal.title,
+      result.value.proposal.body,
+    );
+    if (!body.ok) {
+      return err(
+        new IrohaErrorClass("INVALID_INPUT", `proposals[${index}]: ${body.error.message}`, {
+          ...(body.error.details === undefined ? {} : { details: body.error.details }),
+        }),
+      );
     }
     proposals.push(result.value.proposal);
     redactions.push(...result.value.redactions);
