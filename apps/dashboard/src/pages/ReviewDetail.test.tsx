@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Route, Routes } from "react-router-dom";
 import { describe, expect, it } from "vitest";
@@ -46,6 +46,33 @@ function renderDetail() {
 }
 
 describe("ReviewDetail", () => {
+  // A long candidate body used to fill the page; the toggle only appears when
+  // there is something folded away, so a short body must not grow one.
+  it.each([
+    { case: "a short body", lines: 5, toggle: false },
+    { case: "a body past the fold", lines: 80, toggle: true },
+  ])("shows the expand toggle only for $case", async ({ lines, toggle }) => {
+    const body = Array.from({ length: lines }, (_, i) => `line ${i}`).join("\n");
+    mockApi({
+      "GET /api/v1/candidates/cand_x": ok(candidate({ draft: { ...candidate().draft, body } })),
+      "GET /api/v1/people": ok({ self: null, names: [] }),
+    });
+    renderDetail();
+
+    const field = (await screen.findByLabelText("Markdown body")) as HTMLTextAreaElement;
+    expect(field.rows).toBe(30);
+    if (!toggle) {
+      expect(screen.queryByText(/Show all/)).toBeNull();
+      return;
+    }
+
+    const expand = screen.getByText(`Show all ${lines} lines`);
+    fireEvent.click(expand);
+    expect(field.rows).toBe(lines);
+    fireEvent.click(screen.getByText("Collapse"));
+    expect(field.rows).toBe(30);
+  });
+
   it("enables approval only after a reviewer name is entered, then approves via keyboard", async () => {
     const fetchMock = mockApi({
       "GET /api/v1/candidates/cand_x": ok(candidate()),

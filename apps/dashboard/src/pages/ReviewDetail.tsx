@@ -18,6 +18,9 @@ import {
 import { Textarea } from "@/components/ui/textarea.js";
 import { useI18n } from "@/i18n/index.js";
 
+/** Tall enough to read a section without scrolling, short enough not to bury the buttons. */
+const COLLAPSED_BODY_ROWS = 30;
+
 /**
  * Candidate review detail (contracts/dashboard-api.md §6): edit the draft, view the
  * canonical diff preview and validation, then approve or reject. Approval is
@@ -48,6 +51,8 @@ export function ReviewDetail() {
   // expressing an intent to search. Empty means "no search, show everyone".
   const [nameQuery, setNameQuery] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
+  const [bodyExpanded, setBodyExpanded] = useState(false);
+  const bodyLines = body.split("\n").length;
 
   // Sync the editable form from the loaded draft when navigating to a candidate
   // (keyed on the candidate id, not every refetch, so in-progress edits survive polling).
@@ -161,9 +166,21 @@ export function ReviewDetail() {
               id="cand-body"
               value={body}
               onChange={(e) => setBody(e.target.value)}
-              rows={10}
+              rows={bodyExpanded ? bodyLines : COLLAPSED_BODY_ROWS}
               className="bg-paper-inset font-mono text-[13px]"
             />
+            {bodyLines > COLLAPSED_BODY_ROWS && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setBodyExpanded((open) => !open)}
+              >
+                {bodyExpanded
+                  ? t("review.collapseBody")
+                  : t("review.expandBody").replace("{lines}", String(bodyLines))}
+              </Button>
+            )}
             <Button
               type="button"
               variant="outline"
