@@ -55,6 +55,9 @@ const RETENTION_SETTING_KEY = "retention.local_events";
 /** Offered windows; the API accepts any 1-3650 day value. */
 const RETENTION_CHOICES = [30, 90, 180, 365] as const;
 
+/** Endonyms, not translations — the locale picker names each language in itself. */
+const LANGUAGE_LABELS = { en: "English", ja: "日本語" };
+
 /** Mirrors `DIGEST_PERIOD_SETTING_KEY`, for the same reason as above. */
 const DIGEST_PERIOD_SETTING_KEY = "digest.period";
 
@@ -65,6 +68,15 @@ export function Settings() {
   const q = useQuery({ queryKey: ["settings"], queryFn: api.settings });
   const [config, setConfig] = useState<RepositoryConfig | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const retentionLabels: Record<string, string> = {
+    forever: t("settings.retentionForever"),
+    ...Object.fromEntries(
+      RETENTION_CHOICES.map((days) => [
+        String(days),
+        t("settings.retentionDays").replace("{days}", String(days)),
+      ]),
+    ),
+  };
 
   useEffect(() => {
     if (q.data !== undefined) setConfig(q.data.shared);
@@ -124,7 +136,10 @@ export function Settings() {
             label={t("settings.language")}
             hint={t("settings.languageHint")}
           >
+            {/* `items` is what makes the closed trigger show the label: without it
+                Base UI's Select.Value renders the raw stored value ("en"). */}
             <Select
+              items={LANGUAGE_LABELS}
               value={config.default_language}
               onValueChange={(value) =>
                 setConfig({ ...config, default_language: value as "ja" | "en" })
@@ -185,6 +200,7 @@ export function Settings() {
             {/* Saved on change, and the only way to reach the month window: before
                 this the key was writable through the raw settings API alone. */}
             <Select
+              items={{ week: t("digest.unitWeek"), month: t("digest.unitMonth") }}
               disabled={saveDigestPeriod.isPending}
               value={local.digestPeriodUnit}
               onValueChange={(value) => saveDigestPeriod.mutate(value as "week" | "month")}
@@ -211,6 +227,7 @@ export function Settings() {
                 window and then "Forever" could leave the short one persisted and a
                 later sync would delete history the final choice meant to keep. */}
             <Select
+              items={retentionLabels}
               disabled={saveRetention.isPending}
               value={local.retentionDays === null ? "forever" : String(local.retentionDays)}
               onValueChange={(value) =>
