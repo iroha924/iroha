@@ -9,6 +9,32 @@ Entries are written by hand as part of the release, alongside the four version
 strings (`PLUGIN_VERSION`, the plugin `package.json`, `CLI_VERSION`, `SERVER_VERSION`)
 that `manifests.test.ts` asserts agree.
 
+## 0.3.5
+
+- iroha stops demanding a Checkpoint after every command. It asked for one on
+  nearly every turn — measured at 15 Checkpoints across 17 turns in a single
+  session, 11 of which recorded only that something was being waited on: a
+  reviewer launched, CI in progress, a workflow dispatched with an unknown
+  result. Those went into the same review queue you have to read, and into the
+  Digest. A Checkpoint saying nothing happened is worse than no Checkpoint.
+- What still requires one is unchanged where it matters: a mutation that
+  succeeded, and **a command that failed** — a failed `pnpm test` is the turn
+  whose unresolved work most needs recording, and that has been true since
+  0.3.2. What changes is a command that *succeeded*: iroha now suggests a
+  Checkpoint instead of forcing one, and the agent decides. It can tell a test
+  run from a status poll; the hook cannot, because distinguishing them needs a
+  command classifier that does not exist (the attempt is recorded in
+  `packages/core/src/hooks/dispatch.ts`).
+- A command that never ran no longer counts. One denied by a Guardrail, or
+  cancelled at the permission prompt, used to leave a record that read as "a
+  command ran" — so it produced exactly the empty reminder this is meant to
+  remove.
+- **Codex is unaffected**, and keeps the old behaviour. Its adapter reports every
+  finished tool as successful, so a failed command is indistinguishable from a
+  successful one there; applying the split would have silently downgraded failed
+  validations. Every Codex command therefore still requires a Checkpoint until
+  the adapter can tell the two apart.
+
 ## 0.3.4
 
 - The review queue pages ten candidates at a time instead of growing into one long
