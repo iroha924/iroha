@@ -25,6 +25,7 @@ import {
   listDashboardSessions,
   listDiagnosticsEvents,
   listKnowledge,
+  listRepositoryPeople,
   mcpSearch,
   proposalSchema,
   type RandomSource,
@@ -163,6 +164,7 @@ const candidatesQuery = z.object({
   status: queryParam("pending | approved | rejected | superseded"),
   limit: queryParam("Max candidates to return"),
   cursor: queryParam("Opaque pagination cursor"),
+  offset: queryParam("Rows to skip; ignored when `cursor` is given", "40"),
 });
 // `status`/`type` are repeatable filters read via `c.req.queries()` in the handler
 // (`enumArrOpt` keeps the valid values and drops the rest), so they are documented
@@ -487,6 +489,19 @@ export function createApp(config: AppConfig) {
   app.openapi(
     createRoute({
       method: "get",
+      path: "/api/v1/people",
+      tags: ["review"],
+      summary: "People an approval can be credited to",
+      description:
+        "Commit author names from this repository's last 2000 commits across all refs, in UTF-16 code-unit order, plus `self` — the local `user.name`, which is also merged into `names` so a newcomer who has not committed yet is still selectable. `self` is read in a sanitized environment (`GIT_CONFIG_GLOBAL`/`XDG_CONFIG_HOME` are cleared so the ambient environment cannot choose Git's config file), so an identity living only in a non-default XDG location reports `null`; the field is free text either way. Omits names ending in `[bot]`, longer than the 120 characters `displayName` allows, or carrying a character that would make them misread (C0/C1 controls, bidirectional overrides and isolates, the zero-width space). ZWNJ and ZWJ are kept — they spell real names in Persian and Indic scripts. This is hygiene on a suggestion list, not a boundary. Names carry no activity counts and are never ordered by contribution: this identifies people, it does not rank them. An empty list is a valid answer (a repository with no commits), and the reviewer field accepts a name that is not listed.",
+      responses: RESPONSES,
+    }),
+    (c) => respond(c, listRepositoryPeople(useCaseCtx)),
+  );
+
+  app.openapi(
+    createRoute({
+      method: "get",
       path: "/api/v1/digest",
       tags: ["digest"],
       summary: "Editorial digest for one anchored calendar period",
@@ -584,6 +599,8 @@ export function createApp(config: AppConfig) {
       path: "/api/v1/candidates",
       tags: ["review"],
       summary: "List the review queue",
+      description:
+        "Returns `total` alongside the page so a client can render numbered pages. Two ways to position: `cursor` (the §4 keyset default, which names a row and so survives concurrent writes) or `offset` (what numbered pages need, since a cursor cannot be computed for a page the client has not fetched). `cursor` wins if both are sent. The page and `total` are read in one transaction, so they describe the same snapshot — but only within a request: because `offset` addresses a position, a write between two page requests shifts the window, so one forward pass can skip or repeat a row. Page by `cursor` to enumerate every candidate exactly once.",
       request: { query: candidatesQuery },
       responses: RESPONSES,
     }),
@@ -601,6 +618,9 @@ export function createApp(config: AppConfig) {
           ]),
           ...numOpt("limit", firstOf(q.limit)),
           ...strOpt("cursor", firstOf(q.cursor)),
+          // Integer-only and clamped at 0: a fractional or negative offset
+          // would reach SQL as a position no page can be built from.
+          ...intOpt("offset", firstOf(q.offset), 0, Number.MAX_SAFE_INTEGER),
         }),
       );
     },

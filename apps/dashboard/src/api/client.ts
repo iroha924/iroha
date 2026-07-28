@@ -18,6 +18,7 @@ import type {
   McpSearchData,
   OverviewData,
   RepositoryConfig,
+  RepositoryPeopleData,
   RunDetailData,
   SessionDetailData,
   SessionListPage,
@@ -57,6 +58,8 @@ export type SessionPlatformFilter = "claude_code" | "codex";
 export interface CandidateListParams {
   cursor?: string;
   status?: CandidateStatusFilter;
+  limit?: number;
+  offset?: number;
 }
 export interface DigestParams {
   unit?: DigestPeriodUnit;
@@ -153,8 +156,14 @@ export const api = {
   candidates: (params: CandidateListParams = {}) =>
     request<CandidateQueuePage>(
       "GET",
-      `/v1/candidates${queryString({ cursor: params.cursor, status: params.status })}`,
+      `/v1/candidates${queryString({
+        cursor: params.cursor,
+        status: params.status,
+        limit: params.limit === undefined ? undefined : String(params.limit),
+        offset: params.offset === undefined ? undefined : String(params.offset),
+      })}`,
     ),
+  people: () => request<RepositoryPeopleData>("GET", "/v1/people"),
   candidate: (id: string) => request<CandidateDetailData>("GET", `/v1/candidates/${id}`),
   editCandidate: (id: string, revisionToken: string, draft: unknown) =>
     request<EditCandidateData>("PATCH", `/v1/candidates/${id}`, { revisionToken, draft }),

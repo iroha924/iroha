@@ -8,7 +8,13 @@ import type {
   TypedId,
 } from "@iroha/domain";
 import { err, IrohaError as IrohaErrorClass, ok, parseTypedId } from "@iroha/domain";
-import { type CandidateType, getCandidateById, listCandidatesPage } from "@iroha/storage";
+import {
+  type CandidateType,
+  countCandidates,
+  getCandidateById,
+  listCandidatesPage,
+  withTransaction,
+} from "@iroha/storage";
 import { buildCanonicalDocumentFromCandidate, type CandidateDraft } from "./build-canonical.js";
 import { decodeCursor, encodeCursor, resolvePageSize } from "./cursor.js";
 import { withDashboardRepository } from "./with-repository.js";
@@ -30,6 +36,8 @@ export interface CandidateQueueItem {
 export interface CandidateQueuePage {
   items: CandidateQueueItem[];
   nextCursor: string | null;
+  /** Candidates at this status, for rendering numbered pages. */
+  total: number;
 }
 
 export interface ListCandidateQueueInput {
@@ -39,9 +47,18 @@ export interface ListCandidateQueueInput {
   status?: CandidateStatus;
   limit?: number;
   cursor?: string;
+  /** Rows to skip. Ignored when `cursor` is given, which already carries a position. */
+  offset?: number;
 }
 
-/** Paginated review queue (`GET /api/v1/candidates`), pending candidates by default. */
+/**
+ * Paginated review queue (`GET /api/v1/candidates`), pending candidates by default.
+ *
+ * The page and `total` are read in one transaction rather than concurrently:
+ * they are two statements over the same table, and a hook or CLI process
+ * writing between them would make the count disagree with the rows, which the
+ * UI can only render as a wrong empty state or a page of nothing.
+ */
 export async function listCandidateQueue(
   input: ListCandidateQueueInput,
 ): Promise<Result<CandidateQueuePage, IrohaError>> {
@@ -65,20 +82,33 @@ export async function listCandidateQueue(
   return withDashboardRepository(
     { cwd: input.cwd, clock: input.clock, random: input.random },
     async (ctx) => {
-      const rows = await listCandidatesPage(ctx.db, ctx.repo.repositoryId, {
-        status,
-        limit: pageSize + 1,
-        ...(beforeCreatedAt !== undefined && beforeId !== undefined
-          ? { beforeCreatedAt, beforeId }
-          : {}),
+      const snapshot = await withTransaction(ctx.db, "read", async (tx) => {
+        const rows = await listCandidatesPage(tx, ctx.repo.repositoryId, {
+          status,
+          limit: pageSize + 1,
+          ...(beforeCreatedAt !== undefined && beforeId !== undefined
+            ? { beforeCreatedAt, beforeId }
+            : input.offset !== undefined
+              ? { offset: input.offset }
+              : {}),
+        });
+        if (!rows.ok) {
+          return rows;
+        }
+        const total = await countCandidates(tx, ctx.repo.repositoryId, status);
+        if (!total.ok) {
+          return total;
+        }
+        return ok({ rows: rows.value, total: total.value });
       });
-      if (!rows.ok) {
-        return rows;
+      if (!snapshot.ok) {
+        return snapshot;
       }
-      const page = rows.value.slice(0, pageSize);
+      const { rows, total } = snapshot.value;
+      const page = rows.slice(0, pageSize);
       const last = page.at(-1);
       const nextCursor =
-        rows.value.length > pageSize && last !== undefined
+        rows.length > pageSize && last !== undefined
           ? encodeCursor({ key: last.createdAt, id: last.id })
           : null;
       const items: CandidateQueueItem[] = page.map((row) => {
@@ -94,7 +124,7 @@ export async function listCandidateQueue(
           revisionToken: row.revisionToken,
         };
       });
-      return ok({ items, nextCursor });
+      return ok({ items, nextCursor, total });
     },
   );
 }

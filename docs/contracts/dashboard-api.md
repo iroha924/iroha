@@ -101,7 +101,7 @@ Rules:
 - unknown request fields rejected;
 - RFC 3339 UTC timestamps;
 - IDs remain strings;
-- cursor pagination, default 30, maximum 100;
+- cursor pagination, default 30, maximum 100. `GET /api/v1/candidates` additionally accepts `offset`, because the Review queue renders numbered pages and a keyset cursor cannot be computed for a page the client has never fetched — numbering over cursors alone would mean requesting every intervening page. `cursor` wins if both are sent;
 - deterministic sort with ID tie-breaker;
 - errors do not contain SQL, stack traces, absolute paths, or secret values;
 - all user-visible errors have stable codes.
@@ -155,8 +155,21 @@ Raw prompt, transcript, assistant message, and full tool payload endpoints do no
 | `POST` | `/api/v1/candidates/:id/approve` | human approval + canonical publish |
 | `POST` | `/api/v1/candidates/:id/reject` | reject with optional reason |
 | `POST` | `/api/v1/candidates/:id/supersede` | replace pending/approved candidate relation |
+| `GET` | `/api/v1/people` | names an approval can be credited to |
 
-`GET /api/v1/candidates` query parameters: `cursor`, `limit`, `status` (`pending`|`approved`|`rejected`|`superseded`, default `pending`).
+`GET /api/v1/candidates` query parameters: `cursor`, `offset`, `limit`, `status` (`pending`|`approved`|`rejected`|`superseded`, default `pending`).
+
+The candidate list also returns `total`: how many candidates exist at the requested `status`. The page and `total` are read inside one transaction, so they always describe the same snapshot — otherwise a concurrent write could make the count disagree with the rows and the queue would render a page that is not there.
+
+That snapshot holds **within** a request, not across them, and `offset` addresses a position rather than a row. So when the queue changes between two page requests — which it does routinely, since approving removes the row being paged and the list polls — the window shifts, and a single forward pass through the pages can skip a candidate or show one twice. It is not lost: the row moves to an adjacent page and is there on revisiting or reloading. This is accepted deliberately for the Review queue, which is a work queue drained by deciding candidates rather than a list read exhaustively in one pass. A caller that must enumerate every candidate exactly once should page by `cursor`, which names a row and is immune to this.
+
+`GET /api/v1/people` returns `{ "names": [...], "self": "..." | null }`, the names an approval may be credited to.
+
+- `names` are the people the picker offers: distinct commit author names from the last 2000 commits reachable from **any** ref (not only HEAD — someone who has committed on a feature branch can still review), plus `self` when it is set, so a newcomer who has not committed yet is still selectable. It is a list of candidates to credit, not a census of authors. In UTF-16 code-unit order — deterministic rather than linguistic, so it does not depend on the server's ICU build. Ordering is never by contribution and no activity count is returned: this identifies people, it does not rank them.
+- A name is omitted when it ends in `[bot]` (GitHub's naming for App accounts), exceeds the 120-character limit the approve endpoint enforces on `displayName`, or contains a character that would make it misread — C0/C1 controls, the bidirectional overrides and isolates, and the zero-width space. ZWNJ and ZWJ are kept, because they spell real names in Persian and Indic scripts. This is hygiene on a suggestion list, not a boundary: the approve endpoint applies no such filter, and homoglyphs are out of reach of any character class. The bot rule is deliberately this narrow: an open-ended list of bot spellings never converges, and the field accepts a typed name anyway.
+- `self` is the local `git config user.name` when it passes those same rules, for prefilling the reviewer field; otherwise `null`. It is read in a sanitized environment: `@iroha/git` clears `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_SYSTEM` and `XDG_CONFIG_HOME` before invoking Git, so that an ambient value cannot redirect Git at a config file the environment chose. Git falls back to `$HOME`, so the usual `~/.gitconfig` and `~/.config/git/config` are still read — but an identity that lives **only** in a non-default `$XDG_CONFIG_HOME` is not visible here and `self` is `null`. That is the deliberate cost of not letting the environment pick the config file; the reviewer field is free text, so the name can still be typed.
+- The source is Git rather than the `actors` table, which only the Forge sync writes and which carries no repository scope.
+- An empty `names` and a `null` `self` are both valid, and the reviewer field still accepts a name that is not on the list.
 
 Candidate reads return `revisionToken`. PATCH/approve/reject/supersede require the same token. A mismatch returns HTTP 409 `CONFLICT` with no automatic merge.
 

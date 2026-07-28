@@ -20,6 +20,7 @@ export * from "./events-read.js";
 export * from "./graph-read.js";
 export * from "./knowledge-read.js";
 export * from "./overview.js";
+export * from "./people-read.js";
 export * from "./sessions-read.js";
 export * from "./settings.js";
 export * from "./sync.js";

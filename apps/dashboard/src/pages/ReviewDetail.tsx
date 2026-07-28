@@ -8,6 +8,13 @@ import { Button } from "@/components/ui/button.js";
 import { Card, CardContent } from "@/components/ui/card.js";
 import { Input } from "@/components/ui/input.js";
 import { Label } from "@/components/ui/label.js";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select.js";
 import { Textarea } from "@/components/ui/textarea.js";
 import { useI18n } from "@/i18n/index.js";
 
@@ -23,10 +30,23 @@ export function ReviewDetail() {
   const queryClient = useQueryClient();
 
   const q = useQuery({ queryKey: ["candidate", id], queryFn: () => api.candidate(id) });
+  // The repository's people change on the order of commits, not of navigations,
+  // and this is the only dashboard read that forks a subprocess — two `git`
+  // processes, one walking every ref. Without a stale window it re-ran on every
+  // mount and every window focus.
+  const people = useQuery({
+    queryKey: ["people"],
+    queryFn: () => api.people(),
+    staleTime: 5 * 60 * 1000,
+  });
 
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [reviewer, setReviewer] = useState("");
+  // What the reviewer field was last *typed* into, which is not the same thing
+  // as its value: prefilling and picking from the list both set a name without
+  // expressing an intent to search. Empty means "no search, show everyone".
+  const [nameQuery, setNameQuery] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
 
   // Sync the editable form from the loaded draft when navigating to a candidate
@@ -37,6 +57,18 @@ export function ReviewDetail() {
       setBody(q.data.draft.body);
     }
   }, [id, q.data?.id]);
+
+  // The reviewer is almost always the person at the keyboard, so the local Git
+  // identity seeds the field. Only while it is still untouched: retyping over a
+  // deliberate edit on a later fetch would be worse than not prefilling at all.
+  // `nameQuery` is left alone, so the prefilled name does not narrow the picker
+  // down to itself and hide everyone else.
+  useEffect(() => {
+    const self = people.data?.self;
+    if (self !== undefined && self !== null) {
+      setReviewer((current) => (current === "" ? self : current));
+    }
+  }, [people.data?.self]);
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ["candidate", id] });
@@ -94,6 +126,15 @@ export function ReviewDetail() {
   if (q.isError || q.data === undefined) return <ErrorState />;
   const d = q.data;
   const secretBlocked = !d.validation.secretsClean;
+  // Typing narrows the list rather than constraining it: the field is free text
+  // so a name Git has never seen still approves. Matching is a plain
+  // case-insensitive substring over names already in memory — these are forge
+  // account names, so there is no request to debounce and no composition to
+  // wait out.
+  const query = nameQuery.trim().toLowerCase();
+  const allPeople = people.data?.names ?? [];
+  const matchingPeople =
+    query === "" ? allPeople : allPeople.filter((name) => name.toLowerCase().includes(query));
   const canApprove =
     d.validation.approvable && reviewer.trim().length > 0 && d.status === "pending";
 
@@ -180,12 +221,45 @@ export function ReviewDetail() {
       <div className="flex flex-wrap items-end gap-3">
         <div className="space-y-1.5">
           <Label htmlFor="reviewer">{t("review.reviewer")}</Label>
-          <Input
-            id="reviewer"
-            value={reviewer}
-            onChange={(e) => setReviewer(e.target.value)}
-            className="w-56"
-          />
+          <div className="flex items-center gap-2">
+            <Input
+              id="reviewer"
+              value={reviewer}
+              onChange={(e) => {
+                setReviewer(e.target.value);
+                setNameQuery(e.target.value);
+              }}
+              className="w-56"
+            />
+            {matchingPeople.length > 0 && (
+              <Select
+                value=""
+                onValueChange={(value) => {
+                  if (value === null) return;
+                  setReviewer(value);
+                  // Picking is not searching: clear the query so the list stays
+                  // whole and the next open is not narrowed to the chosen name.
+                  setNameQuery("");
+                }}
+              >
+                <SelectTrigger className="w-44" aria-label={t("review.reviewerPick")}>
+                  <SelectValue placeholder={t("review.reviewerPick")} />
+                </SelectTrigger>
+                <SelectContent>
+                  {matchingPeople.map((name) => (
+                    <SelectItem key={name} value={name}>
+                      {name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+          {/* An absent picker otherwise reads as "this repository has no
+              people", which is a legitimate answer, so say which one it is. */}
+          {people.isError && (
+            <p className="text-xs text-warn">{t("review.reviewerPickUnavailable")}</p>
+          )}
         </div>
         <Button type="button" onClick={() => approve.mutate()} disabled={!canApprove}>
           {t("review.approve")}

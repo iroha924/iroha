@@ -377,6 +377,8 @@ export interface ListCandidatesPageFilter {
   /** Keyset cursor: return rows strictly older than this `(created_at, id)` pair. */
   beforeCreatedAt?: string;
   beforeId?: TypedId<"cand">;
+  /** Rows to skip, for the review queue's numbered pages. Ignored when a cursor is given. */
+  offset?: number;
 }
 
 /**
@@ -384,6 +386,12 @@ export interface ListCandidatesPageFilter {
  * (`GET /api/v1/candidates`). Same deterministic `created_at DESC, id DESC`
  * order as `listCandidatesByStatus`, plus a `(created_at, id)` cursor so paging
  * stays stable across reloads (contracts/dashboard-api.md §4).
+ *
+ * `offset` is the alternative the Review queue's numbered pages need: a cursor
+ * cannot be computed for a page the client has never fetched, so numbering over
+ * cursors alone means walking every intervening page. The two are mutually
+ * exclusive — a cursor already encodes a position, so an offset on top of it
+ * would skip rows from that position rather than from the start.
  */
 export async function listCandidatesPage(
   db: Executor,
@@ -392,20 +400,58 @@ export async function listCandidatesPage(
 ): Promise<Result<CandidateRow[], IrohaError>> {
   const conditions = ["repository_id = ?", "status = ?"];
   const args: Array<string | number> = [repositoryId, filter.status];
-  if (filter.beforeCreatedAt !== undefined && filter.beforeId !== undefined) {
+  // Bound as one value rather than a boolean so the pair stays narrowed: a
+  // `usingCursor` flag would compile only with casts, which stop protecting
+  // this line the moment the two fields' optionality diverges.
+  const cursor =
+    filter.beforeCreatedAt !== undefined && filter.beforeId !== undefined
+      ? { createdAt: filter.beforeCreatedAt, id: filter.beforeId }
+      : null;
+  if (cursor !== null) {
     conditions.push("(created_at, id) < (?, ?)");
-    args.push(filter.beforeCreatedAt, filter.beforeId);
+    args.push(cursor.createdAt, cursor.id);
   }
   args.push(filter.limit);
+  // A non-integer would reach SQLite as a datatype mismatch and surface as a
+  // 500; the offset is a row position, so anything else is not one.
+  const skip =
+    cursor === null && filter.offset !== undefined && Number.isInteger(filter.offset)
+      ? Math.max(0, filter.offset)
+      : 0;
+  if (skip > 0) {
+    args.push(skip);
+  }
   try {
     const result = await db.execute({
       sql: `SELECT * FROM candidates WHERE ${conditions.join(" AND ")}
-        ORDER BY created_at DESC, id DESC LIMIT ?`,
+        ORDER BY created_at DESC, id DESC LIMIT ?${skip > 0 ? " OFFSET ?" : ""}`,
       args,
     });
     return ok(result.rows.map(rowToCandidate));
   } catch (cause) {
     return err(mapLibsqlError(cause, "Failed to list candidates"));
+  }
+}
+
+/**
+ * How many candidates the queue holds at `status`, so the Review page can show
+ * numbered pages. Kept separate from `listCandidatesPage` rather than folded
+ * in as a window function: the page query is a keyset read whose `LIMIT`
+ * deliberately never sees the rest of the set.
+ */
+export async function countCandidates(
+  db: Executor,
+  repositoryId: TypedId<"repo">,
+  status: CandidateStatus,
+): Promise<Result<number, IrohaError>> {
+  try {
+    const result = await db.execute({
+      sql: "SELECT COUNT(*) AS c FROM candidates WHERE repository_id = ? AND status = ?",
+      args: [repositoryId, status],
+    });
+    return ok(Number(result.rows[0]?.c ?? 0));
+  } catch (cause) {
+    return err(mapLibsqlError(cause, "Failed to count candidates"));
   }
 }
 

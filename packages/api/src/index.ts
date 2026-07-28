@@ -42,6 +42,7 @@ export type {
   McpSearchData,
   OverviewData,
   RepositoryConfig,
+  RepositoryPeopleData,
   RunDetailData,
   SessionDetailData,
   SessionListItem,
