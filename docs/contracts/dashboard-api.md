@@ -276,20 +276,6 @@ and the pages that did it were removed rather than kept for completeness.
 
 Do not show individual ranking, hours worked, prompt count leaderboard, or a productivity score.
 
-### Session detail
-
-Hierarchy:
-
-```text
-Session
-└── Run
-    └── Turn
-        ├── Tool summary
-        └── Checkpoint
-```
-
-Show actor, platform, branch, SHA window, Issue/PR links, changed paths, validation, decisions, unresolved items, and related approved knowledge. Do not show raw conversation.
-
 ### Review Queue
 
 The detail view has:
