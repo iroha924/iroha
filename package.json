@@ -2,7 +2,7 @@
   "name": "iroha",
   "private": true,
   "license": "Apache-2.0",
-  "packageManager": "pnpm@11.14.0",
+  "packageManager": "pnpm@11.17.0",
   "engines": {
     "node": ">=24.0.0 <25"
   },
@@ -47,7 +47,7 @@
     "sherif": "catalog:",
     "size-limit": "catalog:",
     "taze": "catalog:",
-    "turbo": "2.10.5",
+    "turbo": "2.10.6",
     "verdaccio": "catalog:",
     "zx": "catalog:"
   }
