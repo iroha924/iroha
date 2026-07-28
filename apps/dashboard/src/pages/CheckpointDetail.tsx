@@ -89,7 +89,7 @@ export function CheckpointDetail() {
     <section>
       <BackLink to={`/sessions/${id}`}>{t("common.back")}</BackLink>
       <div className="flex flex-wrap items-center gap-3">
-        <Badge variant={checkpointOutcomeTone(d.outcome)}>{d.outcome}</Badge>
+        <Badge variant={checkpointOutcomeTone(d.outcome)}>{t(`outcome.${d.outcome}`)}</Badge>
         <h1 className="font-display text-2xl font-semibold tracking-[-0.005em] text-ink">
           {d.objective}
         </h1>
@@ -140,7 +140,9 @@ export function CheckpointDetail() {
                     key={`${item.command ?? "check"}-${i}`}
                     className="flex items-center gap-3 py-2.5 text-sm"
                   >
-                    <Badge variant={validationResultTone(item.result)}>{item.result}</Badge>
+                    <Badge variant={validationResultTone(item.result)}>
+                      {t(`vresult.${item.result}`)}
+                    </Badge>
                     <span className="flex-1 font-mono text-[13px] text-ink">
                       {item.command ?? item.note ?? "—"}
                     </span>
@@ -180,7 +182,7 @@ export function CheckpointDetail() {
               <ul className="divide-y divide-hairline">
                 {refs.map((ref, i) => (
                   <li key={`${ref.ref}-${i}`} className="flex items-center gap-3 py-2.5 text-sm">
-                    <Badge variant="neutral">{ref.type}</Badge>
+                    <Badge variant="neutral">{t(`reftype.${ref.type}`)}</Badge>
                     {ref.url !== null && SAFE_URL.test(ref.url) ? (
                       <a
                         href={ref.url}

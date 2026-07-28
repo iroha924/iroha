@@ -40,7 +40,9 @@ describe("CheckpointDetail", () => {
     expect(screen.getByText("src/payments/service.ts")).toBeDefined();
     expect(screen.getByText("extracted the port")).toBeDefined();
     expect(screen.getByText("pnpm test")).toBeDefined();
-    expect(screen.getByText("passed")).toBeDefined();
+    // The label, not the stored value: the badge renders `vresult.passed`.
+    expect(screen.getByText("Passed")).toBeDefined();
+    expect(screen.queryByText("passed")).toBeNull();
     expect(screen.getByText("Backfill the migration on staging")).toBeDefined();
 
     const prLink = screen.getByRole("link", { name: "#42" });

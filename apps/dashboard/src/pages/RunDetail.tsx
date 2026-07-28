@@ -21,7 +21,7 @@ export function RunDetail() {
     <section>
       <BackLink to={`/sessions/${id}`}>{t("common.back")}</BackLink>
       <div className="flex items-center gap-3">
-        <Badge variant={runStatusTone(d.run.status)}>{d.run.status}</Badge>
+        <Badge variant={runStatusTone(d.run.status)}>{t(`runstatus.${d.run.status}`)}</Badge>
         <span className="font-mono text-sm text-ink">{d.run.gitBranch ?? d.run.startSource}</span>
       </div>
 
@@ -30,7 +30,7 @@ export function RunDetail() {
           <Card key={turn.id}>
             <CardContent className="space-y-2.5">
               <div className="flex items-center gap-2 text-sm">
-                <Badge variant="neutral">{turn.status}</Badge>
+                <Badge variant="neutral">{t(`runstatus.${turn.status}`)}</Badge>
                 <span className="text-ink-muted">{turn.checkpointState}</span>
               </div>
               {turn.intentSummary !== null && (

@@ -120,7 +120,9 @@ export function Sessions() {
                     <TableRow key={s.id}>
                       <TableCell>
                         <Badge variant={runStatusTone(s.latestRunStatus)}>
-                          {s.latestRunStatus ?? s.platform}
+                          {s.latestRunStatus === null
+                            ? t(`platform.${s.platform}`)
+                            : t(`runstatus.${s.latestRunStatus}`)}
                         </Badge>
                       </TableCell>
                       <TableCell>

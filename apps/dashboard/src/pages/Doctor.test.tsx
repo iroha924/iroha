@@ -37,7 +37,9 @@ describe("Doctor", () => {
     expect(await screen.findByText("api.request")).toBeDefined();
     expect(screen.getByText("NOT_FOUND")).toBeDefined();
     expect(screen.getByText("GET /api/v1/knowledge/:id")).toBeDefined();
-    expect(screen.getByText("warning")).toBeDefined();
+    // The label, not the stored value: the badge renders `evoutcome.warning`.
+    expect(screen.getByText("Warning")).toBeDefined();
+    expect(screen.queryByText("warning")).toBeNull();
     expect(screen.getByText("8 ms")).toBeDefined();
     expect(screen.getByText("create_checkpoint")).toBeDefined();
     expect(screen.getByText("2026-01-01 09:29:00")).toBeDefined();

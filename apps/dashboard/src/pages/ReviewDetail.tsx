@@ -149,7 +149,7 @@ export function ReviewDetail() {
       <Card>
         <CardContent className="space-y-4">
           <Badge variant="pending" className="w-fit">
-            {d.type}
+            {t(`ktype.${d.type}`)}
           </Badge>
           <div className="space-y-1.5">
             <Label htmlFor="cand-title">{t("review.fieldTitle")}</Label>

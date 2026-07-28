@@ -39,7 +39,7 @@ export function SessionDetail() {
                   key={r.id}
                   className="flex items-center gap-3 py-2.5 text-sm first:pt-0 last:pb-0"
                 >
-                  <Badge variant={runStatusTone(r.status)}>{r.status}</Badge>
+                  <Badge variant={runStatusTone(r.status)}>{t(`runstatus.${r.status}`)}</Badge>
                   <Link
                     to={`/sessions/${d.id}/runs/${r.id}`}
                     className="font-medium text-ink transition-colors hover:text-matcha"
@@ -67,7 +67,9 @@ export function SessionDetail() {
                     key={cp.id}
                     className="flex items-center gap-3 py-2.5 text-sm first:pt-0 last:pb-0"
                   >
-                    <Badge variant={checkpointOutcomeTone(cp.outcome)}>{cp.outcome}</Badge>
+                    <Badge variant={checkpointOutcomeTone(cp.outcome)}>
+                      {t(`outcome.${cp.outcome}`)}
+                    </Badge>
                     <Link
                       to={`/sessions/${d.id}/checkpoints/${cp.id}`}
                       className="flex-1 text-ink transition-colors hover:text-matcha"

@@ -146,7 +146,9 @@ export function Overview() {
                     >
                       <span className="flex items-center gap-2.5">
                         <Badge variant={runStatusTone(s.latestRunStatus)}>
-                          {s.latestRunStatus ?? s.platform}
+                          {s.latestRunStatus === null
+                            ? t(`platform.${s.platform}`)
+                            : t(`runstatus.${s.latestRunStatus}`)}
                         </Badge>
                         <span className="text-sm font-medium text-ink">{s.platform}</span>
                       </span>
