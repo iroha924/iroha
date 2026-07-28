@@ -12,3 +12,11 @@ playwright-report/
 # Claude Code session-local runtime state (not team config)
 .claude/scheduled_tasks.lock
 .claude/settings.local.json
+
+# iroha's own memory, which is dogfooding output rather than shared memory: this
+# repository has no second maintainer to share it with, so committing it would
+# add churn to every approval and publish notes written for an audience of one.
+# ADR-006 is unchanged — a git-tracked `.iroha/` is still the shared canonical
+# source for repositories that install iroha; it is the sharing that is absent
+# here, not the design.
+.iroha/
