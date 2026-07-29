@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { resolveInitializedRepository, runInit } from "@iroha/core";
 import { CryptoRandomSource, makeTypedId, SystemClock } from "@iroha/domain";
-import { closeDatabase, insertCandidate, openDatabase } from "@iroha/storage";
+import { closeDatabase, insertCandidate, insertEventLog, openDatabase } from "@iroha/storage";
 import { expect, type Page, test } from "@playwright/test";
 
 const execFileAsync = promisify(execFile);
@@ -115,6 +115,20 @@ test.beforeAll(async () => {
     }),
     revisionToken: "e2e-token",
     createdAt: clock.now().toISOString(),
+  });
+  // One diagnostics row, so Doctor renders its problems dialog. That dialog is
+  // the app's only `Dialog`, and a Dialog is exactly the kind of component that
+  // can inject a runtime <style> the strict CSP refuses — a state this journey
+  // cannot reach unless a problem exists to open it with.
+  await insertEventLog(db.value, {
+    id: makeTypedId("log", clock, random),
+    repositoryId: resolved.value.repositoryId,
+    eventType: "mcp.tool_call",
+    adapter: "create_checkpoint",
+    durationMs: 143,
+    outcome: "failure",
+    errorCode: "INTERNAL_ERROR",
+    occurredAt: clock.now().toISOString(),
   });
   await closeDatabase(db.value);
 
@@ -227,6 +241,14 @@ test("every tab renders against the real API with no errors", async ({ page }) =
     // more than one makes "the" title ambiguous.
     await expect(page.locator("h1"), `${tab.nav} h1 count`).toHaveCount(1);
   }
+
+  // Opening the problems dialog is what exposes a Dialog's runtime <style> to the
+  // console watcher below; walking past /doctor only renders its trigger.
+  await page.goto(`${origin}/doctor`);
+  await settled(page);
+  await page.getByRole("button", { name: "Recent problems (1)" }).click();
+  await expect(page.getByRole("dialog")).toContainText("create_checkpoint");
+  await page.keyboard.press("Escape");
 
   // The detail route, reached the way a user reaches it — by clicking a row. A
   // hand-built `/review/<id>` can pass while the link that produces it is broken.
