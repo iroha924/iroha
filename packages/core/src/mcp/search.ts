@@ -104,7 +104,7 @@ export async function mcpSearch(input: McpSearchInput): Promise<Result<McpSearch
         // `graph` seeds with the vector too: a long relationship query rarely
         // satisfies the lexical arm's all-terms AND, so lexical-only seeds would
         // leave the graph expansion nothing to grow from.
-        const provider = resolveEmbeddingProvider(ctx.repo.config.search.embedding);
+        const provider = await resolveEmbeddingProvider(ctx.repo.config.search.embedding);
         const embedded = provider === null ? null : await provider.embed([input.query], "query");
         if (embedded !== null && embedded.ok && embedded.value[0] !== undefined) {
           queryVector = embedded.value[0];

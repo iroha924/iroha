@@ -2,19 +2,6 @@ import { repositoryIdSchema } from "@iroha/domain";
 import { z } from "zod";
 
 /**
- * `.iroha/config.yaml`'s env-var-name constraint (contracts/canonical.md §9:
- * "Secret values are forbidden; only environment-variable names may
- * appear"). Standard POSIX environment variable naming — the config file
- * never holds the secret value itself, only where to read it from.
- */
-const envVarNameSchema = z
-  .string()
-  .max(200)
-  .regex(/^[A-Z][A-Z0-9_]*$/, {
-    message: "must be an environment variable name (UPPER_SNAKE_CASE)",
-  });
-
-/**
  * v1 fixes the embedding provider/model/dimension to a single combination
  * (contracts/database.md §8: "v1 does not mix models or dimensions inside the
  * same vector index"; migrations/001_initial.sql's `embeddings_1024` table
@@ -25,7 +12,6 @@ const embeddingConfigSchema = z.strictObject({
   provider: z.literal("voyage"),
   model: z.literal("voyage-4-large"),
   dimension: z.literal(1024),
-  api_key_env: envVarNameSchema,
 });
 
 const searchConfigSchema = z.strictObject({
@@ -41,9 +27,6 @@ const canonicalConfigSchema = z.strictObject({
 const forgeConfigSchema = z.strictObject({
   provider: z.enum(["github", "gitlab"]),
   enabled: z.boolean(),
-  // Name of the env var holding the forge token; the value is read at sync time
-  // and never stored in config, the DB, or logs.
-  api_token_env: envVarNameSchema.default("GITHUB_TOKEN"),
   // Distinct pull requests a review-comment pattern must recur across before
   // `iroha sync` proposes it as a `review_learning` candidate. Floor is 2 — a
   // "recurrence" of one is a single comment, not a pattern.

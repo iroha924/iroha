@@ -4,6 +4,7 @@ import { type RepositoryConfig, serializeRepositoryConfig } from "@iroha/config"
 import type { Clock, IrohaError, RandomSource, Result } from "@iroha/domain";
 import { err, IrohaError as IrohaErrorClass, ok } from "@iroha/domain";
 import { getLocalSetting, upsertLocalSetting } from "@iroha/storage";
+import { type CredentialProvider, hasApiKey, writeApiKey } from "../credentials.js";
 import {
   RETENTION_SETTING_KEY,
   readRetentionSetting,
@@ -14,8 +15,19 @@ import { withDashboardRepository } from "./with-repository.js";
 export interface SettingsData {
   shared: RepositoryConfig;
   local: {
-    /** Presence only — the embedding API key value is never returned. */
+    /** Presence only — no endpoint returns a stored key's value. */
     embeddingKeyPresent: boolean;
+    forgeTokenPresent: boolean;
+    /**
+     * The stored entry exists but could not be read. Distinct from "no key":
+     * rendering an unreadable entry as absent tells the user to re-enter a key
+     * that is already there, and hides the one thing they need to act on.
+     *
+     * Per provider, because each entry is validated on its own — one malformed
+     * entry must not make the other provider's working key read as broken.
+     */
+    embeddingKeyUnreadable: boolean;
+    forgeTokenUnreadable: boolean;
     /** Local event-data retention: the window in days, or `null` when off. */
     retentionDays: number | null;
   };
@@ -40,16 +52,40 @@ export async function getSettings(
       // doctor` keeps reporting the invalid setting. Reading it as "off" is safe:
       // `applyRetention` still refuses to delete anything it cannot parse.
       const retention = await readRetentionSetting(ctx.db, ctx.repo.repositoryId);
+      const embeddingKey = await hasApiKey("voyage");
+      const forgeToken = await hasApiKey("github");
       return ok({
         shared: ctx.repo.config,
         local: {
-          embeddingKeyPresent:
-            process.env[ctx.repo.config.search.embedding.api_key_env] !== undefined,
+          embeddingKeyPresent: embeddingKey.ok && embeddingKey.value,
+          forgeTokenPresent: forgeToken.ok && forgeToken.value,
+          embeddingKeyUnreadable: !embeddingKey.ok,
+          forgeTokenUnreadable: !forgeToken.ok,
           retentionDays: retention.ok ? retention.value.setting.days : null,
         },
       });
     },
   );
+}
+
+export interface SetProviderCredentialInput {
+  provider: CredentialProvider;
+  apiKey: string;
+}
+
+/**
+ * Stores a provider API key from the dashboard (`PUT /api/v1/settings/credentials`).
+ *
+ * Deliberately repository-independent: the key lives in `~/.config/iroha/credentials.json`
+ * and is shared by every repository on the machine, so resolving one here would
+ * only add a way to fail. The response reports presence, never the value — the
+ * key travels in one direction and there is no endpoint that reads it back.
+ */
+export async function setProviderCredential(
+  input: SetProviderCredentialInput,
+): Promise<Result<{ provider: CredentialProvider; present: boolean }, IrohaError>> {
+  const written = await writeApiKey(input.provider, input.apiKey);
+  return written.ok ? ok({ provider: input.provider, present: true }) : written;
 }
 
 export interface UpdateSharedConfigInput {

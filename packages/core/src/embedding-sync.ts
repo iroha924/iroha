@@ -9,7 +9,7 @@ import {
   type Result,
   type TypedId,
 } from "@iroha/domain";
-import { createVoyageProvider, type EmbeddingProvider } from "@iroha/search";
+import { createVoyageProvider, type EmbeddingProvider, isCredentialFailure } from "@iroha/search";
 import {
   type Database,
   getEmbeddingMetadataBySearchDocumentId,
@@ -19,6 +19,7 @@ import {
   updateEmbeddingJobStatus,
   upsertEmbedding,
 } from "@iroha/storage";
+import { readApiKey } from "./credentials.js";
 
 type EmbeddingConfig = RepositoryConfig["search"]["embedding"];
 
@@ -40,6 +41,12 @@ export interface RunEmbeddingSyncResult {
   dead: number;
   /** Non-null when no work was attempted because embedding is off or unconfigured. */
   skipped: "disabled" | "missing_key" | null;
+  /**
+   * Why the run stopped early, when it did. A count alone cannot be acted on:
+   * "14 dead-lettered" reads the same whether fourteen documents are malformed
+   * or one API key is rejected, and only the second is fixable in a minute.
+   */
+  stopped: "credentials" | "outage" | null;
 }
 
 export interface RunEmbeddingSyncOptions {
@@ -48,20 +55,31 @@ export interface RunEmbeddingSyncOptions {
 }
 
 /**
- * Builds a Voyage provider from config + env, or returns `null` when embedding
- * is disabled or its API key env var is unset. Shared by the sync worker and
- * the query-embedding path (`mcpSearch`) so both resolve the key identically —
- * and neither ever puts the value anywhere but the provider's request header.
+ * Builds a Voyage provider from config + the stored credential, or returns
+ * `null` when embedding is disabled or no key is stored. Shared by the sync
+ * worker and the query-embedding path (`mcpSearch`) so both resolve the key
+ * identically — and neither ever puts the value anywhere but the provider's
+ * request header.
+ *
+ * An unreadable credentials file resolves to `null` like an absent one: search
+ * degrades to lexical rather than failing (CLAUDE.md), and `iroha doctor` is
+ * where the file's actual state is reported.
  */
-export function resolveEmbeddingProvider(config: EmbeddingConfig): EmbeddingProvider | null {
+export async function resolveEmbeddingProvider(
+  config: EmbeddingConfig,
+): Promise<EmbeddingProvider | null> {
   if (!config.enabled) {
     return null;
   }
-  const apiKey = process.env[config.api_key_env];
-  if (apiKey === undefined || apiKey.length === 0) {
+  const apiKey = await readApiKey("voyage");
+  if (!apiKey.ok || apiKey.value === null) {
     return null;
   }
-  return createVoyageProvider({ apiKey, model: config.model, dimension: config.dimension });
+  return createVoyageProvider({
+    apiKey: apiKey.value,
+    model: config.model,
+    dimension: config.dimension,
+  });
 }
 
 /** Exponential backoff (deterministic — single local writer, no jitter needed). */
@@ -81,8 +99,17 @@ function backoffAt(clock: Clock, attempts: number): string {
  * A retryable provider failure (network, 429/5xx) will almost certainly hit
  * every remaining job this run too, so the first one backs its job off and
  * stops the run rather than burning the whole queue's retry budget on one
- * outage. A non-retryable failure (4xx, malformed body) is specific to one
- * document, so that job is dead-lettered and the run continues.
+ * outage.
+ *
+ * A rejected credential (401/403) stops the run for the stronger version of the
+ * same reason: it is not likely to hit every remaining job, it is certain to.
+ * Continuing would send one doomed request per document and dead-letter each of
+ * them separately, turning one account problem into N failures whose shared
+ * cause appears nowhere in the counts.
+ *
+ * Any other non-retryable failure (a malformed body, an over-long input) really
+ * is specific to one document, so that job is dead-lettered and the run
+ * continues.
  */
 export async function runEmbeddingSync(
   db: Database,
@@ -93,19 +120,40 @@ export async function runEmbeddingSync(
   options: RunEmbeddingSyncOptions = {},
 ): Promise<Result<RunEmbeddingSyncResult, IrohaError>> {
   if (!config.enabled) {
-    return ok({ processed: 0, failed: 0, dead: 0, skipped: "disabled" });
+    return ok({
+      processed: 0,
+      failed: 0,
+      dead: 0,
+      skipped: "disabled",
+      stopped: null,
+    });
   }
-  // Reuse the shared resolver (config already known enabled here, so a null
-  // means the API key env var is unset) rather than re-reading the env inline —
-  // any future hardening of key resolution then reaches the worker too.
-  const provider = options.provider ?? resolveEmbeddingProvider(config);
-  if (provider === null) {
-    return ok({ processed: 0, failed: 0, dead: 0, skipped: "missing_key" });
+  // Re-resolved before each request, not once for the run. A sync over a large
+  // index issues thousands of requests over minutes; holding one snapshot would
+  // mean a key replaced partway through never takes effect, which is the
+  // staleness ADR-018 exists to remove — reintroduced inside a single process
+  // instead of across a restart. `compatibility.md` §11 says the key is read on
+  // each request, and one small file read against one HTTPS request is what that
+  // costs.
+  const resolveProvider = async (): Promise<EmbeddingProvider | null> =>
+    options.provider ?? (await resolveEmbeddingProvider(config));
+  if ((await resolveProvider()) === null) {
+    return ok({
+      processed: 0,
+      failed: 0,
+      dead: 0,
+      skipped: "missing_key",
+      stopped: null,
+    });
   }
 
   let processed = 0;
   let failed = 0;
   let dead = 0;
+  // Hoisted out of the loop: both stop the whole run, and the reason has to
+  // survive it to reach the caller.
+  let outage = false;
+  let credentials = false;
 
   while (processed + failed + dead < MAX_JOBS_PER_RUN) {
     const dueResult = await listDueEmbeddingJobs(db, clock.now().toISOString(), JOB_BATCH);
@@ -116,7 +164,6 @@ export async function runEmbeddingSync(
       break;
     }
 
-    let outage = false;
     for (const job of dueResult.value) {
       const docResult = await getSearchDocumentById(db, job.searchDocumentId);
       if (!docResult.ok) {
@@ -157,6 +204,14 @@ export async function runEmbeddingSync(
         continue;
       }
 
+      const provider = await resolveProvider();
+      if (provider === null) {
+        // The key was removed mid-run. Stopping reports it as a credential
+        // problem rather than dead-lettering every remaining document against a
+        // provider that no longer exists.
+        credentials = true;
+        break;
+      }
       const embedded = await provider.embed([`${doc.title}\n\n${doc.body}`], "document");
       if (embedded.ok) {
         const vector = embedded.value[0];
@@ -185,13 +240,28 @@ export async function runEmbeddingSync(
         continue;
       }
 
-      const attempts = job.attempts + 1;
-      const isTerminal = !embedded.error.retryable || attempts >= MAX_ATTEMPTS;
+      // A rejected credential says nothing about this document, so it must not
+      // spend the retry budget or reach `dead`: `listDueEmbeddingJobs` selects
+      // only `pending`/`failed` and nothing revives a dead job, so dead-lettering
+      // here would permanently strand whichever document happened to go first —
+      // the one case this whole branch exists to protect.
+      const credential = isCredentialFailure(embedded.error);
+      const attempts = credential ? job.attempts : job.attempts + 1;
+      const isTerminal = !credential && (!embedded.error.retryable || attempts >= MAX_ATTEMPTS);
       const status = isTerminal ? "dead" : "failed";
       const marked = await updateEmbeddingJobStatus(db, job.id, {
         status,
         attempts,
-        ...(status === "failed" ? { nextAttemptAt: backoffAt(clock, attempts) } : {}),
+        // Due immediately on a credential failure: the CLI has just told the
+        // user to replace the key, and the outage backoff would make the first
+        // document sit out the `iroha sync` they run right after doing so.
+        ...(status === "failed"
+          ? {
+              nextAttemptAt: credential
+                ? clock.now().toISOString()
+                : backoffAt(clock, Math.max(1, attempts)),
+            }
+          : {}),
         lastErrorCode: embedded.error.code,
         updatedAt: clock.now().toISOString(),
       });
@@ -218,12 +288,22 @@ export async function runEmbeddingSync(
         outage = true;
         break;
       }
+      if (credential) {
+        credentials = true;
+        break;
+      }
     }
 
-    if (outage) {
+    if (outage || credentials) {
       break;
     }
   }
 
-  return ok({ processed, failed, dead, skipped: null });
+  return ok({
+    processed,
+    failed,
+    dead,
+    skipped: null,
+    stopped: credentials ? "credentials" : outage ? "outage" : null,
+  });
 }

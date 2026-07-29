@@ -218,8 +218,6 @@ export interface BootstrapData {
   capabilities: StorageCapabilities;
   embedding: {
     enabled: boolean;
-    /** Whether the configured API-key env var is set — never the value itself. */
-    keyPresent: boolean;
   };
 }
 
@@ -257,7 +255,6 @@ export async function getBootstrap(
         capabilities,
         embedding: {
           enabled: embedding.enabled,
-          keyPresent: process.env[embedding.api_key_env] !== undefined,
         },
       });
     },

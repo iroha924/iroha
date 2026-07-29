@@ -864,6 +864,35 @@ export async function listDueEmbeddingJobs(
   }
 }
 
+/**
+ * How many documents the embedder has failed on, split by whether it will try
+ * again.
+ *
+ * Neither count includes `pending`, the ordinary state of a document enqueued but
+ * not yet reached, which would make a healthy repository between syncs look
+ * broken. The split matters because the two need different remedies: a `failed`
+ * job is retried by the next `iroha sync`, while a `dead` one is reached by
+ * nothing short of a rebuild. A rejected API key leaves every job `failed`
+ * (`runEmbeddingSync` deliberately does not dead-letter a credential failure, so
+ * counting dirty markers cannot see it at all).
+ */
+export async function countFailedEmbeddingJobs(
+  db: Executor,
+): Promise<Result<{ failed: number; dead: number }, IrohaError>> {
+  try {
+    const result = await db.execute(
+      `SELECT
+         SUM(status = 'failed') AS failed,
+         SUM(status = 'dead') AS dead
+       FROM embedding_jobs`,
+    );
+    const row = result.rows[0];
+    return ok({ failed: Number(row?.failed ?? 0), dead: Number(row?.dead ?? 0) });
+  } catch (cause) {
+    return err(mapLibsqlError(cause, "Failed to count failed embedding jobs"));
+  }
+}
+
 export interface UpdateEmbeddingJobStatusInput {
   status: EmbeddingJobStatus;
   attempts?: number;

@@ -101,6 +101,21 @@ function formatSync(data: RunSyncResult): string {
         `Embeddings: ${embedding.processed} embedded, ${embedding.failed} retrying, ${embedding.dead} dead-lettered.`,
       ),
     );
+    // Counts alone are not actionable: a rejected key and a batch of malformed
+    // documents produce the same line, and only one of them is fixable in a
+    // minute. What to do about it is named; the key itself never is.
+    if (embedding.stopped === "credentials") {
+      lines.push(
+        note(
+          "error",
+          "The embedding provider rejected the stored API key. Run `iroha credentials voyage` to replace it; remaining documents were left for the next sync.",
+        ),
+      );
+    } else if (embedding.stopped === "outage") {
+      lines.push(
+        note("warning", "The embedding provider was unreachable; the rest retry on the next sync."),
+      );
+    }
   }
   // Forge is non-fatal, so its outcome only surfaces here (never as a sync error).
   // "disabled" (the default) prints nothing to keep the common case quiet.

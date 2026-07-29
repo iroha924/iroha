@@ -192,15 +192,19 @@ async function syncForge(
   resolved: ResolvedRepository,
   clock: SystemClock,
 ): Promise<ForgeSyncOutcome> {
-  const provider = resolveForgeProvider(resolved.config.forge, process.env);
+  const resolvedProvider = await resolveForgeProvider(resolved.config.forge);
+  if (!resolvedProvider.ok) {
+    return { status: "skipped", reason: resolvedProvider.error.message };
+  }
+  const provider = resolvedProvider.value;
   if (provider === null) {
     const forge = resolved.config.forge;
     if (!forge.enabled || forge.provider !== "github") {
       return { status: "disabled" };
     }
-    // Enabled but unresolvable → the token env var is unset; distinguish from
+    // Enabled but unresolvable → no token is stored; distinguish from
     // "disabled" so `iroha sync` can tell the user why forge did not run.
-    return { status: "skipped", reason: `forge is enabled but ${forge.api_token_env} is not set` };
+    return { status: "skipped", reason: "forge is enabled but no github token is stored" };
   }
   const refResult = await resolveGitHubRef(cwd);
   if (!refResult.ok) {

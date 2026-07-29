@@ -1,7 +1,12 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { parseRepositoryConfig, type RepositoryConfig } from "@iroha/config";
+import {
+  findRemovedSecretLocations,
+  parseRepositoryConfig,
+  type RepositoryConfig,
+  withoutLegacySecretLocationKeys,
+} from "@iroha/config";
 import {
   type Clock,
   err,
@@ -67,13 +72,11 @@ function buildDefaultConfig(repositoryId: TypedId<"repo">): RepositoryConfig {
         provider: "voyage",
         model: "voyage-4-large",
         dimension: 1024,
-        api_key_env: "VOYAGE_API_KEY",
       },
     },
     forge: {
       provider: "github",
       enabled: false,
-      api_token_env: "GITHUB_TOKEN",
       review_learning_threshold: 3,
     },
     privacy: {
@@ -122,13 +125,13 @@ async function createCanonicalSkeleton(irohaCanonicalDir: string): Promise<void>
  */
 async function writeConfigAtomic(
   irohaCanonicalDir: string,
-  repositoryId: TypedId<"repo">,
+  content: string,
   random: RandomSource,
 ): Promise<void> {
   const configPath = join(irohaCanonicalDir, "config.yaml");
   const suffix = Buffer.from(random.bytes(8)).toString("hex");
   const tempPath = `${configPath}.tmp-${process.pid}-${suffix}`;
-  await writeFile(tempPath, stringify(buildDefaultConfig(repositoryId)), "utf8");
+  await writeFile(tempPath, content, "utf8");
   await rename(tempPath, configPath);
 }
 
@@ -152,7 +155,7 @@ async function resolveOrRegisterRepository(
   gitLocation: GitLocation,
   clock: Clock,
   random: RandomSource,
-): Promise<Result<TypedId<"repo">, IrohaError>> {
+): Promise<Result<{ repositoryId: TypedId<"repo">; pastedSecrets: string[] }, IrohaError>> {
   const now = clock.now().toISOString();
   const rootFingerprint = computeRootFingerprint(gitLocation.commonDir);
 
@@ -166,12 +169,28 @@ async function resolveOrRegisterRepository(
   }
 
   let repositoryId: TypedId<"repo">;
+  let migratedConfig: string | undefined;
+  let pastedSecrets: string[] = [];
   if (existingConfig !== undefined) {
     const parsed = parseRepositoryConfig(existingConfig);
     if (!parsed.ok) {
       return parsed;
     }
     repositoryId = parsed.value.repository_id as TypedId<"repo">;
+    // `parseRepositoryConfig` drops the pre-0.6.0 keys that named where a secret
+    // was read from, but only in memory. Rewriting here is what makes the
+    // deletion reach the file every teammate reads and Git tracks — otherwise a
+    // teammate sets the environment variable the committed file still names and
+    // silently gets nothing.
+    migratedConfig = withoutLegacySecretLocationKeys(existingConfig) ?? undefined;
+    // 0.5.x rejected anything but an environment-variable name here, so a value
+    // that is not one is plausibly the key itself. The rewrite below removes it
+    // from the file, which also removes the only thing `doctor` can notice — so
+    // this is the last moment it can be said at all, and it still needs saying:
+    // the value is already in the repository's Git history.
+    pastedSecrets = findRemovedSecretLocations(existingConfig)
+      .filter((found) => !found.looksLikeEnvVarName)
+      .map((found) => found.path);
   } else {
     const byFingerprint = await getRepositoryByRootFingerprint(db, rootFingerprint);
     if (!byFingerprint.ok) {
@@ -210,11 +229,20 @@ async function resolveOrRegisterRepository(
     }
   }
 
-  if (existingConfig === undefined) {
-    await writeConfigAtomic(irohaCanonicalDir, repositoryId, random);
+  const content =
+    existingConfig === undefined ? stringify(buildDefaultConfig(repositoryId)) : migratedConfig;
+  if (content !== undefined) {
+    try {
+      await writeConfigAtomic(irohaCanonicalDir, content, random);
+    } catch (cause) {
+      // A read-only checkout, a full disk, a failed rename: a rejection here
+      // would escape `initRepository` and reach the CLI as an unstructured throw,
+      // printing a stack with absolute temp paths instead of an iroha error.
+      return err(new IrohaError("INTERNAL_ERROR", "Failed to write .iroha/config.yaml", { cause }));
+    }
   }
 
-  return ok(repositoryId);
+  return ok({ repositoryId, pastedSecrets });
 }
 
 export interface InitRepositoryResult {
@@ -225,6 +253,16 @@ export interface InitRepositoryResult {
   freshInit: boolean;
   docsImported: string[];
   entitiesWritten: number;
+  /**
+   * Dotted paths in `config.yaml` that held a pre-0.6.0 secret-location key whose
+   * value was not an environment-variable name — plausibly the key itself.
+   *
+   * Reported here because this run just deleted them from the file, which is also
+   * the only thing `iroha doctor` could see. Removing the value from `HEAD` does
+   * not remove it from the history that already carries it, so this is the last
+   * moment anyone can be told to rotate it.
+   */
+  pastedSecrets: string[];
 }
 
 /**
@@ -298,7 +336,7 @@ export async function initRepository(
     if (!repositoryIdResult.ok) {
       return repositoryIdResult;
     }
-    const repositoryId = repositoryIdResult.value;
+    const { repositoryId, pastedSecrets } = repositoryIdResult.value;
 
     for (const subdirectory of LOCAL_STATE_SUBDIRECTORIES) {
       await mkdir(join(irohaStateDir, subdirectory), { recursive: true });
@@ -323,6 +361,7 @@ export async function initRepository(
       freshInit,
       docsImported: importResult.value.docsImported,
       entitiesWritten: importResult.value.entitiesWritten,
+      pastedSecrets,
     });
   } finally {
     await closeDatabase(db);

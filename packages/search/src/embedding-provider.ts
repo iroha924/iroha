@@ -53,8 +53,29 @@ const voyageResponseSchema = z.object({
 });
 
 /** `EMBEDDING_UNAVAILABLE` with a message that carries no request detail beyond an HTTP status. */
-function unavailable(message: string, retryable: boolean): IrohaError {
-  return new IrohaError("EMBEDDING_UNAVAILABLE", message, { retryable });
+function unavailable(message: string, retryable: boolean, credentials = false): IrohaError {
+  return new IrohaError("EMBEDDING_UNAVAILABLE", message, {
+    retryable,
+    ...(credentials ? { details: { credentials: true } } : {}),
+  });
+}
+
+/**
+ * Whether the provider rejected the account rather than the request.
+ *
+ * The distinction decides how far a caller should keep going. A malformed body
+ * or an over-long input is this document's problem, so the next one is worth
+ * trying; a rejected key answers every remaining request identically, and
+ * embedding one document at a time turns one account problem into one failure
+ * per document — with nothing in the counts to say they share a cause.
+ *
+ * Carried in `details` rather than as its own `ErrorCode`: `contracts/mcp.md` §4
+ * fixes the code set, and the code is already right (`EMBEDDING_UNAVAILABLE` —
+ * the provider is unusable). What is new is *how long* it will stay that way.
+ */
+export function isCredentialFailure(error: IrohaError): boolean {
+  const details = error.details as { credentials?: unknown } | undefined;
+  return details?.credentials === true;
 }
 
 export function createVoyageProvider(options: VoyageProviderOptions): EmbeddingProvider {
@@ -103,8 +124,15 @@ export function createVoyageProvider(options: VoyageProviderOptions): EmbeddingP
         // Body is not read: it can echo request context and is not needed to
         // decide retry. 429/5xx are transient; 4xx (bad request/auth) are not.
         const retryable = response.status === 429 || response.status >= 500;
+        // 401 is a rejected key, 403 a key without access to this model. Neither
+        // is retryable *and* neither is about this particular document.
+        const credentials = response.status === 401 || response.status === 403;
         return err(
-          unavailable(`Voyage embeddings request failed (HTTP ${response.status})`, retryable),
+          unavailable(
+            `Voyage embeddings request failed (HTTP ${response.status})`,
+            retryable,
+            credentials,
+          ),
         );
       }
 

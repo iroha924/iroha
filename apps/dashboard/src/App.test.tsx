@@ -8,7 +8,7 @@ const BOOTSTRAP = ok({
   repository: { id: "repo_x", defaultLanguage: "en", requireHumanApproval: true },
   schema: { version: "1", supported: true },
   capabilities: { ftsUnicode61: true, ftsTrigram: true, vector: false },
-  embedding: { enabled: false, keyPresent: false },
+  embedding: { enabled: false },
 });
 
 const OVERVIEW = ok({

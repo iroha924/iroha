@@ -38,6 +38,7 @@ import {
   withTransaction,
 } from "@iroha/storage";
 import { z } from "zod";
+import { readApiKey } from "./credentials.js";
 import { recordEvent } from "./event-log.js";
 import { detectReviewLearnings } from "./forge-review-learning.js";
 
@@ -51,23 +52,24 @@ const FORGE_AUTHORITY = 80;
 const RELATION_CONFIDENCE = 1;
 
 /**
- * Build a GitHub provider from config + env, or `null` when forge is disabled,
- * the provider is not GitHub, or the token env var is unset. Mirrors
+ * Build a GitHub provider from config + the stored credential, or `null` when
+ * forge is disabled, the provider is not GitHub, or no token is stored. Mirrors
  * `resolveEmbeddingProvider`: the token value lives only in the provider's auth
  * layer and is never stored in config, the DB, or logs.
  */
-export function resolveForgeProvider(
+export async function resolveForgeProvider(
   config: ForgeConfig,
-  env: NodeJS.ProcessEnv,
-): ForgeProvider | null {
+): Promise<Result<ForgeProvider | null, IrohaError>> {
   if (!config.enabled || config.provider !== "github") {
-    return null;
+    return ok(null);
   }
-  const token = env[config.api_token_env];
-  if (token === undefined || token.length === 0) {
-    return null;
+  const token = await readApiKey("github");
+  // An unreadable credentials file is not "no token stored". Collapsing the two
+  // makes `iroha sync` tell the user to register a token they already have.
+  if (!token.ok) {
+    return token;
   }
-  return createGitHubProvider({ token });
+  return ok(token.value === null ? null : createGitHubProvider({ token: token.value }));
 }
 
 const GITHUB_REMOTE_PATTERNS = [

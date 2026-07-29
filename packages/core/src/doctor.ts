@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import { access, constants, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseRepositoryConfig } from "@iroha/config";
+import { findRemovedSecretLocations, parseRepositoryConfig } from "@iroha/config";
 import {
   CryptoRandomSource,
   type IrohaError,
@@ -15,11 +15,13 @@ import {
 import { resolveGitLocation, resolveGitPath } from "@iroha/git";
 import {
   closeDatabase,
+  countFailedEmbeddingJobs,
   getSyncCursor,
   listApprovedRulesForRepository,
   openDatabase,
   probeCapabilities,
 } from "@iroha/storage";
+import { hasApiKey } from "./credentials.js";
 import { classifyGuardSpec } from "./hooks/guardrail.js";
 import { resolveInitializedRepository } from "./resolve-repository.js";
 import { readRetentionStatus } from "./retention.js";
@@ -269,13 +271,15 @@ async function checkGuardrails(cwd: string): Promise<DoctorCheckResult> {
 
 /**
  * compatibility.md §9 point 9: "report Embedding and Forge providers
- * without printing secret values." `.iroha/config.yaml` never holds a
- * secret itself (only an environment-variable *name* — canonical-
- * schema.md §9), so the only additional care this needs is to report
- * *whether* the named variable is set, never its value. The forge provider is
- * reported separately by `checkForge`, which also reads the sync cursor.
+ * without printing secret values." Credentials live outside the repository
+ * (ADR-018) and this only ever asks whether one is stored, never for its value.
+ * The forge provider is reported separately by `checkForge`, which also reads
+ * the sync cursor.
  */
-async function checkProviders(irohaCanonicalDir: string): Promise<DoctorCheckResult[]> {
+async function checkProviders(
+  cwd: string,
+  irohaCanonicalDir: string,
+): Promise<DoctorCheckResult[]> {
   let content: string;
   try {
     content = await readFile(join(irohaCanonicalDir, "config.yaml"), "utf8");
@@ -298,26 +302,104 @@ async function checkProviders(irohaCanonicalDir: string): Promise<DoctorCheckRes
   if (!parsed.ok) {
     return [{ name: "config", status: "error", message: parsed.error.message }];
   }
+  // 0.5.x asked for an environment-variable *name* here and rejected anything
+  // else; the key is now dropped on read, so this is the only thing left that can
+  // notice a user who pasted the secret itself into a committed file.
+  const pastedSecrets = findRemovedSecretLocations(content).filter(
+    (found) => !found.looksLikeEnvVarName,
+  );
+  const configChecks: DoctorCheckResult[] =
+    pastedSecrets.length > 0
+      ? [
+          {
+            name: "config",
+            status: "warning",
+            message: `${pastedSecrets.map((f) => f.path).join(", ")} holds a value that is not an environment variable name. If that is an API key it is in this repository's Git history — rotate it, then run \`iroha init\` to drop the key from the file.`,
+          },
+        ]
+      : [];
   const { search } = parsed.value;
-  const embeddingKeySet = process.env[search.embedding.api_key_env] !== undefined;
+  if (!search.embedding.enabled) {
+    return [...configChecks, { name: "embedding-provider", status: "ok", message: "disabled" }];
+  }
+  const stored = await hasApiKey("voyage");
+  if (!stored.ok) {
+    // An unreadable credentials file is not "no key": it is a file the user
+    // believes holds one, so reporting it as absent would send them to re-enter
+    // a key that is already there. `warning`, not `error`: embedding is an
+    // optional feature (compatibility.md §9), and `error` makes `iroha doctor`
+    // exit non-zero over a file the repository does not require.
+    return [
+      ...configChecks,
+      { name: "embedding-provider", status: "warning", message: stored.error.message },
+    ];
+  }
+  const embeddingKeySet = stored.value;
+
+  // Documents the embedder has already failed on. Without this the report reads
+  // "key set" while search silently answers from lexical alone, which is exactly
+  // the state a rejected key leaves behind — and nothing else in the CLI names it.
+  const stranded = await countStrandedEmbeddings(cwd);
+  const detail = [
+    `key ${embeddingKeySet ? "set" : "not set"}`,
+    ...(stranded.failed > 0
+      ? [`${stranded.failed} failed to embed — run \`iroha sync\` to retry`]
+      : []),
+    // A dead job is not retried by `iroha sync`: `listDueEmbeddingJobs` selects
+    // only `pending`/`failed`, and enqueueing revives only `completed` jobs. Only
+    // rebuilding the index re-enqueues it, so naming `sync` here would send the
+    // reader to a command that cannot clear what they are being warned about.
+    ...(stranded.dead > 0
+      ? [`${stranded.dead} gave up — run \`iroha sync --rebuild\` to re-embed`]
+      : []),
+  ].join(", ");
   return [
+    ...configChecks,
     {
       name: "embedding-provider",
-      status: search.embedding.enabled && !embeddingKeySet ? "warning" : "ok",
-      message: search.embedding.enabled
-        ? `${search.embedding.provider}/${search.embedding.model} (key ${embeddingKeySet ? "set" : "not set"})`
-        : "disabled",
+      status: !embeddingKeySet || stranded.failed > 0 || stranded.dead > 0 ? "warning" : "ok",
+      message: `${search.embedding.provider}/${search.embedding.model} (${detail})`,
     },
   ];
 }
 
 /**
- * Reports the forge provider. When forge is enabled this checks the token env
- * var is set (`warning` if not — a silent no-op sync would otherwise read as
+ * How many documents the embedding worker has failed on.
+ *
+ * Counted from `embedding_jobs`, not from the `embedding_retry` dirty markers.
+ * Markers are written only when a job is dead-lettered, and a credential failure
+ * deliberately never dead-letters a job (so a corrected key can still embed it) —
+ * so a marker count is zero in the one case this check exists for.
+ *
+ * Any failure counts as zero: this detail decorates another check's message, and
+ * losing the whole embedding line to a database problem `storage-capabilities`
+ * already reports would trade a useful report for a redundant error.
+ */
+async function countStrandedEmbeddings(cwd: string): Promise<{ failed: number; dead: number }> {
+  const none = { failed: 0, dead: 0 };
+  const resolved = await resolveInitializedRepository(cwd);
+  if (!resolved.ok) {
+    return none;
+  }
+  const opened = await openDatabase(resolved.value.dbPath);
+  if (!opened.ok) {
+    return none;
+  }
+  try {
+    const counts = await countFailedEmbeddingJobs(opened.value);
+    return counts.ok ? counts.value : none;
+  } finally {
+    await closeDatabase(opened.value);
+  }
+}
+
+/**
+ * Reports the forge provider. When forge is enabled this checks a token is
+ * stored (`warning` if not — a silent no-op sync would otherwise read as
  * healthy) and reads the `github` sync cursor to surface the last sync's error
- * code. The token *value* is never read or printed — only whether the named
- * variable is set (compatibility.md §9). Any internal failure is a report
- * entry, never a throw.
+ * code. The token *value* is never read or printed — only whether one is
+ * present (compatibility.md §9). Any internal failure is a report entry, never
+ * a throw.
  */
 async function checkForge(cwd: string): Promise<DoctorCheckResult> {
   const resolved = await resolveInitializedRepository(cwd);
@@ -328,12 +410,15 @@ async function checkForge(cwd: string): Promise<DoctorCheckResult> {
   if (!forge.enabled) {
     return { name: "forge-provider", status: "ok", message: "disabled" };
   }
-  const tokenSet = process.env[forge.api_token_env] !== undefined;
-  if (!tokenSet) {
+  const stored = await hasApiKey("github");
+  if (!stored.ok) {
+    return { name: "forge-provider", status: "error", message: stored.error.message };
+  }
+  if (!stored.value) {
     return {
       name: "forge-provider",
       status: "warning",
-      message: `${forge.provider} enabled but ${forge.api_token_env} is not set`,
+      message: `${forge.provider} enabled but no token is stored (run \`iroha credentials github\`)`,
     };
   }
   const opened = await openDatabase(resolved.value.dbPath);
@@ -675,7 +760,7 @@ export async function runDoctor(cwd: string): Promise<Result<DoctorReport, Iroha
 
   checks.push(await checkStorageCapabilities(irohaStateDir, random));
   checks.push(await checkGuardrails(cwd));
-  checks.push(...(await checkProviders(irohaCanonicalDir)));
+  checks.push(...(await checkProviders(cwd, irohaCanonicalDir)));
   checks.push(await checkForge(cwd));
   checks.push(await checkRetention(cwd));
 

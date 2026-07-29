@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { api } from "@/api/client.js";
@@ -13,13 +13,11 @@ const SHARED = {
       enabled: false,
       provider: "voyage",
       model: "voyage-4-large",
-      api_key_env: "VOYAGE_API_KEY",
     },
   },
   forge: {
     enabled: false,
     provider: "github",
-    api_token_env: "GITHUB_TOKEN",
     review_learning_threshold: 3,
   },
 };
@@ -27,7 +25,13 @@ const SHARED = {
 function settings(retentionDays: number | null) {
   return ok({
     shared: SHARED,
-    local: { embeddingKeyPresent: false, retentionDays },
+    local: {
+      embeddingKeyPresent: false,
+      forgeTokenPresent: false,
+      embeddingKeyUnreadable: false,
+      forgeTokenUnreadable: false,
+      retentionDays,
+    },
   });
 }
 
@@ -104,5 +108,72 @@ describe("Settings — save feedback", () => {
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
 
     expect(await screen.findByText("Something went wrong.")).toBeDefined();
+  });
+});
+
+describe("Settings — provider credentials", () => {
+  it("sends the pasted key to the write-only endpoint and clears the field", async () => {
+    const fetchMock = mockApi({
+      "GET /api/v1/settings": settings(null),
+      "PUT /api/v1/settings/credentials": ok({ provider: "voyage", present: true }),
+    });
+    renderWithProviders(<Settings />);
+    await screen.findByText("Voyage API key");
+
+    const field = document.getElementById("cfg-key-voyage") as HTMLInputElement;
+    // A key must not be readable over the user's shoulder, and the browser must
+    // not offer to remember it.
+    expect(field.type).toBe("password");
+    expect(field.autocomplete).toBe("off");
+
+    await userEvent.type(field, "pa-pasted-key");
+    await userEvent.click(screen.getByRole("button", { name: "Save: Voyage API key" }));
+
+    const call = fetchMock.mock.calls.find(
+      ([url]) => String(url) === "/api/v1/settings/credentials",
+    ) as [string, RequestInit];
+    expect(call[1].method).toBe("PUT");
+    expect(JSON.parse(String(call[1].body))).toEqual({
+      provider: "voyage",
+      api_key: "pa-pasted-key",
+    });
+    // Left in place it would be re-submitted by the next save on this page, and
+    // nothing can read the stored key back to show instead.
+    await waitFor(() => expect(field.value).toBe(""));
+  });
+
+  it("keeps the save disabled until something is typed", async () => {
+    mockApi({ "GET /api/v1/settings": settings(null) });
+    renderWithProviders(<Settings />);
+    await screen.findByText("GitHub token");
+
+    const button = screen.getByRole("button", { name: "Save: GitHub token" }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+  });
+  it("does not discard an unsaved toggle when a credential is saved", async () => {
+    mockApi({
+      "GET /api/v1/settings": settings(null),
+      "PUT /api/v1/settings/credentials": ok({ provider: "voyage", present: true }),
+    });
+    renderWithProviders(<Settings />);
+    await screen.findByText("Voyage API key");
+
+    // Enabling embedding, then pasting the key, then pressing Save is the
+    // natural order. Refetching `settings` here would replace `shared` and the
+    // effect would revert the toggle under the user.
+    // The `id` lands on Base UI's hidden checkbox; the operable element is the
+    // sibling with role="switch", and its state shows up as `data-checked`.
+    const toggle = screen.getByRole("switch", { name: "Enable embedding" });
+    await userEvent.click(toggle);
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+
+    const field = document.getElementById("cfg-key-voyage") as HTMLInputElement;
+    await userEvent.type(field, "pa-pasted-key");
+    await userEvent.click(screen.getByRole("button", { name: "Save: Voyage API key" }));
+
+    await waitFor(() => expect(field.value).toBe(""));
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    // And the row must reflect the key it just stored.
+    expect(screen.getAllByText("Set").length).toBeGreaterThan(0);
   });
 });

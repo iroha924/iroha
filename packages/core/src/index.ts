@@ -4,6 +4,7 @@
 export const packageName = "@iroha/core";
 
 export * from "./commands.js";
+export * from "./credentials.js";
 export * from "./dashboard/index.js";
 export * from "./docs-import.js";
 export * from "./doctor.js";

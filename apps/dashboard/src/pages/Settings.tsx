@@ -1,4 +1,4 @@
-import type { RepositoryConfig } from "@iroha/api";
+import type { RepositoryConfig, SettingsData } from "@iroha/api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useState } from "react";
 import { api } from "@/api/client.js";
@@ -6,6 +6,7 @@ import { ErrorState, Loading, PageHeader } from "@/components/brand.js";
 import { Badge } from "@/components/ui/badge.js";
 import { Button } from "@/components/ui/button.js";
 import { Card, CardContent } from "@/components/ui/card.js";
+import { Input } from "@/components/ui/input.js";
 import { Label } from "@/components/ui/label.js";
 import {
   Select,
@@ -47,6 +48,92 @@ function SettingRow({
 }
 
 /**
+ * One provider key: its presence, a field to replace it, and nothing that reads
+ * it back. The field is cleared on success rather than showing the saved value —
+ * the API has no endpoint that returns one, and a masked field holding a key the
+ * user cannot verify only invites re-saving it.
+ */
+function CredentialRow({
+  provider,
+  label,
+  hint,
+  present,
+  unreadable,
+}: {
+  provider: "voyage" | "github";
+  label: string;
+  hint: string;
+  present: boolean;
+  unreadable: boolean;
+}) {
+  const { t } = useI18n();
+  const queryClient = useQueryClient();
+  const [value, setValue] = useState("");
+  const save = useMutation({
+    mutationFn: () => api.setCredential(provider, value.trim()),
+    onSuccess: () => {
+      setValue("");
+      toast.add({ type: "success", title: t("common.saved") });
+      // Patched, not invalidated. Refetching `settings` would replace `shared`
+      // and the effect below would overwrite whatever the user had toggled but
+      // not yet saved — and enabling embedding, then pasting the key, then
+      // pressing Save is the natural order.
+      queryClient.setQueryData(["settings"], (previous: SettingsData | undefined) =>
+        previous === undefined
+          ? previous
+          : {
+              ...previous,
+              local: {
+                ...previous.local,
+                ...(provider === "voyage"
+                  ? { embeddingKeyPresent: true, embeddingKeyUnreadable: false }
+                  : { forgeTokenPresent: true, forgeTokenUnreadable: false }),
+              },
+            },
+      );
+      // Doctor reports the same presence, so a stale copy would still show the
+      // key as missing right after saving it.
+      void queryClient.invalidateQueries({ queryKey: ["doctor"] });
+    },
+    onError: () => toast.add({ type: "error", title: t("common.error") }),
+  });
+
+  return (
+    <SettingRow htmlFor={`cfg-key-${provider}`} label={label} hint={hint}>
+      <div className="flex items-center gap-2">
+        <Badge variant={unreadable ? "pending" : present ? "approve" : "neutral"}>
+          {unreadable
+            ? t("settings.credentialsUnreadable")
+            : present
+              ? t("settings.present")
+              : t("settings.absent")}
+        </Badge>
+        <Input
+          id={`cfg-key-${provider}`}
+          type="password"
+          autoComplete="off"
+          className="w-52"
+          placeholder={t("settings.keyPlaceholder")}
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+        />
+        {/* The visible word is "Save" like the config button below, so the
+            accessible name names the field — three identically-named buttons on
+            one page is a maze to anyone not looking at the layout. */}
+        <Button
+          variant="secondary"
+          aria-label={`${t("common.save")}: ${label}`}
+          disabled={value.trim() === "" || save.isPending}
+          onClick={() => save.mutate()}
+        >
+          {t("common.save")}
+        </Button>
+      </div>
+    </SettingRow>
+  );
+}
+
+/**
  * `local_settings` key for the retention window, mirroring
  * `RETENTION_SETTING_KEY` in `@iroha/core` (the SPA depends on the API's
  * generated types only, never on core).
@@ -76,7 +163,12 @@ export function Settings() {
   };
 
   useEffect(() => {
-    if (q.data !== undefined) setConfig(q.data.shared);
+    // Seeded once, not re-seeded on every refetch. Any refetch of this query
+    // would otherwise discard edits the user has made but not yet saved — and
+    // saving a credential, or any other write that touches `settings`, is
+    // exactly such a refetch. Enabling embedding, pasting the key, then pressing
+    // Save is the natural order, and it must not revert the toggle.
+    setConfig((current) => current ?? q.data?.shared ?? null);
   }, [q.data]);
 
   const saveRetention = useMutation({
@@ -154,11 +246,13 @@ export function Settings() {
             />
           </SettingRow>
 
-          <SettingRow label={t("settings.embeddingKey")}>
-            <Badge variant={local.embeddingKeyPresent ? "approve" : "neutral"}>
-              {local.embeddingKeyPresent ? t("settings.present") : t("settings.absent")}
-            </Badge>
-          </SettingRow>
+          <CredentialRow
+            provider="voyage"
+            label={t("settings.embeddingKey")}
+            hint={t("settings.embeddingKeyHint")}
+            present={local.embeddingKeyPresent}
+            unreadable={local.embeddingKeyUnreadable}
+          />
 
           <SettingRow
             htmlFor="cfg-forge"
@@ -173,6 +267,14 @@ export function Settings() {
               }
             />
           </SettingRow>
+
+          <CredentialRow
+            provider="github"
+            label={t("settings.forgeToken")}
+            hint={t("settings.forgeTokenHint")}
+            present={local.forgeTokenPresent}
+            unreadable={local.forgeTokenUnreadable}
+          />
 
           <SettingRow
             htmlFor="cfg-retention"

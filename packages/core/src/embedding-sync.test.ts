@@ -1,3 +1,5 @@
+import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { writeCanonicalDocument } from "@iroha/canonical";
 import type { RepositoryConfig } from "@iroha/config";
@@ -22,10 +24,15 @@ import {
 } from "@iroha/storage";
 import { afterEach, describe, expect, it } from "vitest";
 import { runInit } from "./commands.js";
+import { writeApiKey } from "./credentials.js";
+import { runDoctor } from "./doctor.js";
 import { runEmbeddingSync } from "./embedding-sync.js";
+import { useTempHome } from "./test-helpers/credentials-home.js";
 import { createTempGitRepo, removeTempDir } from "./test-helpers/tmp-repo.js";
 
 const MIGRATIONS_DIR = fileURLToPath(new URL("../../../migrations", import.meta.url));
+/** Past any backoff, so a job left `failed` still shows as due. */
+const FAR_FUTURE = "2099-01-01T00:00:00.000Z";
 const SEED_TIMEOUT_MS = 15000;
 const CLOCK = new FixedClock(new Date("2026-01-01T00:00:00.000Z"));
 
@@ -37,7 +44,6 @@ function embeddingConfig(overrides: Partial<EmbeddingConfig> = {}): EmbeddingCon
     provider: "voyage",
     model: "voyage-4-large",
     dimension: 1024,
-    api_key_env: "VOYAGE_API_KEY",
     ...overrides,
   };
 }
@@ -68,58 +74,67 @@ interface Seeded {
   entityId: string;
 }
 
-/** Bootstraps a repo, writes one approved Decision, and syncs it so exactly one embedding job is pending. */
-async function seedRepoWithPendingJob(): Promise<Seeded> {
+/**
+ * Bootstraps a repo, writes `count` approved Decisions, and syncs so that many
+ * embedding jobs are pending. More than one matters for the failure paths: a run
+ * that is meant to stop after the first request can only be told apart from one
+ * that keeps going when there is a second job for it to skip.
+ */
+async function seedRepoWithPendingJob(count = 1): Promise<Seeded> {
   const repoDir = await createTempGitRepo();
   const boot = await runInit(repoDir, MIGRATIONS_DIR);
   if (!boot.ok) {
     throw new Error(`init failed: ${boot.error.message}`);
   }
-  const entityId = makeTypedId("dec", CLOCK, new CryptoRandomSource());
-  const written = await writeCanonicalDocument(
-    {
-      frontmatter: {
-        schema_version: 1,
-        id: entityId,
-        type: "decision",
-        title: "Use libSQL as the local index",
-        status: "approved",
-        revision: 1,
-        created_at: "2026-01-01T00:00:00.000Z",
-        updated_at: "2026-01-01T00:00:00.000Z",
-        created_by: { provider: "git", display_name: "Example Developer" },
-        approved_by: { provider: "git", display_name: "Example Reviewer" },
-        approved_at: "2026-01-01T00:00:00.000Z",
-        labels: [],
-        scope: { repository: boot.value.init.repositoryId, paths: [], symbols: [] },
-        sources: [{ type: "url", ref: "https://example.com" }],
-        relations: [],
-        decision: { kind: "architecture" },
+  let entityId = "";
+  for (let i = 0; i < count; i++) {
+    entityId = makeTypedId("dec", CLOCK, new CryptoRandomSource());
+    const title = `Use libSQL as the local index ${i}`;
+    const written = await writeCanonicalDocument(
+      {
+        frontmatter: {
+          schema_version: 1,
+          id: entityId,
+          type: "decision",
+          title,
+          status: "approved",
+          revision: 1,
+          created_at: "2026-01-01T00:00:00.000Z",
+          updated_at: "2026-01-01T00:00:00.000Z",
+          created_by: { provider: "git", display_name: "Example Developer" },
+          approved_by: { provider: "git", display_name: "Example Reviewer" },
+          approved_at: "2026-01-01T00:00:00.000Z",
+          labels: [],
+          scope: { repository: boot.value.init.repositoryId, paths: [], symbols: [] },
+          sources: [{ type: "url", ref: "https://example.com" }],
+          relations: [],
+          decision: { kind: "architecture" },
+        },
+        body: [
+          `# ${title}`,
+          "## Context",
+          "",
+          "Context.",
+          "## Decision",
+          "",
+          "Decision.",
+          "## Rationale",
+          "",
+          "Rationale.",
+          "## Consequences",
+          "",
+          "Consequences.",
+          "## Alternatives considered",
+          "",
+          "None.",
+        ].join("\n\n"),
       },
-      body: [
-        "# Use libSQL as the local index",
-        "## Context",
-        "",
-        "Context.",
-        "## Decision",
-        "",
-        "Decision.",
-        "## Rationale",
-        "",
-        "Rationale.",
-        "## Consequences",
-        "",
-        "Consequences.",
-        "## Alternatives considered",
-        "",
-        "None.",
-      ].join("\n\n"),
-    },
-    boot.value.init.irohaCanonicalDir,
-    new CryptoRandomSource(),
-  );
-  if (!written.ok) {
-    throw new Error(`write failed: ${written.error.message}`);
+      boot.value.init.irohaCanonicalDir,
+      new CryptoRandomSource(),
+    );
+    if (!written.ok) {
+      throw new Error(`write failed: ${written.error.message}`);
+    }
   }
   const synced = await runInit(repoDir, MIGRATIONS_DIR);
   if (!synced.ok) {
@@ -148,8 +163,8 @@ describe("runEmbeddingSync", () => {
     }
   });
 
-  async function openSeeded(): Promise<{ db: Database; seeded: Seeded }> {
-    const seeded = await seedRepoWithPendingJob();
+  async function openSeeded(count = 1): Promise<{ db: Database; seeded: Seeded }> {
+    const seeded = await seedRepoWithPendingJob(count);
     repoDir = seeded.repoDir;
     const opened = await openDatabase(seeded.dbPath);
     if (!opened.ok) {
@@ -158,6 +173,109 @@ describe("runEmbeddingSync", () => {
     db = opened.value;
     return { db: opened.value, seeded };
   }
+
+  /** What `createVoyageProvider` returns for a 401/403 (see `isCredentialFailure`). */
+  function credentialError(): IrohaError {
+    return new IrohaError("EMBEDDING_UNAVAILABLE", "Voyage embeddings request failed (HTTP 401)", {
+      retryable: false,
+      details: { credentials: true },
+    });
+  }
+
+  it(
+    "stops the run on a rejected key instead of failing every document separately",
+    async () => {
+      const { db: database, seeded } = await openSeeded(2);
+      const fake = fakeProvider({ error: credentialError() });
+
+      const result = await runEmbeddingSync(
+        database,
+        seeded.repositoryId,
+        embeddingConfig(),
+        CLOCK,
+        new CryptoRandomSource(),
+        { provider: fake.provider },
+      );
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      // One request, not one per document: the key answers them all the same
+      // way, so the second call could only waste a request and produce a second
+      // dead-lettered job whose shared cause appears nowhere in the counts.
+      expect(fake.calls()).toBe(1);
+      expect(result.value.stopped).toBe("credentials");
+
+      // Nothing is dead-lettered. `listDueEmbeddingJobs` selects only
+      // `pending`/`failed` and no path revives a dead job, so dead-lettering the
+      // one document that happened to go first would strand it permanently while
+      // the ones this branch skipped recover — the opposite of the intent.
+      expect(result.value.dead).toBe(0);
+      const due = await listDueEmbeddingJobs(database, FAR_FUTURE, 10);
+      expect(due.ok && due.value.length, "both jobs must still be embeddable").toBe(2);
+
+      // And `iroha doctor` has to say so. Counting dead-lettered documents could
+      // not: this branch deliberately dead-letters nothing, so the count doctor
+      // reads has to be of failed jobs, or the report says "key set" and
+      // everything looks healthy while search answers from lexical alone.
+      const { restore } = await useTempHome();
+      try {
+        await writeApiKey("voyage", "pa-rejected-by-the-provider");
+        // doctor reads config.yaml, which `init` writes with embedding off; the
+        // run above took its config as an argument.
+        const configPath = join(seeded.repoDir, ".iroha", "config.yaml");
+        await writeFile(
+          configPath,
+          (await readFile(configPath, "utf8")).replace("enabled: false", "enabled: true"),
+          "utf8",
+        );
+        const report = await runDoctor(seeded.repoDir);
+        expect(report.ok).toBe(true);
+        if (!report.ok) return;
+        const check = new Map(report.value.checks.map((c) => [c.name, c])).get(
+          "embedding-provider",
+        );
+        expect(check?.status).toBe("warning");
+        // One, not two: the run stopped before touching the second job, which is
+        // still `pending` and has failed at nothing.
+        expect(check?.message).toContain("1 failed to embed");
+      } finally {
+        await restore();
+      }
+    },
+    SEED_TIMEOUT_MS,
+  );
+
+  it(
+    "keeps going after a failure that really is specific to one document",
+    async () => {
+      const { db: database, seeded } = await openSeeded(2);
+      // A 400 is this request's problem, so the next document is worth trying —
+      // which is exactly what makes the credential case above different.
+      const fake = fakeProvider({
+        error: new IrohaError(
+          "EMBEDDING_UNAVAILABLE",
+          "Voyage embeddings request failed (HTTP 400)",
+          { retryable: false },
+        ),
+      });
+
+      const result = await runEmbeddingSync(
+        database,
+        seeded.repositoryId,
+        embeddingConfig(),
+        CLOCK,
+        new CryptoRandomSource(),
+        { provider: fake.provider },
+      );
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(fake.calls()).toBe(2);
+      expect(result.value.dead).toBe(2);
+      expect(result.value.stopped).toBeNull();
+    },
+    SEED_TIMEOUT_MS,
+  );
 
   it(
     "embeds a pending job and marks it completed",
@@ -312,20 +430,27 @@ describe("runEmbeddingSync", () => {
   );
 
   it(
-    "skips when enabled but the API key env var is unset",
+    "skips when enabled but no API key is stored",
     async () => {
       const { db: database, seeded } = await openSeeded();
+      // An empty home means an absent credentials file, which is what a user who
+      // enabled embedding but never registered a key actually has.
+      const { restore } = await useTempHome();
 
-      const result = await runEmbeddingSync(
-        database,
-        seeded.repositoryId,
-        embeddingConfig({ api_key_env: "IROHA_TEST_DEFINITELY_UNSET_KEY" }),
-        CLOCK,
-        new CryptoRandomSource(),
-        // No provider injected: forces the config+env resolution path.
-      );
+      try {
+        const result = await runEmbeddingSync(
+          database,
+          seeded.repositoryId,
+          embeddingConfig({}),
+          CLOCK,
+          new CryptoRandomSource(),
+          // No provider injected: forces the config+credentials resolution path.
+        );
 
-      expect(result.ok && result.value.skipped).toBe("missing_key");
+        expect(result.ok && result.value.skipped).toBe("missing_key");
+      } finally {
+        await restore();
+      }
     },
     SEED_TIMEOUT_MS,
   );

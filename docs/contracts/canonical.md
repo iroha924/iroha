@@ -283,7 +283,6 @@ search:
     provider: voyage
     model: voyage-4-large
     dimension: 1024
-    api_key_env: VOYAGE_API_KEY
 forge:
   provider: github
   enabled: false
@@ -294,7 +293,7 @@ privacy:
 
 Rules:
 
-- Secret values are forbidden; only environment-variable names may appear.
+- No secret and no secret *location* may appear. Provider credentials live in `$XDG_CONFIG_HOME/iroha/credentials.json` (default `~/.config/iroha/`, ADR-018); `api_key_env`/`api_token_env` were removed in 0.6.0. A config an earlier version wrote still parses — the keys are dropped on read — and `iroha init` rewrites the file without them.
 - `repository_id` is generated once and committed.
 - Local overrides are stored under the Git internal iroha directory, not in this file.
 - Unknown configuration keys are rejected for schema v1.

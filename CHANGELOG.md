@@ -9,6 +9,44 @@ Entries are written by hand as part of the release, alongside the four version
 strings (`PLUGIN_VERSION`, the plugin `package.json`, `CLI_VERSION`, `SERVER_VERSION`)
 that `manifests.test.ts` asserts agree.
 
+## 0.6.0
+
+- **Breaking: API keys move out of environment variables and into
+  `~/.config/iroha/credentials.json`** (`$XDG_CONFIG_HOME` is honoured).
+  `api_key_env` and `forge.api_token_env` are removed from `.iroha/config.yaml`;
+  a config written by an earlier version still parses, and `iroha init` rewrites
+  it without them. Nothing reads `VOYAGE_API_KEY` or `GITHUB_TOKEN` any more —
+  re-register your keys from the dashboard's Settings page, or with
+  `pbpaste | iroha credentials voyage`. The CLI reads the key from stdin only,
+  never an argument, so it stays out of your shell history and the process list;
+  the file is `0600` in a `0700` directory that carries its own `.gitignore`, and
+  is read fresh on every request.
+
+  This fixes a defect present since 0.1.0: a process freezes its environment at
+  spawn, so the MCP server your agent host started kept using whatever key was
+  set when the host launched. Rotating a key, or setting one for the first time,
+  did nothing until the whole host restarted — and nothing said so, because a
+  rejected key degrades to lexical search by design. If semantic search has been
+  silently not working for you, this was why.
+
+- **`iroha doctor` now reports how many documents failed to embed**, alongside
+  whether a key is stored. "key set" on its own read as healthy while search
+  quietly answered from the lexical index alone. It also warns when a
+  pre-0.6.0 `api_key_env` holds something that is not an environment variable
+  name — if you pasted the key itself there, it is in your Git history and needs
+  rotating.
+
+- **`compatibility.md` §12 is amended by ADR-018.** It previously said Forge
+  tokens are never copied into iroha storage; the GitHub token now lives in the
+  same file as the embedding key, for the same reason (an environment variable a
+  spawned MCP server read at startup cannot be rotated). The token is read-scope
+  only and never reaches `.iroha/`, the local DB, logs, or diagnostics.
+
+- **New: `iroha credentials <voyage|github>`** and
+  `PUT /api/v1/settings/credentials`. Both are write-only: no endpoint and no
+  command returns a stored key, and the dashboard and `doctor` report presence
+  only.
+
 ## 0.5.0
 
 - **Breaking: the Digest is gone, and with it two MCP tools and a skill.**

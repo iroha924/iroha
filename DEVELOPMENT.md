@@ -113,7 +113,7 @@ iroha の開発に使っている技術を「何か / iroha での役割 / い�
 | 技術 | 何か / iroha での役割 | いつ使う（トリガー） |
 |---|---|---|
 | **Voyage `voyage-4-large`**（1024 次元） | ベクトル埋め込み。**失敗時は語彙検索へ degrade** | 検索のベクトルアーム。API 不通でも lexical で動く |
-| **録画ベクトル方式** | `embeddings.recorded.json` を replay してオフライン決定評価（Recall@10 等） | eval ゲート。再録画は `IROHA_RECORD_EMBEDDINGS=1`（要 `VOYAGE_API_KEY`） |
+| **録画ベクトル方式** | `embeddings.recorded.json` を replay してオフライン決定評価（Recall@10 等） | eval ゲート。再録画は `IROHA_RECORD_EMBEDDINGS=1`（要 `iroha credentials voyage`） |
 | **RRF ハイブリッド**（k=60、重み 1.0/0.9/1.1） | 語彙 + ベクトル + グラフの融合ランキング | 検索の統合。現行ベストプラクティスとして維持 |
 
 ## 12. セキュリティスキャナ（CI、`.claude/rules/ci-security.md`）

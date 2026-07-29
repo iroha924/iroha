@@ -191,6 +191,12 @@ export const api = {
   settings: () => request<SettingsData>("GET", "/v1/settings"),
   updateSharedConfig: (config: RepositoryConfig) =>
     request<RepositoryConfig>("PATCH", "/v1/settings/shared", config),
+  /** Write-only: the key travels up, and no endpoint sends it back down. */
+  setCredential: (provider: "voyage" | "github", apiKey: string) =>
+    request<{ provider: string; present: boolean }>("PUT", "/v1/settings/credentials", {
+      provider,
+      api_key: apiKey,
+    }),
   /** One untracked local setting; `key` is validated per-key on the server. */
   updateLocalSetting: (key: string, value: unknown) =>
     request<{ key: string }>("PATCH", "/v1/settings/local", { key, value }),

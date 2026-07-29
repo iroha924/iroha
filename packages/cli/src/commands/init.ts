@@ -2,7 +2,7 @@ import { type RunInitResult, runInit } from "@iroha/core";
 import { define } from "gunshi";
 import { MIGRATIONS_DIR } from "../context.js";
 import { printError, printSuccess } from "../output.js";
-import { definition, labelColumn, muted, sanitize, statusGlyph, title } from "../render.js";
+import { definition, labelColumn, muted, row, sanitize, statusGlyph, title } from "../render.js";
 
 function formatInit(data: RunInitResult): string {
   const { init, sync } = data;
@@ -32,6 +32,21 @@ function formatInit(data: RunInitResult): string {
     `    ${statusGlyph("ok")}  ${init.freshInit ? "Initialized this repository" : "Already initialized"}`,
     "",
     ...facts.map(([term, detail]) => definition(muted(term), detail, width)),
+    // This run deleted these keys from config.yaml, which is also the only thing
+    // `iroha doctor` could have noticed them by. Removing the value from HEAD
+    // does not remove it from the history that already carries it, so this is the
+    // last moment anyone can be told to rotate it.
+    ...(init.pastedSecrets.length > 0
+      ? [
+          "",
+          row(
+            statusGlyph("warning"),
+            "",
+            `${init.pastedSecrets.join(", ")} held a value that is not an environment variable name. It has been removed from config.yaml, but if that was an API key it is still in this repository's Git history — rotate it.`,
+            0,
+          ),
+        ]
+      : []),
   ].join("\n");
 }
 

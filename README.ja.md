@@ -100,36 +100,40 @@ iroha search "なぜ repository パターンを使うのか"
 
 ## 設定
 
-外部と通信する 2 つの機能（セマンティック検索と GitHub 連携）は、**どちらも最初はオフ**です。オンにするには 2 ステップ。まず鍵を環境変数にセットして、次に `.iroha/config.yaml` でスイッチを入れます。
+外部と通信する 2 つの機能（セマンティック検索と GitHub 連携）は、**どちらも最初はオフ**です。オンにするには 2 ステップ。まず鍵を登録して、次に `.iroha/config.yaml` でスイッチを入れます。
 
-**1. シェルで鍵をセットする**（例: `~/.zshrc` や `~/.bashrc` に書く）:
+**1. 鍵を登録する。** ダッシュボードの **設定** 画面を開いて、Voyage / GitHub の欄に貼り付けます。ターミナルから登録することもできます:
 
 ```bash
-export VOYAGE_API_KEY="あなたの Voyage の鍵"   # セマンティック検索用
-export GITHUB_TOKEN="あなたの GitHub トークン"  # GitHub 連携用
+pbpaste | iroha credentials voyage    # macOS。Linux なら xclip -o、ファイルからなら < key.txt
+pbpaste | iroha credentials github
 ```
+
+鍵は `~/.config/iroha/credentials.json`（`$XDG_CONFIG_HOME` があればそちら）に、ファイル `0600` / ディレクトリ `0700` で保存されます。そのディレクトリには `.gitignore` も置かれるので、dotfiles をリポジトリで管理していてもコミットされません。リクエストのたびに読み直すので、差し替えてもエージェントを再起動する必要はありません。CLI は**引数ではなく標準入力から**受け取るため、シェル履歴にもプロセス一覧にも鍵は残りません。iroha が資格情報を環境変数から読むことはないので、`~/.zshrc` に書くものは何もありません。
 
 **2. `.iroha/config.yaml` で機能をオンにする** — このファイルは `iroha init` がすでに作ってくれているので、スイッチ（`enabled`）を `true` にするだけです:
 
 ```yaml
 search:
   embedding:
-    enabled: true    # セマンティック検索。VOYAGE_API_KEY を読む
+    enabled: true    # セマンティック検索。保存済みの Voyage の鍵を使う
 forge:
-  enabled: true      # GitHub 連携。GITHUB_TOKEN を読む
+  enabled: true      # GitHub 連携。保存済みの GitHub トークンを使う
 ```
 
-`config.yaml` に書くのは環境変数の**名前だけ**。鍵そのもの（値）は書きません。値は実行時に環境変数から読むだけで、ファイルに保存されることも、ログに出ることも、コミットされることもありません。
+`config.yaml` はコミットされるファイルですが、秘密の値は一切入りません。保存した鍵を読み出す経路もありません — ダッシュボードも `iroha doctor` も、「設定済みかどうか」しか表示しません。
 
-| 環境変数 | オンになる機能 | 未設定だと |
+| 鍵 | オンになる機能 | 未設定だと |
 |---|---|---|
-| `VOYAGE_API_KEY` | Voyage を使ったセマンティック（意味）検索 | 全文検索とグラフ検索だけになる |
-| `GITHUB_TOKEN` | GitHub 連携（Pull Request・レビューの取り込み） | GitHub 連携がオフになるだけ |
+| Voyage API キー | Voyage を使ったセマンティック（意味）検索 | 全文検索とグラフ検索だけになる |
+| GitHub トークン | GitHub 連携（Pull Request・レビューの取り込み） | GitHub 連携がオフになるだけ |
 
 **鍵の取り方と、気になるコストの話:**
 
-- **`VOYAGE_API_KEY`** — [voyageai.com](https://www.voyageai.com/) でサインアップして鍵を作ります。コストはほぼ気にしなくて大丈夫。iroha が使う `voyage-4-large` は **100 万トークンあたり $0.12**、しかもどのアカウントも**最初の 2 億トークンが無料**です（[Voyage の料金](https://docs.voyageai.com/docs/pricing)）。チーム 1 つ分の知識ベースでも、埋め込むのはせいぜい数百万トークン。実際には無料枠を超えることはまずありません。仮に超えても、500 トークンくらいのメモを 1 万件（＝500 万トークン）埋め込んで**たったの約 $0.60**。百円もかかりません！
-- **`GITHUB_TOKEN`** — [personal access token](https://github.com/settings/tokens) を作ります。リポジトリの読み取り権限があれば OK です（classic トークンなら `repo` スコープ、fine-grained トークンなら **Contents: Read** と **Pull requests: Read**）。それを `GITHUB_TOKEN` にセットします。
+- **Voyage API キー** — [voyageai.com](https://www.voyageai.com/) でサインアップして鍵を作ります。コストはほぼ気にしなくて大丈夫。iroha が使う `voyage-4-large` は **100 万トークンあたり $0.12**、しかもどのアカウントも**最初の 2 億トークンが無料**です（[Voyage の料金](https://docs.voyageai.com/docs/pricing)）。チーム 1 つ分の知識ベースでも、埋め込むのはせいぜい数百万トークン。実際には無料枠を超えることはまずありません。仮に超えても、500 トークンくらいのメモを 1 万件（＝500 万トークン）埋め込んで**たったの約 $0.60**。百円もかかりません！
+- **GitHub トークン** — [personal access token](https://github.com/settings/tokens) を作ります。リポジトリの読み取り権限があれば OK です（classic トークンなら `repo` スコープ、fine-grained トークンなら **Contents: Read** と **Pull requests: Read**）。
+
+セマンティック検索が動いていない気がしたら `iroha doctor` を実行してください。鍵が登録されているか、埋め込みに失敗したまま残っているドキュメントが何件あるかを報告します。
 
 ほかに知っておくとよい設定が 2 つあります。
 

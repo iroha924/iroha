@@ -3,10 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CryptoRandomSource, FixedClock } from "@iroha/domain";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parse, stringify } from "yaml";
+import { writeApiKey } from "./credentials.js";
 import { checkMcpServer, checkPluginManifests, runDoctor } from "./doctor.js";
 import { initRepository } from "./init-repository.js";
+import { useTempHome } from "./test-helpers/credentials-home.js";
 import { createTempGitRepo, removeTempDir } from "./test-helpers/tmp-repo.js";
 
 const MIGRATIONS_DIR = fileURLToPath(new URL("../../../migrations", import.meta.url));
@@ -15,8 +17,17 @@ const CLOCK = new FixedClock(new Date("2026-01-01T00:00:00.000Z"));
 describe("runDoctor", () => {
   let repoDir: string | undefined;
   let bareDir: string | undefined;
+  // Every doctor run reads ~/.config/iroha/credentials.json, so each test gets a home
+  // of its own — a test must never see, let alone overwrite, a real key.
+  let restoreHome: (() => Promise<void>) | undefined;
+
+  beforeEach(async () => {
+    restoreHome = (await useTempHome()).restore;
+  });
 
   afterEach(async () => {
+    await restoreHome?.();
+    restoreHome = undefined;
     if (repoDir) {
       await removeTempDir(repoDir);
       repoDir = undefined;
@@ -25,7 +36,6 @@ describe("runDoctor", () => {
       await rm(bareDir, { recursive: true, force: true });
       bareDir = undefined;
     }
-    vi.unstubAllEnvs();
   });
 
   it("reports node/git checks and a warning for an uninitialized repository", async () => {
@@ -95,14 +105,9 @@ describe("runDoctor", () => {
     expect(init.ok).toBe(true);
     if (!init.ok) return;
     const secretValue = "voy-secret-do-not-leak-12345";
-    vi.stubEnv("VOYAGE_API_KEY", secretValue);
+    await writeApiKey("voyage", secretValue);
 
-    const configPath = join(init.value.irohaCanonicalDir, "config.yaml");
-    const config = parse(await readFile(configPath, "utf8")) as {
-      search: { embedding: { enabled: boolean } };
-    };
-    config.search.embedding.enabled = true;
-    await writeFile(configPath, stringify(config), "utf8");
+    await enableEmbedding(init.value.irohaCanonicalDir);
 
     const result = await runDoctor(repoDir);
     expect(result.ok).toBe(true);
@@ -114,6 +119,15 @@ describe("runDoctor", () => {
     expect(serialized).not.toContain(secretValue);
   });
 
+  async function enableEmbedding(irohaCanonicalDir: string): Promise<void> {
+    const configPath = join(irohaCanonicalDir, "config.yaml");
+    const config = parse(await readFile(configPath, "utf8")) as {
+      search: { embedding: { enabled: boolean } };
+    };
+    config.search.embedding.enabled = true;
+    await writeFile(configPath, stringify(config), "utf8");
+  }
+
   async function enableForge(irohaCanonicalDir: string): Promise<void> {
     const configPath = join(irohaCanonicalDir, "config.yaml");
     const config = parse(await readFile(configPath, "utf8")) as { forge: { enabled: boolean } };
@@ -121,12 +135,11 @@ describe("runDoctor", () => {
     await writeFile(configPath, stringify(config), "utf8");
   }
 
-  it("warns when forge is enabled but its token env var is not set", async () => {
+  it("warns when forge is enabled but no token is stored", async () => {
     repoDir = await createTempGitRepo();
     const init = await initRepository(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR);
     expect(init.ok).toBe(true);
     if (!init.ok) return;
-    vi.stubEnv("GITHUB_TOKEN", undefined);
     await enableForge(init.value.irohaCanonicalDir);
 
     const result = await runDoctor(repoDir);
@@ -135,7 +148,7 @@ describe("runDoctor", () => {
 
     const forge = new Map(result.value.checks.map((c) => [c.name, c])).get("forge-provider");
     expect(forge?.status).toBe("warning");
-    expect(forge?.message).toContain("GITHUB_TOKEN is not set");
+    expect(forge?.message).toContain("no token is stored");
   });
 
   it("reports ok (and never leaks the token) when forge is enabled with its token set", async () => {
@@ -144,7 +157,7 @@ describe("runDoctor", () => {
     expect(init.ok).toBe(true);
     if (!init.ok) return;
     const tokenValue = "forge-token-do-not-leak-9876";
-    vi.stubEnv("GITHUB_TOKEN", tokenValue);
+    await writeApiKey("github", tokenValue);
     await enableForge(init.value.irohaCanonicalDir);
 
     const result = await runDoctor(repoDir);
@@ -175,6 +188,56 @@ describe("runDoctor", () => {
 
     const byName = new Map(result.value.checks.map((c) => [c.name, c]));
     expect(byName.get("config")?.status).toBe("error");
+  });
+  it("warns when config.yaml holds a value that is not an environment variable name", async () => {
+    repoDir = await createTempGitRepo();
+    const init = await initRepository(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR);
+    expect(init.ok).toBe(true);
+    if (!init.ok) return;
+    const configPath = join(init.value.irohaCanonicalDir, "config.yaml");
+    // 0.5.x rejected this loudly; the key is now dropped on read, so nothing else
+    // can notice that a real key was committed.
+    await writeFile(
+      configPath,
+      (await readFile(configPath, "utf8")).replace(
+        "    dimension: 1024",
+        "    dimension: 1024\n    api_key_env: pa-this-is-actually-the-key",
+      ),
+      "utf8",
+    );
+
+    const result = await runDoctor(repoDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const config = new Map(result.value.checks.map((c) => [c.name, c])).get("config");
+    expect(config?.status).toBe("warning");
+    expect(config?.message).toContain("search.embedding.api_key_env");
+    // The report is not a place to repeat the secret.
+    expect(JSON.stringify(result.value)).not.toContain("pa-this-is-actually-the-key");
+  });
+
+  it("stays quiet about a legacy key that really is an environment variable name", async () => {
+    repoDir = await createTempGitRepo();
+    const init = await initRepository(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR);
+    expect(init.ok).toBe(true);
+    if (!init.ok) return;
+    const configPath = join(init.value.irohaCanonicalDir, "config.yaml");
+    await writeFile(
+      configPath,
+      (await readFile(configPath, "utf8")).replace(
+        "    dimension: 1024",
+        "    dimension: 1024\n    api_key_env: VOYAGE_API_KEY",
+      ),
+      "utf8",
+    );
+
+    const result = await runDoctor(repoDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const config = new Map(result.value.checks.map((c) => [c.name, c])).get("config");
+    expect(config).toBeUndefined();
   });
 });
 

@@ -166,4 +166,91 @@ describe("initRepository", () => {
       expect(result.error.code).toBe("SCHEMA_MISMATCH");
     }
   });
+  it("removes the pre-0.6.0 secret-location keys from the file, not just from the parse", async () => {
+    repoDir = await createTempGitRepo();
+    const first = await initRepository(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR);
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    const configPath = join(first.value.irohaCanonicalDir, "config.yaml");
+    const legacy = (await readFile(configPath, "utf8"))
+      .replace("    dimension: 1024", "    dimension: 1024\n    api_key_env: VOYAGE_API_KEY")
+      .replace("  provider: github", "  provider: github\n  api_token_env: GITHUB_TOKEN")
+      .replace("default_language: en", "default_language: ja");
+    await writeFile(configPath, legacy, "utf8");
+
+    const migrated = await initRepository(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR);
+    expect(migrated.ok).toBe(true);
+
+    // Dropping them on read is invisible to the teammate who opens the committed
+    // file, sets the variable it names, and gets nothing.
+    const after = await readFile(configPath, "utf8");
+    expect(after).not.toContain("api_key_env");
+    expect(after).not.toContain("api_token_env");
+    // The rewrite must not reset the user's own settings to the defaults.
+    expect(after).toContain("default_language: ja");
+    expect(after).toContain(first.value.repositoryId);
+    expect(migrated.ok && migrated.value.pastedSecrets).toEqual([]);
+  });
+
+  it("keeps the comments a team wrote around the keys it deletes", async () => {
+    repoDir = await createTempGitRepo();
+    const first = await initRepository(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR);
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    const configPath = first.value.irohaCanonicalDir + "/config.yaml";
+    await writeFile(
+      configPath,
+      `# our team's settings — see docs/onboarding.md\n${(
+        await readFile(configPath, "utf8")
+      ).replace(
+        "    dimension: 1024",
+        "    dimension: 1024\n    api_key_env: VOYAGE_API_KEY  # set in your shell",
+      )}`,
+      "utf8",
+    );
+
+    await initRepository(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR);
+
+    // Re-serializing the validated object would drop every comment — a migration
+    // nobody asked for, on a file nobody touched.
+    const after = await readFile(configPath, "utf8");
+    expect(after).toContain("# our team's settings");
+    expect(after).not.toContain("api_key_env");
+    expect(after).not.toContain("set in your shell");
+  });
+
+  it("names a legacy key that held something other than a variable name", async () => {
+    repoDir = await createTempGitRepo();
+    const first = await initRepository(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR);
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    const configPath = first.value.irohaCanonicalDir + "/config.yaml";
+    await writeFile(
+      configPath,
+      (await readFile(configPath, "utf8")).replace(
+        "    dimension: 1024",
+        "    dimension: 1024\n    api_key_env: pa-this-is-the-key-itself",
+      ),
+      "utf8",
+    );
+
+    const migrated = await initRepository(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR);
+
+    // This run just deleted the value, which is also the only thing doctor could
+    // have seen. Saying nothing here means the key is never reported at all.
+    expect(migrated.ok && migrated.value.pastedSecrets).toEqual(["search.embedding.api_key_env"]);
+  });
+
+  it("leaves a current config.yaml byte-identical, so init stays idempotent", async () => {
+    repoDir = await createTempGitRepo();
+    const first = await initRepository(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR);
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    const configPath = join(first.value.irohaCanonicalDir, "config.yaml");
+    const before = await readFile(configPath, "utf8");
+
+    await initRepository(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR);
+
+    expect(await readFile(configPath, "utf8")).toBe(before);
+  });
 });
