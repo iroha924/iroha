@@ -204,12 +204,17 @@ describe("dashboard API", () => {
     dir = repo.dir;
     const { app } = makeApp(repo.dir);
     const cookie = await exchange(app);
-    // `~/.iroha/credentials.json` is machine-scoped, so the test moves the home
+    // `~/.config/iroha/credentials.json` is machine-scoped, so the test moves the home
     // directory rather than writing into the developer's real one.
     const home = await mkdtemp(join(tmpdir(), "iroha-api-home-"));
-    const previousHome = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
+    const previousHome = {
+      HOME: process.env.HOME,
+      USERPROFILE: process.env.USERPROFILE,
+      XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME,
+    };
     process.env.HOME = home;
     process.env.USERPROFILE = home;
+    process.env.XDG_CONFIG_HOME = join(home, ".config");
 
     try {
       const before = await get(app, "/api/v1/settings", cookie);
@@ -235,7 +240,9 @@ describe("dashboard API", () => {
       expect(JSON.parse(body).data.local.embeddingKeyPresent).toBe(true);
       expect(body).not.toContain(secret);
 
-      const stored = JSON.parse(await readFile(join(home, ".iroha", "credentials.json"), "utf8"));
+      const stored = JSON.parse(
+        await readFile(join(home, ".config", "iroha", "credentials.json"), "utf8"),
+      );
       expect(stored.voyage.apiKey).toBe(secret);
     } finally {
       for (const [key, value] of Object.entries(previousHome)) {

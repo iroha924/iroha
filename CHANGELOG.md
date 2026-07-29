@@ -12,14 +12,15 @@ that `manifests.test.ts` asserts agree.
 ## 0.6.0
 
 - **Breaking: API keys move out of environment variables and into
-  `~/.iroha/credentials.json`.** `api_key_env` and `forge.api_token_env` are
-  removed from `.iroha/config.yaml`; a config written by an earlier version still
-  parses, and the next `init`/`sync` rewrites it without them. Nothing reads
-  `VOYAGE_API_KEY` or `GITHUB_TOKEN` any more — re-register your keys from the
-  dashboard's Settings page, or with `pbpaste | iroha credentials voyage`. The
-  CLI reads the key from stdin only, never an argument, so it stays out of your
-  shell history and the process list; the file is `0600` in a `0700` directory
-  and is read fresh on every request.
+  `~/.config/iroha/credentials.json`** (`$XDG_CONFIG_HOME` is honoured).
+  `api_key_env` and `forge.api_token_env` are removed from `.iroha/config.yaml`;
+  a config written by an earlier version still parses, and `iroha init` rewrites
+  it without them. Nothing reads `VOYAGE_API_KEY` or `GITHUB_TOKEN` any more —
+  re-register your keys from the dashboard's Settings page, or with
+  `pbpaste | iroha credentials voyage`. The CLI reads the key from stdin only,
+  never an argument, so it stays out of your shell history and the process list;
+  the file is `0600` in a `0700` directory that carries its own `.gitignore`, and
+  is read fresh on every request.
 
   This fixes a defect present since 0.1.0: a process freezes its environment at
   spawn, so the MCP server your agent host started kept using whatever key was
@@ -28,9 +29,12 @@ that `manifests.test.ts` asserts agree.
   rejected key degrades to lexical search by design. If semantic search has been
   silently not working for you, this was why.
 
-- **`iroha doctor` now reports how many documents the embedding worker gave up
-  on**, alongside whether a key is stored. "key set" on its own read as healthy
-  while search quietly answered from the lexical index alone.
+- **`iroha doctor` now reports how many documents failed to embed**, alongside
+  whether a key is stored. "key set" on its own read as healthy while search
+  quietly answered from the lexical index alone. It also warns when a
+  pre-0.6.0 `api_key_env` holds something that is not an environment variable
+  name — if you pasted the key itself there, it is in your Git history and needs
+  rotating.
 
 - **New: `iroha credentials <voyage|github>`** and
   `PUT /api/v1/settings/credentials`. Both are write-only: no endpoint and no

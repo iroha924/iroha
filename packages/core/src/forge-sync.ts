@@ -57,15 +57,19 @@ const RELATION_CONFIDENCE = 1;
  * `resolveEmbeddingProvider`: the token value lives only in the provider's auth
  * layer and is never stored in config, the DB, or logs.
  */
-export async function resolveForgeProvider(config: ForgeConfig): Promise<ForgeProvider | null> {
+export async function resolveForgeProvider(
+  config: ForgeConfig,
+): Promise<Result<ForgeProvider | null, IrohaError>> {
   if (!config.enabled || config.provider !== "github") {
-    return null;
+    return ok(null);
   }
   const token = await readApiKey("github");
-  if (!token.ok || token.value === null) {
-    return null;
+  // An unreadable credentials file is not "no token stored". Collapsing the two
+  // makes `iroha sync` tell the user to register a token they already have.
+  if (!token.ok) {
+    return token;
   }
-  return createGitHubProvider({ token: token.value });
+  return ok(token.value === null ? null : createGitHubProvider({ token: token.value }));
 }
 
 const GITHUB_REMOTE_PATTERNS = [

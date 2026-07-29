@@ -1,4 +1,5 @@
-import { chmod, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { credentialsLocation, hasApiKey, readApiKey, writeApiKey } from "./credentials.js";
 import { useTempHome } from "./test-helpers/credentials-home.js";
@@ -102,14 +103,118 @@ describe("credentials", () => {
   });
 
   it("leaves another provider's entry alone when one is written", async () => {
+    await writeApiKey("voyage", "pa-old");
+
+    await writeApiKey("github", "gh-new");
+
+    const voyage = await readApiKey("voyage");
+    expect(voyage.ok && voyage.value).toBe("pa-old");
+    const github = await readApiKey("github");
+    expect(github.ok && github.value).toBe("gh-new");
+  });
+
+  it("does not live in a directory the product tells the user to commit", () => {
+    const { dir } = credentialsLocation();
+
+    // `.iroha` is the canonical directory iroha creates and README instructs the
+    // reader to commit. Anyone keeping dotfiles in a repository rooted at $HOME
+    // would then have the key in a tracked file.
+    expect(basename(dir)).not.toBe(".iroha");
+    expect(basename(dirname(dir))).not.toBe(".iroha");
+  });
+
+  it("ignores itself in Git, wherever it ends up", async () => {
+    await writeApiKey("voyage", "pa-example");
+    const { dir } = credentialsLocation();
+
+    // ~/.config is itself commonly tracked in a dotfiles repository, so moving
+    // out of .iroha removes the instruction to commit but not every way this
+    // directory reaches a working tree.
+    expect(await readFile(join(dir, ".gitignore"), "utf8")).toContain("*");
+  });
+
+  it("keeps the concurrent writes of two providers, and leaves no temp file", async () => {
+    // The dashboard's Settings page has one Save button per provider, so both
+    // writes come from one process and can overlap. An unsynchronized
+    // read-modify-write drops whichever key lost the race while reporting ok.
+    const [voyage, github] = await Promise.all([
+      writeApiKey("voyage", "pa-concurrent"),
+      writeApiKey("github", "gh-concurrent"),
+    ]);
+
+    expect(voyage.ok && github.ok).toBe(true);
+    const storedVoyage = await readApiKey("voyage");
+    const storedGithub = await readApiKey("github");
+    expect(storedVoyage.ok && storedVoyage.value).toBe("pa-concurrent");
+    expect(storedGithub.ok && storedGithub.value).toBe("gh-concurrent");
+
+    const { dir } = credentialsLocation();
+    expect((await readdir(dir)).filter((name) => name.includes(".tmp-"))).toEqual([]);
+  });
+
+  it("rejects a key an HTTP header cannot carry, rather than storing it", async () => {
+    // Stored, this throws while undici builds `Authorization: Bearer <key>`,
+    // which the provider cannot tell apart from a socket failure — so it is
+    // reported as a retryable outage forever and the real cause never surfaces.
+    for (const bad of ["pa-line-one\npa-line-two", "キー", "pa with space"]) {
+      const written = await writeApiKey("voyage", bad);
+      expect(written.ok, `must reject ${JSON.stringify(bad)}`).toBe(false);
+    }
+
+    const key = await readApiKey("voyage");
+    expect(key.ok && key.value).toBeNull();
+  });
+
+  it("rejects a whole file pasted in place of a key", async () => {
+    const written = await writeApiKey("voyage", "x".repeat(1001));
+
+    expect(written.ok).toBe(false);
+    if (written.ok) return;
+    expect(written.error.code).toBe("INVALID_INPUT");
+  });
+
+  it("keeps a key a later version might add, instead of rejecting the whole file", async () => {
     const { dir, file } = credentialsLocation();
     await mkdir(dir, { recursive: true, mode: 0o700 });
-    await writeFile(file, JSON.stringify({ voyage: { apiKey: "pa-old" } }), "utf8");
-    await chmod(file, 0o600);
+    await writeFile(
+      file,
+      JSON.stringify({ version: 1, voyage: { apiKey: "pa-good" }, gitlab: { apiKey: "x" } }),
+      { encoding: "utf8", mode: 0o600 },
+    );
 
-    await writeApiKey("voyage", "pa-new");
+    // A strict whole-file schema would make every install older than the version
+    // that added `gitlab` report the voyage key it holds as missing.
+    const key = await readApiKey("voyage");
+    expect(key.ok && key.value).toBe("pa-good");
 
-    const raw = JSON.parse(await readFile(file, "utf8")) as Record<string, { apiKey: string }>;
-    expect(raw.voyage?.apiKey).toBe("pa-new");
+    await writeApiKey("github", "gh-new");
+    const raw = JSON.parse(await readFile(file, "utf8")) as Record<string, unknown>;
+    expect(raw.gitlab).toEqual({ apiKey: "x" });
+    expect(raw.version).toBe(1);
+  });
+
+  it("can overwrite a corrupt file, so the dashboard is not a dead end", async () => {
+    const { dir, file } = credentialsLocation();
+    await mkdir(dir, { recursive: true, mode: 0o700 });
+    await writeFile(file, "{ not json", { encoding: "utf8", mode: 0o600 });
+
+    // Refusing would leave the UI showing "Not set" with the only remedy — paste
+    // the key again — failing on the same unreadable file.
+    const written = await writeApiKey("voyage", "pa-repaired");
+
+    expect(written.ok, written.ok ? "" : written.error.message).toBe(true);
+    const key = await readApiKey("voyage");
+    expect(key.ok && key.value).toBe("pa-repaired");
+  });
+
+  it("tightens a pre-existing directory rather than trusting its mode", async () => {
+    const { dir } = credentialsLocation();
+    await mkdir(dir, { recursive: true, mode: 0o755 });
+    await chmod(dir, 0o755);
+
+    await writeApiKey("voyage", "pa-example");
+
+    // ~/.config is usually 0755, and mkdir's mode applies only when it creates.
+    expect((await stat(dir)).mode & 0o777).toBe(0o700);
   });
 });

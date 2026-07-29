@@ -2,8 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { CryptoRandomSource, FixedClock, makeTypedId } from "@iroha/domain";
-import { closeDatabase, insertDirtyMarker, openDatabase } from "@iroha/storage";
+import { CryptoRandomSource, FixedClock } from "@iroha/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parse, stringify } from "yaml";
 import { writeApiKey } from "./credentials.js";
@@ -18,7 +17,7 @@ const CLOCK = new FixedClock(new Date("2026-01-01T00:00:00.000Z"));
 describe("runDoctor", () => {
   let repoDir: string | undefined;
   let bareDir: string | undefined;
-  // Every doctor run reads ~/.iroha/credentials.json, so each test gets a home
+  // Every doctor run reads ~/.config/iroha/credentials.json, so each test gets a home
   // of its own — a test must never see, let alone overwrite, a real key.
   let restoreHome: (() => Promise<void>) | undefined;
 
@@ -120,41 +119,6 @@ describe("runDoctor", () => {
     expect(serialized).not.toContain(secretValue);
   });
 
-  it("warns that documents are stranded when the embedding worker dead-lettered some", async () => {
-    repoDir = await createTempGitRepo();
-    const init = await initRepository(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR);
-    expect(init.ok).toBe(true);
-    if (!init.ok) return;
-    await writeApiKey("voyage", "pa-example");
-    await enableEmbedding(init.value.irohaCanonicalDir);
-
-    const opened = await openDatabase(init.value.dbPath);
-    expect(opened.ok).toBe(true);
-    if (!opened.ok) return;
-    try {
-      const marker = await insertDirtyMarker(opened.value, {
-        id: makeTypedId("dirty", CLOCK, new CryptoRandomSource()),
-        repositoryId: init.value.repositoryId,
-        markerType: "embedding_retry",
-        detailsJson: JSON.stringify({ lastErrorCode: "EXTERNAL_SERVICE_ERROR" }),
-        createdAt: CLOCK.now().toISOString(),
-      });
-      expect(marker.ok).toBe(true);
-    } finally {
-      await closeDatabase(opened.value);
-    }
-
-    const result = await runDoctor(repoDir);
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-
-    // "key set" alone reads as healthy while search silently answers from
-    // lexical only — the state a rejected key leaves behind.
-    const check = new Map(result.value.checks.map((c) => [c.name, c])).get("embedding-provider");
-    expect(check?.status).toBe("warning");
-    expect(check?.message).toContain("1 documents not embedded");
-  });
-
   async function enableEmbedding(irohaCanonicalDir: string): Promise<void> {
     const configPath = join(irohaCanonicalDir, "config.yaml");
     const config = parse(await readFile(configPath, "utf8")) as {
@@ -224,6 +188,56 @@ describe("runDoctor", () => {
 
     const byName = new Map(result.value.checks.map((c) => [c.name, c]));
     expect(byName.get("config")?.status).toBe("error");
+  });
+  it("warns when config.yaml holds a value that is not an environment variable name", async () => {
+    repoDir = await createTempGitRepo();
+    const init = await initRepository(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR);
+    expect(init.ok).toBe(true);
+    if (!init.ok) return;
+    const configPath = join(init.value.irohaCanonicalDir, "config.yaml");
+    // 0.5.x rejected this loudly; the key is now dropped on read, so nothing else
+    // can notice that a real key was committed.
+    await writeFile(
+      configPath,
+      (await readFile(configPath, "utf8")).replace(
+        "    dimension: 1024",
+        "    dimension: 1024\n    api_key_env: pa-this-is-actually-the-key",
+      ),
+      "utf8",
+    );
+
+    const result = await runDoctor(repoDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const config = new Map(result.value.checks.map((c) => [c.name, c])).get("config");
+    expect(config?.status).toBe("warning");
+    expect(config?.message).toContain("search.embedding.api_key_env");
+    // The report is not a place to repeat the secret.
+    expect(JSON.stringify(result.value)).not.toContain("pa-this-is-actually-the-key");
+  });
+
+  it("stays quiet about a legacy key that really is an environment variable name", async () => {
+    repoDir = await createTempGitRepo();
+    const init = await initRepository(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR);
+    expect(init.ok).toBe(true);
+    if (!init.ok) return;
+    const configPath = join(init.value.irohaCanonicalDir, "config.yaml");
+    await writeFile(
+      configPath,
+      (await readFile(configPath, "utf8")).replace(
+        "    dimension: 1024",
+        "    dimension: 1024\n    api_key_env: VOYAGE_API_KEY",
+      ),
+      "utf8",
+    );
+
+    const result = await runDoctor(repoDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const config = new Map(result.value.checks.map((c) => [c.name, c])).get("config");
+    expect(config).toBeUndefined();
   });
 });
 

@@ -212,7 +212,7 @@ Search request mirrors MCP `search` without session token. Pending Candidate sea
 | `GET` | `/api/v1/sync/status` | cursors, dirty markers, last result |
 | `GET` | `/api/v1/settings` | shared config plus redacted local status |
 | `PATCH` | `/api/v1/settings/shared` | update `.iroha/config.yaml` safely |
-| `PUT` | `/api/v1/settings/credentials` | store a provider API key in `~/.iroha/credentials.json` (write-only — no endpoint returns a stored value; `GET /api/v1/settings` reports presence only) |
+| `PUT` | `/api/v1/settings/credentials` | store a provider API key in `$XDG_CONFIG_HOME/iroha/credentials.json` (write-only — no endpoint returns a stored value; `GET /api/v1/settings` reports presence, plus `credentialsUnreadable` when the file exists but cannot be parsed) |
 | `PATCH` | `/api/v1/settings/local` | update Git-internal local settings (a known key is schema-validated: `retention.local_events` must be `{"days": 1-3650 or null}` — see `database.md` §15) |
 | `GET` | `/api/v1/doctor` | capability diagnostics |
 | `POST` | `/api/v1/doctor/repair` | explicitly selected safe repair |

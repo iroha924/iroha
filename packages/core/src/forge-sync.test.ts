@@ -1,3 +1,4 @@
+import { mkdir, writeFile } from "node:fs/promises";
 import {
   CryptoRandomSource,
   err,
@@ -29,7 +30,7 @@ import {
   listReviewCommentsByPullRequest,
 } from "@iroha/storage";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { writeApiKey } from "./credentials.js";
+import { credentialsLocation, writeApiKey } from "./credentials.js";
 import {
   type ForgeSyncOutcome,
   parseGitHubRef,
@@ -219,15 +220,31 @@ describe("resolveForgeProvider", () => {
 
   it("builds a provider when enabled and a token is stored", async () => {
     await writeApiKey("github", "t");
-    expect(await resolveForgeProvider(config)).not.toBeNull();
+    const resolved = await resolveForgeProvider(config);
+    expect(resolved.ok && resolved.value).not.toBeNull();
   });
 
   it("returns null when disabled, tokenless, or non-github", async () => {
-    expect(await resolveForgeProvider(config)).toBeNull();
+    const tokenless = await resolveForgeProvider(config);
+    expect(tokenless.ok && tokenless.value).toBeNull();
 
     await writeApiKey("github", "t");
-    expect(await resolveForgeProvider({ ...config, enabled: false })).toBeNull();
-    expect(await resolveForgeProvider({ ...config, provider: "gitlab" })).toBeNull();
+    const disabled = await resolveForgeProvider({ ...config, enabled: false });
+    expect(disabled.ok && disabled.value).toBeNull();
+    const gitlab = await resolveForgeProvider({ ...config, provider: "gitlab" });
+    expect(gitlab.ok && gitlab.value).toBeNull();
+  });
+
+  it("reports an unreadable credentials file instead of calling it tokenless", async () => {
+    const { dir, file } = credentialsLocation();
+    await mkdir(dir, { recursive: true, mode: 0o700 });
+    await writeFile(file, "{ not json", { encoding: "utf8", mode: 0o600 });
+
+    // "no github token is stored" would send the user to register a token that
+    // is already there, and hide the file they actually need to fix.
+    const resolved = await resolveForgeProvider(config);
+
+    expect(resolved.ok).toBe(false);
   });
 });
 

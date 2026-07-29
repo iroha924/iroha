@@ -18,6 +18,12 @@ export interface SettingsData {
     /** Presence only — no endpoint returns a stored key's value. */
     embeddingKeyPresent: boolean;
     forgeTokenPresent: boolean;
+    /**
+     * The credentials file exists but could not be read. Distinct from "no key":
+     * rendering an unreadable file as absent tells the user to re-enter a key
+     * that is already there, and hides the one thing they need to act on.
+     */
+    credentialsUnreadable: boolean;
     /** Local event-data retention: the window in days, or `null` when off. */
     retentionDays: number | null;
   };
@@ -49,6 +55,7 @@ export async function getSettings(
         local: {
           embeddingKeyPresent: embeddingKey.ok && embeddingKey.value,
           forgeTokenPresent: forgeToken.ok && forgeToken.value,
+          credentialsUnreadable: !embeddingKey.ok || !forgeToken.ok,
           retentionDays: retention.ok ? retention.value.setting.days : null,
         },
       });
@@ -64,7 +71,7 @@ export interface SetProviderCredentialInput {
 /**
  * Stores a provider API key from the dashboard (`PUT /api/v1/settings/credentials`).
  *
- * Deliberately repository-independent: the key lives in `~/.iroha/credentials.json`
+ * Deliberately repository-independent: the key lives in `~/.config/iroha/credentials.json`
  * and is shared by every repository on the machine, so resolving one here would
  * only add a way to fail. The response reports presence, never the value — the
  * key travels in one direction and there is no endpoint that reads it back.

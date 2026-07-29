@@ -129,10 +129,11 @@ const ja: Dict = {
   "settings.embeddingEnabled": "Embedding を有効化",
   "settings.embeddingKey": "Voyage API キー",
   "settings.embeddingKeyHint":
-    "セマンティック検索に使います。~/.iroha/credentials.json に保存され、Git には入りません。保存後に読み出す画面はありません。",
+    "セマンティック検索に使います。~/.config/iroha/credentials.json に保存され、Git には入りません。保存後に読み出す画面はありません。",
   "settings.forgeToken": "GitHub トークン",
   "settings.forgeTokenHint": "Issue / PR / レビューの取り込みに使います。保存先は上と同じです。",
   "settings.keyPlaceholder": "貼り付けて保存",
+  "settings.credentialsUnreadable": "読み取り不可",
   "settings.forge": "Forge を有効化",
   "settings.present": "設定済み",
   "settings.absent": "未設定",
@@ -303,11 +304,12 @@ const en: Dict = {
   "settings.embeddingEnabled": "Enable embedding",
   "settings.embeddingKey": "Voyage API key",
   "settings.embeddingKeyHint":
-    "Used for semantic search. Stored in ~/.iroha/credentials.json, never in Git. Nothing reads it back once saved.",
+    "Used for semantic search. Stored in ~/.config/iroha/credentials.json, never in Git. Nothing reads it back once saved.",
   "settings.forgeToken": "GitHub token",
   "settings.forgeTokenHint":
     "Used to sync issues, pull requests, and reviews. Stored in the same place.",
   "settings.keyPlaceholder": "Paste, then save",
+  "settings.credentialsUnreadable": "Unreadable",
   "settings.forge": "Enable Forge",
   "settings.present": "Set",
   "settings.absent": "Not set",

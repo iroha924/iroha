@@ -113,7 +113,7 @@ pbpaste | iroha credentials voyage    # macOS; on Linux use xclip -o, or < key.t
 pbpaste | iroha credentials github
 ```
 
-The key is stored in `~/.iroha/credentials.json` (mode `0600`, in a `0700` directory) — outside every repository, so it is never committed, and read fresh on each request, so replacing it takes effect without restarting your agent. The CLI reads it from **stdin, never an argument**, which keeps it out of your shell history and out of the process list. iroha reads no environment variables for credentials: nothing goes in `~/.zshrc`.
+The key is stored in `~/.config/iroha/credentials.json` (`$XDG_CONFIG_HOME` is honoured), as mode `0600` in a `0700` directory that also gets a `.gitignore` of its own — so it stays out of every commit, including in a dotfiles repository. It is read fresh on each request, so replacing a key takes effect without restarting your agent. The CLI reads it from **stdin, never an argument**, which keeps it out of your shell history and out of the process list. iroha reads no environment variables for credentials: nothing goes in `~/.zshrc`.
 
 **2. Turn the feature on in `.iroha/config.yaml`** — `iroha init` already created this file, so you're just flipping a flag:
 

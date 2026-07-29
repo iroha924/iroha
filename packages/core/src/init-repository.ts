@@ -1,7 +1,12 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { parseRepositoryConfig, type RepositoryConfig } from "@iroha/config";
+import {
+  findRemovedSecretLocations,
+  parseRepositoryConfig,
+  type RepositoryConfig,
+  serializeRepositoryConfig,
+} from "@iroha/config";
 import {
   type Clock,
   err,
@@ -120,13 +125,13 @@ async function createCanonicalSkeleton(irohaCanonicalDir: string): Promise<void>
  */
 async function writeConfigAtomic(
   irohaCanonicalDir: string,
-  repositoryId: TypedId<"repo">,
+  content: string,
   random: RandomSource,
 ): Promise<void> {
   const configPath = join(irohaCanonicalDir, "config.yaml");
   const suffix = Buffer.from(random.bytes(8)).toString("hex");
   const tempPath = `${configPath}.tmp-${process.pid}-${suffix}`;
-  await writeFile(tempPath, stringify(buildDefaultConfig(repositoryId)), "utf8");
+  await writeFile(tempPath, content, "utf8");
   await rename(tempPath, configPath);
 }
 
@@ -164,12 +169,22 @@ async function resolveOrRegisterRepository(
   }
 
   let repositoryId: TypedId<"repo">;
+  let migratedConfig: string | undefined;
   if (existingConfig !== undefined) {
     const parsed = parseRepositoryConfig(existingConfig);
     if (!parsed.ok) {
       return parsed;
     }
     repositoryId = parsed.value.repository_id as TypedId<"repo">;
+    // `parseRepositoryConfig` drops the pre-0.6.0 keys that named where a secret
+    // was read from, but only in memory. Rewriting here is what makes the
+    // deletion reach the file every teammate reads and Git tracks — otherwise a
+    // teammate sets the environment variable the committed file still names and
+    // silently gets nothing. `serializeRepositoryConfig` writes every key
+    // explicitly, so the user's own settings survive the rewrite.
+    if (findRemovedSecretLocations(existingConfig).length > 0) {
+      migratedConfig = serializeRepositoryConfig(parsed.value);
+    }
   } else {
     const byFingerprint = await getRepositoryByRootFingerprint(db, rootFingerprint);
     if (!byFingerprint.ok) {
@@ -209,7 +224,9 @@ async function resolveOrRegisterRepository(
   }
 
   if (existingConfig === undefined) {
-    await writeConfigAtomic(irohaCanonicalDir, repositoryId, random);
+    await writeConfigAtomic(irohaCanonicalDir, stringify(buildDefaultConfig(repositoryId)), random);
+  } else if (migratedConfig !== undefined) {
+    await writeConfigAtomic(irohaCanonicalDir, migratedConfig, random);
   }
 
   return ok(repositoryId);

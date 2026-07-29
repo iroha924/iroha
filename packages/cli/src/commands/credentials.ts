@@ -22,14 +22,17 @@ function isProvider(value: string): value is CredentialProvider {
 async function readSecretFromStdin(): Promise<string> {
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) {
-    chunks.push(chunk as Buffer);
+    // A stream with an encoding set yields strings, one without yields Buffers;
+    // decoding at the end rather than per chunk keeps a multi-byte character
+    // split across a chunk boundary intact.
+    chunks.push(typeof chunk === "string" ? Buffer.from(chunk, "utf8") : (chunk as Buffer));
   }
   return Buffer.concat(chunks).toString("utf8");
 }
 
 export const credentialsCommand = define({
   name: "credentials",
-  description: "Store a provider API key in ~/.iroha/credentials.json (read from stdin)",
+  description: "Store a provider API key in ~/.config/iroha/credentials.json (read from stdin)",
   rendering: { header: null },
   args: {
     provider: {
@@ -42,9 +45,12 @@ export const credentialsCommand = define({
     const json = ctx.values.json ?? false;
     const provider = String(ctx.values.provider ?? "");
     if (!isProvider(provider)) {
+      // The value is not echoed: the mistake this guard exists for is typing the
+      // key itself as the argument, and printing it back would put it in one more
+      // place (a terminal recording, a CI log, an agent transcript).
       printError(json, {
         code: "INVALID_INPUT",
-        message: `Unknown provider "${provider}". Expected ${PROVIDERS.join(" or ")}.`,
+        message: `Unknown provider. Expected ${PROVIDERS.join(" or ")}.`,
       });
       return;
     }

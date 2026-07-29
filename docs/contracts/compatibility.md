@@ -237,7 +237,7 @@ The two manifests are not generated from each other at runtime. They are produce
 - Default model: `voyage-4-large`.
 - Dimension: 1024.
 - Document input uses `input_type=document`; query input uses `input_type=query`.
-- The API key is stored in `~/.iroha/credentials.json` (ADR-018), read on each request, and registered from the dashboard's Settings page or `iroha credentials voyage` (stdin only). No environment variable is read.
+- The API key is stored in `$XDG_CONFIG_HOME/iroha/credentials.json` (default `~/.config/iroha/`, ADR-018), read on each request, and registered from the dashboard's Settings page or `iroha credentials voyage` (stdin only). No environment variable is read.
 - Neither the key nor its location may be written to `.iroha/`, the local DB, logs, or diagnostics. Presence may be reported; the value may not.
 - Google and local providers are P1 adapters, not part of the 0.1 release gate.
 

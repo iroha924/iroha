@@ -58,11 +58,13 @@ function CredentialRow({
   label,
   hint,
   present,
+  unreadable,
 }: {
   provider: "voyage" | "github";
   label: string;
   hint: string;
   present: boolean;
+  unreadable: boolean;
 }) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
@@ -73,10 +75,9 @@ function CredentialRow({
       setValue("");
       toast.add({ type: "success", title: t("common.saved") });
       void queryClient.invalidateQueries({ queryKey: ["settings"] });
-      // Both report whether the key is present, so a stale copy of either would
-      // still show "Not set" right after saving one.
+      // Doctor reports the same presence, so a stale copy would still show the
+      // key as missing right after saving it.
       void queryClient.invalidateQueries({ queryKey: ["doctor"] });
-      void queryClient.invalidateQueries({ queryKey: ["overview"] });
     },
     onError: () => toast.add({ type: "error", title: t("common.error") }),
   });
@@ -84,8 +85,12 @@ function CredentialRow({
   return (
     <SettingRow htmlFor={`cfg-key-${provider}`} label={label} hint={hint}>
       <div className="flex items-center gap-2">
-        <Badge variant={present ? "approve" : "neutral"}>
-          {present ? t("settings.present") : t("settings.absent")}
+        <Badge variant={unreadable ? "pending" : present ? "approve" : "neutral"}>
+          {unreadable
+            ? t("settings.credentialsUnreadable")
+            : present
+              ? t("settings.present")
+              : t("settings.absent")}
         </Badge>
         <Input
           id={`cfg-key-${provider}`}
@@ -225,6 +230,7 @@ export function Settings() {
             label={t("settings.embeddingKey")}
             hint={t("settings.embeddingKeyHint")}
             present={local.embeddingKeyPresent}
+            unreadable={local.credentialsUnreadable}
           />
 
           <SettingRow
@@ -246,6 +252,7 @@ export function Settings() {
             label={t("settings.forgeToken")}
             hint={t("settings.forgeTokenHint")}
             present={local.forgeTokenPresent}
+            unreadable={local.credentialsUnreadable}
           />
 
           <SettingRow

@@ -25,7 +25,12 @@ const SHARED = {
 function settings(retentionDays: number | null) {
   return ok({
     shared: SHARED,
-    local: { embeddingKeyPresent: false, forgeTokenPresent: false, retentionDays },
+    local: {
+      embeddingKeyPresent: false,
+      forgeTokenPresent: false,
+      credentialsUnreadable: false,
+      retentionDays,
+    },
   });
 }
 

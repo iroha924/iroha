@@ -35,8 +35,14 @@ cd your-repo
 iroha init
 ```
 
-The `iroha` CLI alone (`iroha init | sync | search | dashboard | doctor`) is
-fully functional without any plugin, and is the reliable cross-platform path.
+The `iroha` CLI alone (`iroha init | sync | search | dashboard | doctor |
+credentials`) is fully functional without any plugin, and is the reliable
+cross-platform path.
+
+Semantic search and GitHub sync each need a key, registered from the dashboard's
+Settings page or with `pbpaste | iroha credentials voyage`. Keys are stored per
+machine in `~/.config/iroha/credentials.json`, not per repository — see the
+Configuration section of the README.
 
 ## 2. Add the Claude Code plugin (optional)
 
@@ -102,3 +108,10 @@ npm uninstall -g @irohalabs/iroha
 Uninstalling does not touch a repository's Git-tracked `.iroha/` directory (your
 approved knowledge) or delete anything from Git. The local index under
 `.git/iroha/` is a disposable cache; remove it manually if you want it gone.
+
+It also leaves any API keys you registered, because they are machine-scoped
+rather than part of the package. To remove them:
+
+```bash
+rm -rf ~/.config/iroha
+```

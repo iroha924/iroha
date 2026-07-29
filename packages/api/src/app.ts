@@ -128,7 +128,7 @@ const localSettingSchema = z.strictObject({ key: z.string().min(1).max(200), val
 const doctorRepairSchema = z.strictObject({ operation: z.string().min(1).max(64) });
 // The only request body in the API that carries a secret. It is bounded rather
 // than unbounded free text so a paste of the wrong thing (a whole file) fails at
-// the boundary instead of being written to `~/.iroha/credentials.json`.
+// the boundary instead of being written to `~/.config/iroha/credentials.json`.
 const credentialSchema = z.strictObject({
   provider: z.enum(["voyage", "github"]),
   api_key: z.string().min(1).max(1000),

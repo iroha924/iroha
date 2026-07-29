@@ -1,6 +1,6 @@
 import { FixedClock, FixedRandomSource, makeTypedId } from "@iroha/domain";
 import { describe, expect, it } from "vitest";
-import { parseRepositoryConfig } from "./parse-repository-config.js";
+import { findRemovedSecretLocations, parseRepositoryConfig } from "./parse-repository-config.js";
 
 const clock = new FixedClock(new Date("2026-01-01T00:00:00.000Z"));
 const random = new FixedRandomSource(Uint8Array.from([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]));
@@ -20,7 +20,6 @@ search:
     provider: voyage
     model: voyage-4-large
     dimension: 1024
-    api_key_env: VOYAGE_API_KEY
 forge:
   provider: github
   enabled: false
@@ -64,16 +63,17 @@ describe("parseRepositoryConfig", () => {
   });
 
   it("drops the secret-location keys an older version wrote, rather than failing on them", () => {
-    // 0.6.0 moved credentials to ~/.iroha/credentials.json (ADR-018). The schema
+    // 0.6.0 moved credentials to ~/.config/iroha/credentials.json (ADR-018). The schema
     // is a strictObject, so a config written before that would otherwise fail to
     // parse and take every command down with it — on a file the user never
     // touched. Dropping them here lets the next init/sync rewrite the file
     // without them.
-    // validYaml() already carries the embedding key; add the forge one beside it.
-    const yaml = validYaml().replace(
-      "forge:\n  provider: github",
-      "forge:\n  provider: github\n  api_token_env: GITHUB_TOKEN",
-    );
+    const yaml = validYaml()
+      .replace("    dimension: 1024", "    dimension: 1024\n    api_key_env: VOYAGE_API_KEY")
+      .replace(
+        "forge:\n  provider: github",
+        "forge:\n  provider: github\n  api_token_env: GITHUB_TOKEN",
+      );
 
     const result = parseRepositoryConfig(yaml);
 
@@ -87,5 +87,21 @@ describe("parseRepositoryConfig", () => {
     const yaml = validYaml().replace("default_language: ja", "default_language: fr");
     const result = parseRepositoryConfig(yaml);
     expect(result.ok).toBe(false);
+  });
+  it("names a legacy key whose value is not an environment variable name", () => {
+    const pasted = validYaml().replace(
+      "    dimension: 1024",
+      "    dimension: 1024\n    api_key_env: pa-this-is-the-key-itself",
+    );
+
+    // 0.5.x rejected this loudly via the UPPER_SNAKE_CASE constraint. Dropping
+    // the key on read removed that check, so this is what replaces it.
+    const found = findRemovedSecretLocations(pasted);
+
+    expect(found).toEqual([{ path: "search.embedding.api_key_env", looksLikeEnvVarName: false }]);
+  });
+
+  it("reports nothing for a current config.yaml", () => {
+    expect(findRemovedSecretLocations(validYaml())).toEqual([]);
   });
 });

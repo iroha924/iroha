@@ -1,3 +1,5 @@
+import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { writeCanonicalDocument } from "@iroha/canonical";
 import type { RepositoryConfig } from "@iroha/config";
@@ -22,6 +24,8 @@ import {
 } from "@iroha/storage";
 import { afterEach, describe, expect, it } from "vitest";
 import { runInit } from "./commands.js";
+import { writeApiKey } from "./credentials.js";
+import { runDoctor } from "./doctor.js";
 import { runEmbeddingSync } from "./embedding-sync.js";
 import { useTempHome } from "./test-helpers/credentials-home.js";
 import { createTempGitRepo, removeTempDir } from "./test-helpers/tmp-repo.js";
@@ -208,6 +212,35 @@ describe("runEmbeddingSync", () => {
       expect(result.value.dead).toBe(0);
       const due = await listDueEmbeddingJobs(database, FAR_FUTURE, 10);
       expect(due.ok && due.value.length, "both jobs must still be embeddable").toBe(2);
+
+      // And `iroha doctor` has to say so. Counting dead-lettered documents could
+      // not: this branch deliberately dead-letters nothing, so the count doctor
+      // reads has to be of failed jobs, or the report says "key set" and
+      // everything looks healthy while search answers from lexical alone.
+      const { restore } = await useTempHome();
+      try {
+        await writeApiKey("voyage", "pa-rejected-by-the-provider");
+        // doctor reads config.yaml, which `init` writes with embedding off; the
+        // run above took its config as an argument.
+        const configPath = join(seeded.repoDir, ".iroha", "config.yaml");
+        await writeFile(
+          configPath,
+          (await readFile(configPath, "utf8")).replace("enabled: false", "enabled: true"),
+          "utf8",
+        );
+        const report = await runDoctor(seeded.repoDir);
+        expect(report.ok).toBe(true);
+        if (!report.ok) return;
+        const check = new Map(report.value.checks.map((c) => [c.name, c])).get(
+          "embedding-provider",
+        );
+        expect(check?.status).toBe("warning");
+        // One, not two: the run stopped before touching the second job, which is
+        // still `pending` and has failed at nothing.
+        expect(check?.message).toContain("1 document failed to embed");
+      } finally {
+        await restore();
+      }
     },
     SEED_TIMEOUT_MS,
   );

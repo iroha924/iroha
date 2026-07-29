@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import { access, constants, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseRepositoryConfig } from "@iroha/config";
+import { findRemovedSecretLocations, parseRepositoryConfig } from "@iroha/config";
 import {
   CryptoRandomSource,
   type IrohaError,
@@ -15,9 +15,9 @@ import {
 import { resolveGitLocation, resolveGitPath } from "@iroha/git";
 import {
   closeDatabase,
+  countFailedEmbeddingJobs,
   getSyncCursor,
   listApprovedRulesForRepository,
-  listOpenDirtyMarkers,
   openDatabase,
   probeCapabilities,
 } from "@iroha/storage";
@@ -302,34 +302,52 @@ async function checkProviders(
   if (!parsed.ok) {
     return [{ name: "config", status: "error", message: parsed.error.message }];
   }
+  // 0.5.x asked for an environment-variable *name* here and rejected anything
+  // else; the key is now dropped on read, so this is the only thing left that can
+  // notice a user who pasted the secret itself into a committed file.
+  const pastedSecrets = findRemovedSecretLocations(content).filter(
+    (found) => !found.looksLikeEnvVarName,
+  );
+  const configChecks: DoctorCheckResult[] =
+    pastedSecrets.length > 0
+      ? [
+          {
+            name: "config",
+            status: "warning",
+            message: `${pastedSecrets.map((f) => f.path).join(", ")} holds a value that is not an environment variable name. If that is an API key it is in this repository's Git history — rotate it, then run \`iroha init\` to drop the key from the file.`,
+          },
+        ]
+      : [];
   const { search } = parsed.value;
+  if (!search.embedding.enabled) {
+    return [...configChecks, { name: "embedding-provider", status: "ok", message: "disabled" }];
+  }
   const stored = await hasApiKey("voyage");
-  // An unreadable credentials file is not "no key": it is a file the user
-  // believes holds one. Reporting it as absent would send them to re-enter a
-  // key that is already there.
-  const embeddingKeySet = stored.ok && stored.value;
   if (!stored.ok) {
+    // An unreadable credentials file is not "no key": it is a file the user
+    // believes holds one, so reporting it as absent would send them to re-enter
+    // a key that is already there. `warning`, not `error`: embedding is an
+    // optional feature (compatibility.md §9), and `error` makes `iroha doctor`
+    // exit non-zero over a file the repository does not require.
     return [
-      {
-        name: "embedding-provider",
-        status: "error",
-        message: stored.error.message,
-      },
+      ...configChecks,
+      { name: "embedding-provider", status: "warning", message: stored.error.message },
     ];
   }
-  if (!search.embedding.enabled) {
-    return [{ name: "embedding-provider", status: "ok", message: "disabled" }];
-  }
+  const embeddingKeySet = stored.value;
 
-  // Documents the sync gave up on. Without this the report reads "key set" while
-  // search silently answers from lexical alone, which is exactly the state a
-  // rejected key leaves behind — and nothing else in the CLI names it.
+  // Documents the embedder has already failed on. Without this the report reads
+  // "key set" while search silently answers from lexical alone, which is exactly
+  // the state a rejected key leaves behind — and nothing else in the CLI names it.
   const stranded = await countStrandedEmbeddings(cwd);
   const detail = [
     `key ${embeddingKeySet ? "set" : "not set"}`,
-    ...(stranded > 0 ? [`${stranded} documents not embedded`] : []),
+    ...(stranded > 0
+      ? [`${stranded} document${stranded === 1 ? "" : "s"} failed to embed — run \`iroha sync\``]
+      : []),
   ].join(", ");
   return [
+    ...configChecks,
     {
       name: "embedding-provider",
       status: !embeddingKeySet || stranded > 0 ? "warning" : "ok",
@@ -339,11 +357,16 @@ async function checkProviders(
 }
 
 /**
- * How many documents the embedding worker dead-lettered, counted from the open
- * `embedding_retry` dirty markers it writes. Any failure counts as zero: this
- * detail decorates another check's message, and losing the whole embedding line
- * to a database problem `storage-capabilities` already reports would trade a
- * useful report for a redundant error.
+ * How many documents the embedding worker has failed on.
+ *
+ * Counted from `embedding_jobs`, not from the `embedding_retry` dirty markers.
+ * Markers are written only when a job is dead-lettered, and a credential failure
+ * deliberately never dead-letters a job (so a corrected key can still embed it) —
+ * so a marker count is zero in the one case this check exists for.
+ *
+ * Any failure counts as zero: this detail decorates another check's message, and
+ * losing the whole embedding line to a database problem `storage-capabilities`
+ * already reports would trade a useful report for a redundant error.
  */
 async function countStrandedEmbeddings(cwd: string): Promise<number> {
   const resolved = await resolveInitializedRepository(cwd);
@@ -355,12 +378,8 @@ async function countStrandedEmbeddings(cwd: string): Promise<number> {
     return 0;
   }
   try {
-    const markers = await listOpenDirtyMarkers(
-      opened.value,
-      resolved.value.repositoryId,
-      "embedding_retry",
-    );
-    return markers.ok ? markers.value.length : 0;
+    const failed = await countFailedEmbeddingJobs(opened.value);
+    return failed.ok ? failed.value : 0;
   } finally {
     await closeDatabase(opened.value);
   }

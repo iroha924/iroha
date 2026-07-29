@@ -13,7 +13,6 @@ import {
   probeCapabilities,
   type StorageCapabilities,
 } from "@iroha/storage";
-import { hasApiKey } from "../credentials.js";
 import { classifyGuardSpec, type GuardEnforceability } from "../hooks/guardrail.js";
 import { readSchemaVersion } from "../schema-version.js";
 import { withDashboardRepository } from "./with-repository.js";
@@ -219,8 +218,6 @@ export interface BootstrapData {
   capabilities: StorageCapabilities;
   embedding: {
     enabled: boolean;
-    /** Whether the configured API-key env var is set — never the value itself. */
-    keyPresent: boolean;
   };
 }
 
@@ -245,7 +242,6 @@ export async function getBootstrap(
       const schemaVersion = await readSchemaVersion(ctx.repo.irohaCanonicalDir);
       const capabilities = await probeCapabilities(ctx.db, ctx.random);
       const embedding = ctx.repo.config.search.embedding;
-      const embeddingKey = await hasApiKey("voyage");
       return ok({
         repository: {
           id: ctx.repo.repositoryId,
@@ -259,7 +255,6 @@ export async function getBootstrap(
         capabilities,
         embedding: {
           enabled: embedding.enabled,
-          keyPresent: embeddingKey.ok && embeddingKey.value,
         },
       });
     },

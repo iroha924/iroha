@@ -192,7 +192,11 @@ async function syncForge(
   resolved: ResolvedRepository,
   clock: SystemClock,
 ): Promise<ForgeSyncOutcome> {
-  const provider = await resolveForgeProvider(resolved.config.forge);
+  const resolvedProvider = await resolveForgeProvider(resolved.config.forge);
+  if (!resolvedProvider.ok) {
+    return { status: "skipped", reason: resolvedProvider.error.message };
+  }
+  const provider = resolvedProvider.value;
   if (provider === null) {
     const forge = resolved.config.forge;
     if (!forge.enabled || forge.provider !== "github") {
