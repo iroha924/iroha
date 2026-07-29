@@ -134,6 +134,42 @@ describe("knowledge repositories", () => {
     }
   });
 
+  it("excludes an imported repository doc from the active rules (contracts/canonical.md §14)", async () => {
+    const opened = await openMigratedTestDb();
+    tempDir = opened.dir;
+    db = opened.db;
+    const repositoryId = await seedRepository(db, "imported");
+    const importedId = "rul_0000000000000000000000031";
+    await insertEntity(db, {
+      id: importedId,
+      repositoryId,
+      entityType: "rule",
+      title: "Project instructions from CLAUDE.md",
+      // The whole point of the status: the agent harness already auto-loads
+      // this file, so pushing it back through `get_active_rules` would deliver
+      // the same text twice.
+      status: "imported",
+      authority: 80,
+      sourceKind: "import",
+      sourceRef: "CLAUDE.md",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    await upsertKnowledgeItem(db, {
+      id: importedId,
+      knowledgeType: "rule",
+      body: "Run the tests.",
+      scopeJson: '{"paths":[],"symbols":[]}',
+      enforcement: "advisory",
+    });
+
+    const listed = await listApprovedRulesForRepository(db, repositoryId);
+    expect(listed.ok).toBe(true);
+    if (listed.ok) {
+      expect(listed.value).toEqual([]);
+    }
+  });
+
   it("lists approved rules with null severity on a DB from before migration 004", async () => {
     const opened = await openMigratedTestDb();
     tempDir = opened.dir;

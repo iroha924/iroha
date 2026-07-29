@@ -1,3 +1,5 @@
+import { rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { writeCanonicalDocument } from "@iroha/canonical";
 import { CryptoRandomSource, FixedClock, makeTypedId } from "@iroha/domain";
@@ -129,6 +131,49 @@ describe("run* command wrappers", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.code).toBe("NOT_INITIALIZED");
+    }
+  });
+
+  it("runSync re-reads repository docs edited after init (contracts/canonical.md §14)", async () => {
+    repoDir = await createTempGitRepo();
+    const claudeMd = join(repoDir, "CLAUDE.md");
+    await writeFile(claudeMd, "# Project\n\nThe original rule.\n", "utf8");
+
+    const init = await runInit(repoDir, MIGRATIONS_DIR);
+    expect(init.ok).toBe(true);
+    if (init.ok) {
+      expect(init.value.init.entitiesWritten).toBe(1);
+    }
+
+    // Init alone would leave the index quoting a rule the repository has since
+    // replaced; nothing else re-reads these files.
+    await writeFile(claudeMd, "# Project\n\nThe replacement rule.\n", "utf8");
+    const synced = await runSync(repoDir, MIGRATIONS_DIR);
+    expect(synced.ok).toBe(true);
+    if (synced.ok && !synced.value.rebuilt) {
+      expect(synced.value.imported.entitiesWritten).toBe(1);
+      expect(synced.value.imported.entitiesTombstoned).toBe(0);
+    }
+
+    const found = await runSearch(repoDir, "replacement", { mode: "lexical" });
+    expect(found.ok).toBe(true);
+    if (found.ok) {
+      expect(found.value.results.map((r) => r.title)).toContain(
+        "Project instructions from CLAUDE.md",
+      );
+    }
+
+    // Deleting the file retires the entity rather than leaving it searchable.
+    await rm(claudeMd);
+    const afterDelete = await runSync(repoDir, MIGRATIONS_DIR);
+    expect(afterDelete.ok).toBe(true);
+    if (afterDelete.ok && !afterDelete.value.rebuilt) {
+      expect(afterDelete.value.imported.entitiesTombstoned).toBe(1);
+    }
+    const gone = await runSearch(repoDir, "replacement", { mode: "lexical" });
+    expect(gone.ok).toBe(true);
+    if (gone.ok) {
+      expect(gone.value.results).toEqual([]);
     }
   });
 });

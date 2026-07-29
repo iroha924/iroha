@@ -359,18 +359,29 @@ If step 8 or 9 fails after the rename, create a dirty marker under the Git-inter
 
 ## 14. Importing existing documentation
 
-`iroha init --scan` creates local candidates from `CLAUDE.md`, `AGENTS.md`, `.claude/rules/**/*.md`, and user-selected docs. It does not copy them into `.iroha/` automatically.
+`iroha init` and `iroha sync` import `CLAUDE.md`, `AGENTS.md`, and `.claude/rules/**/*.md` into the local database as `source_kind = 'import'` entities at `status = 'imported'`. They are not copied into `.iroha/`, and they never enter the review queue.
 
-Each imported candidate must retain:
+These documents are already committed to the repository and already binding on whoever works in it, so there is nothing for a human to approve: a review queue that asks a maintainer to approve their own `CLAUDE.md` is a rubber stamp. Making them approved canonical documents instead would copy a Git-tracked file into a second Git-tracked file, and the copy goes stale the moment the original is edited. The source file stays the single source of truth; the import is an index entry pointing at it.
 
-- source repository-relative path;
-- source content hash;
-- line range when stable;
+Each imported entity must retain:
+
+- source repository-relative path (`source_ref`);
+- source content hash (`content_hash`);
 - import timestamp;
-- detected scope;
-- a link back to the original document.
+- detected scope (a rule file's own `paths:` frontmatter);
+- knowledge type `rule`.
 
-Approving an imported candidate creates an iroha knowledge document; it does not delete or edit the source document.
+Consequences:
+
+- Re-import is keyed on the repository-relative path, so an edited document updates its entity rather than creating a second one; an unchanged document is skipped on its content hash.
+- A document that resolves outside the repository once symlinks are followed is not read at all. A repository can commit `.claude/rules` or `CLAUDE.md` as a symlink, and this runs on `init` with no opt-in, so containment is checked rather than assumed. A symlink that stays inside the repository is imported under its target's path.
+- The `.claude/rules` directory is containment-checked before it is traversed, not only after: a link to a large external tree would otherwise be enumerated in full before a single path could be rejected.
+- A document whose text trips the secret scan is withheld from the index entirely, and any revision of it already indexed is retired at the same time. The local database is an at-rest store, and unlike a Checkpoint — where wholesale field redaction still leaves usable knowledge — a redacted instruction document is worth nothing, while the agent harness reads the file directly regardless.
+- Retirement requires a complete picture: a rules directory that could not be listed, or a document that could not be read this run, is never treated as a deletion.
+- A document that disappears has its entity moved to `status = 'tombstoned'`, the same reconcile `.iroha/` deletions get. Without it a renamed rule would be served under both names and a deleted one served forever.
+- `status = 'imported'` is outside the `approved` set, so `get_active_rules` does not serve these — Claude Code already auto-loads `CLAUDE.md` and path-scoped `.claude/rules/*.md`, and pushing the same text again would deliver it twice. `search` and `get_context` **do** return them, at authority 80, carrying a `document` source reference to the file they came from: those are pull, not push, and a repository whose harness does not auto-load `.claude/rules/*.md` (Codex reads `AGENTS.md`) has no other way to reach them. They are embedded on the same terms as canonical knowledge, because `mode: "vector"` disables the lexical arm outright and would otherwise never return a repository rule.
+- A rebuild re-derives them from the source files, exactly as it re-derives approved knowledge from `.iroha/`.
+- Importing neither deletes nor edits the source document.
 
 ## 15. Schema evolution
 

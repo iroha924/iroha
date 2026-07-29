@@ -1,4 +1,5 @@
-import { access, rm } from "node:fs/promises";
+import { access, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { writeCanonicalDocument } from "@iroha/canonical";
 import { CryptoRandomSource, FixedClock, makeTypedId } from "@iroha/domain";
@@ -7,6 +8,7 @@ import {
   getEntityById,
   getLocalSetting,
   getSearchDocumentByEntityId,
+  listKnowledgeEntities,
   openDatabase,
   upsertLocalSetting,
 } from "@iroha/storage";
@@ -301,6 +303,45 @@ describe("rebuildDatabase", () => {
         expect(entity.ok).toBe(true);
         if (entity.ok) {
           expect(entity.value?.authority).toBe(100);
+        }
+        await closeDatabase(opened.value);
+      }
+    },
+    REBUILD_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "re-derives imported repository docs from the source files (contracts/canonical.md §14)",
+    async () => {
+      // Imported entities live only in the index, so nothing carries them over
+      // from the old database — a rebuild that did not re-read the source files
+      // would silently drop every repository rule.
+      repoDir = await createTempGitRepo();
+      await writeFile(join(repoDir, "CLAUDE.md"), "# Project\n\nRun the tests.\n", "utf8");
+      const init = await initRepository(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR);
+      expect(init.ok).toBe(true);
+      if (!init.ok) return;
+      expect(init.value.entitiesWritten).toBe(1);
+
+      const rebuilt = await rebuildDatabase(
+        repoDir,
+        CLOCK,
+        new CryptoRandomSource(),
+        MIGRATIONS_DIR,
+      );
+      expect(rebuilt.ok).toBe(true);
+      if (!rebuilt.ok) return;
+
+      const opened = await openDatabase(rebuilt.value.dbPath);
+      expect(opened.ok).toBe(true);
+      if (opened.ok) {
+        const imported = await listKnowledgeEntities(opened.value, rebuilt.value.repositoryId, {
+          statuses: ["imported"],
+          limit: 10,
+        });
+        expect(imported.ok).toBe(true);
+        if (imported.ok) {
+          expect(imported.value.map((e) => e.sourceRef)).toEqual(["CLAUDE.md"]);
         }
         await closeDatabase(opened.value);
       }

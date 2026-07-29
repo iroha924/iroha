@@ -169,6 +169,11 @@ export function KnowledgeDetail() {
             <span className="font-mono text-[13px]">{d.canonicalPath}</span>
           </Meta>
         )}
+        {d.sourcePath !== null && (
+          <Meta label={t("knowledge.sourcePath")}>
+            <span className="font-mono text-[13px]">{d.sourcePath}</span>
+          </Meta>
+        )}
       </dl>
 
       {d.relations.length > 0 && (

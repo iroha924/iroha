@@ -233,6 +233,34 @@ describe("candidate read", () => {
     expect(result.value.canonicalPreview).toContain("# Use libSQL as the local index");
   });
 
+  it("renders a candidate whose stored payload predates this build instead of failing", async () => {
+    repo = await setupMcpRepo(random);
+    // The shape the removed `iroha init --scan` wrote: `detected_scope` where
+    // every reader expects `scope`. Migration 007 clears the pending ones, but
+    // rejecting a candidate never reads its payload, so a rejected one can
+    // still be sitting in the review history of an upgraded install.
+    const { candidateId } = await seedCandidate(
+      repo.dbPath,
+      repo.repositoryId,
+      "rule",
+      {
+        title: "Project instructions from CLAUDE.md",
+        body: "# Rule",
+        detected_scope: { paths: [] },
+      } as unknown as Parameters<typeof seedCandidate>[3],
+      clock,
+      random,
+    );
+
+    const result = await getCandidateDetail({ cwd: repo.repoDir, clock, random, candidateId });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.validation.approvable).toBe(false);
+    expect(result.value.validation.schemaValid).toBe(false);
+    expect(result.value.canonicalPreview).toBeNull();
+    expect(result.value.validation.issues.join(" ")).toContain("cannot be read");
+  });
+
   it("reports a draft containing a secret as not approvable, with masked findings", async () => {
     repo = await setupMcpRepo(random);
     const secretBody = VALID_DECISION_BODY.replace(

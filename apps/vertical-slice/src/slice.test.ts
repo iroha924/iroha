@@ -106,18 +106,18 @@ describe("Step A: initialization", () => {
     expect(await pathExists(repo.resolved.dbPath)).toBe(true);
   });
 
-  it("imports source docs as local candidates, not canonical documents", async () => {
-    expect(repo.candidatesCreated).toBeGreaterThanOrEqual(2);
+  it("imports source docs as local knowledge, not canonical documents", async () => {
+    expect(repo.docsImported).toBeGreaterThanOrEqual(2);
     expect(await canonicalDocFiles(repo.resolved.irohaCanonicalDir)).toEqual([]);
   });
 
   it("is idempotent: a second init makes no destructive change", async () => {
     const before = await readFile(join(repo.resolved.irohaCanonicalDir, "config.yaml"), "utf8");
-    const second = await runInit(repo.repoDir, MIGRATIONS_DIR, { scan: true });
+    const second = await runInit(repo.repoDir, MIGRATIONS_DIR);
     expect(second.ok).toBe(true);
     if (second.ok) {
       expect(second.value.init.freshInit).toBe(false);
-      expect(second.value.init.candidatesCreated).toBe(0);
+      expect(second.value.init.entitiesWritten).toBe(0);
     }
     const after = await readFile(join(repo.resolved.irohaCanonicalDir, "config.yaml"), "utf8");
     expect(after).toBe(before);

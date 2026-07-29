@@ -25,8 +25,8 @@ export interface SliceRepo {
   salt: Uint8Array;
   clock: Clock;
   random: RandomSource;
-  /** Number of local candidates created by the `--scan` import. */
-  candidatesCreated: number;
+  /** Number of repository docs `init` imported as knowledge entities. */
+  docsImported: number;
 }
 
 function unwrap<T>(
@@ -41,7 +41,7 @@ function unwrap<T>(
 
 /**
  * Copies the `repo-basic` fixture into a fresh temp Git repository, commits it,
- * and runs `iroha init --scan`. Returns the resolved identity plus a live
+ * and runs `iroha init`. Returns the resolved identity plus a live
  * clock/random/salt the subsequent slice steps use to drive hooks and MCP.
  * Clean up with {@link cleanupSliceRepo}.
  */
@@ -61,7 +61,7 @@ export async function buildSliceRepo(): Promise<SliceRepo> {
   const clock = new SystemClock();
   const random = new CryptoRandomSource();
 
-  const init = unwrap(await runInit(repoDir, MIGRATIONS_DIR, { scan: true }), "iroha init");
+  const init = unwrap(await runInit(repoDir, MIGRATIONS_DIR), "iroha init");
   const resolved = unwrap(await resolveInitializedRepository(repoDir), "resolve repository");
   const salt = unwrap(
     await ensureRepositorySalt(resolved.irohaStateDir, random),
@@ -74,7 +74,7 @@ export async function buildSliceRepo(): Promise<SliceRepo> {
     salt,
     clock,
     random,
-    candidatesCreated: init.init.candidatesCreated,
+    docsImported: init.init.entitiesWritten,
   };
 }
 

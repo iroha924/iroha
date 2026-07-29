@@ -63,6 +63,31 @@ function formatSync(data: RunSyncResult): string {
   }
 
   const lines = formatSyncCounts(data.sync);
+  const imported = data.imported;
+  if (imported.entitiesWritten > 0) {
+    lines.push(note("ok", `Imported ${imported.entitiesWritten} repository doc(s).`));
+  }
+  // Reported independently of the written count: a deletion changes what
+  // retrieval returns while writing nothing, so folding it into the line above
+  // would leave the removal visible only to JSON callers.
+  if (imported.entitiesTombstoned > 0) {
+    lines.push(
+      note(
+        "ok",
+        `Retired ${imported.entitiesTombstoned} deleted repository doc(s) from retrieval.`,
+      ),
+    );
+  }
+  if (imported.docsSkipped > 0) {
+    lines.push(
+      note("warning", `Skipped ${imported.docsSkipped} doc(s) resolving outside the repository.`),
+    );
+  }
+  if (imported.docsWithheld > 0) {
+    lines.push(
+      note("warning", `Withheld ${imported.docsWithheld} doc(s) containing a possible secret.`),
+    );
+  }
   const embedding = data.embedding;
   if (embedding.skipped === null && embedding.processed + embedding.failed + embedding.dead > 0) {
     // A dead-lettered job is non-retryable or out of retry budget and writes a

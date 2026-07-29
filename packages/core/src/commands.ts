@@ -1,6 +1,7 @@
 import { CryptoRandomSource, type IrohaError, ok, type Result, SystemClock } from "@iroha/domain";
 import type { SearchMode } from "@iroha/search";
 import { closeDatabase, type Database, openDatabase, runMigrations } from "@iroha/storage";
+import { type ImportRepositoryDocsResult, importRepositoryDocs } from "./docs-import.js";
 import { type RunEmbeddingSyncResult, runEmbeddingSync } from "./embedding-sync.js";
 import {
   type ForgeSyncOutcome,
@@ -8,11 +9,7 @@ import {
   resolveGitHubRef,
   runForgeSync,
 } from "./forge-sync.js";
-import {
-  type InitRepositoryOptions,
-  type InitRepositoryResult,
-  initRepository,
-} from "./init-repository.js";
+import { type InitRepositoryResult, initRepository } from "./init-repository.js";
 import { type McpSearchData, type McpSearchFilters, mcpSearch } from "./mcp/search.js";
 import { type RebuildDatabaseResult, rebuildDatabase } from "./rebuild-database.js";
 import { type ResolvedRepository, resolveInitializedRepository } from "./resolve-repository.js";
@@ -37,16 +34,9 @@ export interface RunInitResult {
 export async function runInit(
   cwd: string,
   migrationsDir: string,
-  options: InitRepositoryOptions = {},
 ): Promise<Result<RunInitResult, IrohaError>> {
   const clock = new SystemClock();
-  const initResult = await initRepository(
-    cwd,
-    clock,
-    new CryptoRandomSource(),
-    migrationsDir,
-    options,
-  );
+  const initResult = await initRepository(cwd, clock, new CryptoRandomSource(), migrationsDir);
   if (!initResult.ok) {
     return initResult;
   }
@@ -81,6 +71,7 @@ export type RunSyncResult =
   | {
       rebuilt: false;
       sync: SyncCanonicalResult;
+      imported: ImportRepositoryDocsResult;
       embedding: RunEmbeddingSyncResult;
       forge: ForgeSyncOutcome;
       retention: RetentionOutcome;
@@ -144,6 +135,20 @@ export async function runSync(
     if (!syncResult.ok) {
       return syncResult;
     }
+    // Re-import the repository's own instruction docs (contracts/canonical.md
+    // §14). Init is not enough on its own: an edit to `.claude/rules/*.md`
+    // after init would otherwise leave the index quoting a superseded rule
+    // forever, since nothing else re-reads those files.
+    const importResult = await importRepositoryDocs(
+      opened.value,
+      resolvedResult.value.gitLocation.root,
+      resolvedResult.value.repositoryId,
+      clock,
+      new CryptoRandomSource(),
+    );
+    if (!importResult.ok) {
+      return importResult;
+    }
     // Drain the embedding queue this sync just (re)filled. A provider outage
     // does not fail the sync — `runEmbeddingSync` degrades per job and only
     // returns `err` on a real DB error (CLAUDE.md: embedding failure degrades
@@ -170,6 +175,7 @@ export async function runSync(
     return ok({
       rebuilt: false,
       sync: syncResult.value,
+      imported: importResult.value,
       embedding: embeddingResult.value,
       forge,
       retention,

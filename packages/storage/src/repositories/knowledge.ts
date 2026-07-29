@@ -137,6 +137,38 @@ export async function getKnowledgeItemById(
   }
 }
 
+/**
+ * Batched `getKnowledgeItemById`, keyed by `id`. Search ranking reads facets
+ * from `canonical_documents`, which an imported repository doc (canonical.md
+ * §14) has no row in — its body and scope live here instead, and without a
+ * batched read a result set would cost one query per such entity. Returns an
+ * empty Map with no query for empty input, never emitting `IN ()`. Callers pass
+ * the same bounded candidate sets `getEntitiesByIds` documents.
+ */
+export async function getKnowledgeItemsByIds(
+  db: Executor,
+  ids: readonly string[],
+): Promise<Result<Map<string, KnowledgeItemRow>, IrohaError>> {
+  const byId = new Map<string, KnowledgeItemRow>();
+  if (ids.length === 0) {
+    return ok(byId);
+  }
+  try {
+    const placeholders = ids.map(() => "?").join(", ");
+    const result = await db.execute({
+      sql: `SELECT * FROM knowledge_items WHERE id IN (${placeholders})`,
+      args: [...ids],
+    });
+    for (const row of result.rows) {
+      const item = rowToKnowledgeItem(row);
+      byId.set(item.id, item);
+    }
+    return ok(byId);
+  } catch (cause) {
+    return err(mapLibsqlError(cause, "Failed to read knowledge items"));
+  }
+}
+
 /** An approved Rule joined with its entity identity, for `get_active_rules`. */
 export interface ActiveRuleRow {
   id: string;

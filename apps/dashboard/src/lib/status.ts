@@ -14,7 +14,7 @@ export type StatusTone =
   | "kurikawa"
   | "nibi";
 
-/** Approved-knowledge status → tone. */
+/** Knowledge entity status → tone. */
 export function knowledgeStatusTone(status: string): StatusTone {
   if (status === "approved") return "approve";
   if (status === "archived") return "reject";

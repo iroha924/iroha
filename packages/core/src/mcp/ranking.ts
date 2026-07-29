@@ -7,9 +7,11 @@ import {
   type Executor,
   getCanonicalDocumentsByEntityIds,
   getEntitiesByIds,
+  getKnowledgeItemsByIds,
   getNeighbors,
   getSubgraph,
   getWorkItemByExternalId,
+  type KnowledgeItemRow,
   type RelationRow,
   type RelationType,
 } from "@iroha/storage";
@@ -177,14 +179,51 @@ export function pathMatches(scopePath: string, requested: string): boolean {
 }
 
 /**
- * Derives an entity's facets from its (already-fetched) canonical document.
- * Pure — no DB read — so `rankCandidates` can prefetch every candidate's
- * document in ONE batched query and map over the results. `null` doc →
- * `EMPTY_FACETS`; a frontmatter parse failure → empty facets but keep the body.
+ * Facets for an entity that has no canonical document. An imported repository
+ * doc (canonical.md §14) is the case that matters: it is fully searchable, so
+ * without this it would occupy a result slot carrying no text and no scope,
+ * and its `paths:` frontmatter could not earn the scope multiplier a canonical
+ * rule gets from the same information.
  */
-function facetsFromDoc(doc: CanonicalDocumentRow | null): EntityFacets {
-  if (doc === null) {
+function facetsFromKnowledgeItem(item: KnowledgeItemRow | null, entity: EntityRow): EntityFacets {
+  if (item === null) {
     return EMPTY_FACETS;
+  }
+  // The file the text came from is the only provenance an imported document
+  // has, and it is the thing a consumer needs to go read the authoritative
+  // copy. Without it the caller is left parsing the human-oriented title.
+  const sources: SourceRef[] =
+    entity.sourceKind === "import" && entity.sourceRef !== null
+      ? [{ type: "document", ref: entity.sourceRef, path: entity.sourceRef }]
+      : [];
+  try {
+    const scope = JSON.parse(item.scopeJson) as Record<string, unknown>;
+    return {
+      scopePaths: toStringArray(scope.paths),
+      scopeSymbols: toStringArray(scope.symbols),
+      labels: [],
+      sources,
+      body: item.body,
+    };
+  } catch {
+    return { ...EMPTY_FACETS, sources, body: item.body };
+  }
+}
+
+/**
+ * Derives an entity's facets from its (already-fetched) canonical document,
+ * falling back to its knowledge item when there is no canonical document.
+ * Pure — no DB read — so `rankCandidates` can prefetch every candidate's
+ * document in ONE batched query and map over the results. A frontmatter parse
+ * failure → empty facets but keep the body.
+ */
+function facetsFromDoc(
+  doc: CanonicalDocumentRow | null,
+  knowledgeItem: KnowledgeItemRow | null,
+  entity: EntityRow,
+): EntityFacets {
+  if (doc === null) {
+    return facetsFromKnowledgeItem(knowledgeItem, entity);
   }
   try {
     const fm = JSON.parse(doc.frontmatterJson) as Record<string, unknown>;
@@ -421,6 +460,11 @@ export async function rankCandidates(
     return docsResult;
   }
   const docsByEntityId = docsResult.value;
+  const knowledgeResult = await getKnowledgeItemsByIds(db, candidateIds);
+  if (!knowledgeResult.ok) {
+    return knowledgeResult;
+  }
+  const knowledgeByEntityId = knowledgeResult.value;
 
   const survivors: Survivor[] = [];
   const scopeAnchors: string[] = [];
@@ -441,7 +485,11 @@ export async function rankCandidates(
     if (!inDateRange(entity.updatedAt, params.filters.from, params.filters.to)) {
       continue;
     }
-    const facets = facetsFromDoc(docsByEntityId.get(candidate.entityId) ?? null);
+    const facets = facetsFromDoc(
+      docsByEntityId.get(candidate.entityId) ?? null,
+      knowledgeByEntityId.get(candidate.entityId) ?? null,
+      entity,
+    );
     if (
       params.filters.labels !== undefined &&
       params.filters.labels.length > 0 &&

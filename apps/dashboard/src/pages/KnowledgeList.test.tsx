@@ -62,7 +62,7 @@ describe("KnowledgeList", () => {
       "GET /api/v1/knowledge": ok({ items: [], nextCursor: null, total: 0 }),
     });
     renderWithProviders(<KnowledgeList />);
-    await screen.findByText(/No approved knowledge/);
+    await screen.findByText(/No knowledge yet/);
 
     await userEvent.click(screen.getByRole("button", { name: "Decision" }));
     await waitFor(() => {
@@ -72,5 +72,45 @@ describe("KnowledgeList", () => {
       // smaller result set and render an empty page instead of the matches.
       expect(last.get("offset")).toBe("0");
     });
+  });
+
+  it("filters to imported repository docs and labels their status on the row", async () => {
+    const fn = mockApi({
+      "GET /api/v1/knowledge": ok({
+        items: [
+          knowledgeItem("Project instructions from CLAUDE.md", {
+            type: "rule",
+            status: "imported",
+            authority: 80,
+          }),
+        ],
+        nextCursor: null,
+        total: 1,
+      }),
+    });
+    renderWithProviders(<KnowledgeList />);
+    // The filter chip and the row's status badge both read "Imported"; the row
+    // badge is the one that proves the status reached the list item.
+    await screen.findByText("Project instructions from CLAUDE.md");
+    expect(screen.getAllByText("Imported")).toHaveLength(2);
+
+    await userEvent.click(screen.getByRole("button", { name: "Imported" }));
+    await waitFor(() => {
+      const last = new URL(String(fn.mock.calls.at(-1)?.[0]), "http://x").searchParams;
+      expect(last.getAll("status")).toEqual(["imported"]);
+    });
+  });
+
+  it("asks for imported docs alongside approved knowledge when no chip is active", async () => {
+    const fn = mockApi({
+      "GET /api/v1/knowledge": ok({ items: [], nextCursor: null, total: 0 }),
+    });
+    renderWithProviders(<KnowledgeList />);
+    await screen.findByText(/No knowledge yet/);
+
+    // The API defaults to `approved` alone, so an omitted status param would
+    // silently hide every imported repository doc on the unfiltered page.
+    const first = new URL(String(fn.mock.calls.at(0)?.[0]), "http://x").searchParams;
+    expect(first.getAll("status")).toEqual(["approved", "imported"]);
   });
 });

@@ -11,10 +11,8 @@ Run the iroha CLI to create the local index and shared `.iroha/` layout:
 iroha init
 ```
 
-`iroha init` is non-destructive and idempotent — rerunning it produces no changes. Add `--scan` to import `CLAUDE.md`, `AGENTS.md`, and `.claude/rules/**/*.md` as local candidates for later human review (it never copies them into `.iroha/`):
+`iroha init` is non-destructive and idempotent — rerunning it produces no changes.
 
-```bash
-iroha init --scan
-```
+It also imports `CLAUDE.md`, `AGENTS.md`, and `.claude/rules/**/*.md` into the local index as knowledge at status `imported`. These need no review: they are already committed to the repository. They are not copied into `.iroha/` — the source file stays authoritative, and `iroha sync` re-reads it when it changes.
 
 The git-tracked `.iroha/` directory is the team-shared source of truth; the local database is a rebuildable index. After init, commit `.iroha/` so teammates share it.

@@ -47,7 +47,7 @@ export interface SearchOptions {
 /** Review-queue statuses the API's `status` filter accepts (mirrors `CandidateStatus`). */
 export type CandidateStatusFilter = "pending" | "approved" | "rejected" | "superseded";
 /** Knowledge entity statuses the API's `status` filter accepts (mirrors the canonical status enum). */
-export type KnowledgeStatusFilter = "approved" | "superseded" | "archived";
+export type KnowledgeStatusFilter = "approved" | "imported" | "superseded" | "archived";
 /** Agent platforms the API's Session `platform` filter accepts. */
 type SessionPlatformFilter = "claude_code" | "codex";
 

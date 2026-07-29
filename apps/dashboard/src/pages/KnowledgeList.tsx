@@ -15,9 +15,23 @@ import {
 } from "@/components/ui/pagination.js";
 import { useI18n } from "@/i18n/index.js";
 import { pageWindow, parsePage } from "@/lib/pagination.js";
-import { KNOWLEDGE_TYPES, knowledgeTypeTone } from "@/lib/status.js";
+import { KNOWLEDGE_TYPES, knowledgeStatusTone, knowledgeTypeTone } from "@/lib/status.js";
 
-const KNOWLEDGE_STATUSES: readonly KnowledgeStatusFilter[] = ["approved", "superseded", "archived"];
+const KNOWLEDGE_STATUSES: readonly KnowledgeStatusFilter[] = [
+  "approved",
+  "imported",
+  "superseded",
+  "archived",
+];
+
+/**
+ * What an unfiltered page shows: current knowledge, whichever way it got here.
+ * The API's own default is `approved` alone, so this is sent explicitly —
+ * leaving it off would hide every imported repository doc until a reader
+ * thought to click a chip they had no reason to suspect existed. `superseded`
+ * and `archived` stay opt-in; they are history, not current knowledge.
+ */
+const DEFAULT_STATUSES: readonly KnowledgeStatusFilter[] = ["approved", "imported"];
 
 const PAGE_SIZE = 10;
 
@@ -30,8 +44,10 @@ function readFilter(params: URLSearchParams, key: string, allowed: readonly stri
 }
 
 /**
- * Approved-knowledge list with status/type filters and numbered pages
- * (contracts/dashboard-api.md §6).
+ * Knowledge list with status/type filters and numbered pages
+ * (contracts/dashboard-api.md §6). Both approved canonical knowledge and the
+ * repository docs `init`/`sync` import (canonical.md §14) live here — the status
+ * badge and filter are what tell them apart.
  *
  * Filters and page live in the URL, per the §2 state rules, so a filtered page is
  * linkable and changing a filter cannot leave a stale page number behind.
@@ -68,7 +84,7 @@ export function KnowledgeList() {
       api.knowledge({
         limit: PAGE_SIZE,
         offset: (requestedPage - 1) * PAGE_SIZE,
-        ...(statuses.length > 0 ? { statuses } : {}),
+        statuses: statuses.length > 0 ? statuses : [...DEFAULT_STATUSES],
         ...(types.length > 0 ? { types } : {}),
       }),
     // Keep the current rows on screen while a filter or page change refetches.
@@ -151,6 +167,9 @@ export function KnowledgeList() {
                     className="flex items-center gap-3 px-5 py-4 transition-colors hover:bg-paper-inset"
                   >
                     <Badge variant={knowledgeTypeTone(item.type)}>{t(`ktype.${item.type}`)}</Badge>
+                    <Badge variant={knowledgeStatusTone(item.status)}>
+                      {t(`status.${item.status}`)}
+                    </Badge>
                     <span className="flex-1 truncate font-medium text-ink">{item.title}</span>
                     <span className="shrink-0 text-xs tabular-nums text-ink-faint">
                       {t("knowledge.authority")} {item.authority}

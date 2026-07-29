@@ -12,8 +12,8 @@ function formatInit(data: RunInitResult): string {
   const facts: [string, string][] = [
     ["repository", init.repositoryId],
     [
-      "docs scanned",
-      `${init.docsScanned.map(sanitize).join(", ") || "none"} · ${init.candidatesCreated} new candidate(s)`,
+      "docs imported",
+      `${init.docsImported.map(sanitize).join(", ") || "none"} · ${init.entitiesWritten} updated`,
     ],
     [
       "canonical sync",
@@ -41,14 +41,10 @@ export const initCommand = define({
   rendering: { header: null },
   args: {
     json: { type: "boolean", description: "Output JSON" },
-    scan: {
-      type: "boolean",
-      description: "Also scan AGENTS.md/CLAUDE.md/.claude/rules/**/*.md into local candidates",
-    },
   },
   run: async (ctx) => {
     const json = ctx.values.json ?? false;
-    const result = await runInit(process.cwd(), MIGRATIONS_DIR, { scan: ctx.values.scan ?? false });
+    const result = await runInit(process.cwd(), MIGRATIONS_DIR);
     if (!result.ok) {
       printError(json, result.error);
       return;
