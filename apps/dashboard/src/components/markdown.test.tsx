@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { Markdown } from "@/components/markdown.js";
+import { Markdown, MarkdownInline } from "@/components/markdown.js";
 
 describe("Markdown", () => {
   it("renders headings and lists as elements, not literal markers", () => {
@@ -59,5 +59,25 @@ describe("Markdown", () => {
 
     expect(container.querySelector("a")).toBeNull();
     expect(screen.getByText("text")).toBeDefined();
+  });
+});
+
+describe("MarkdownInline", () => {
+  it("renders inline formatting without a block wrapper", () => {
+    const { container } = render(<MarkdownInline source={"**bold** and `code`"} />);
+
+    expect(container.querySelector("p")).toBeNull();
+    expect(container.querySelector("strong")?.textContent).toBe("bold");
+    expect(container.querySelector("code")?.textContent).toBe("code");
+  });
+
+  it("drops a table whole rather than leaving its rows without one", () => {
+    // `unwrapDisallowed` keeps a disallowed element's children, which for a table
+    // puts <thead>/<tbody> directly under a <div> — markup no browser accepts.
+    const { container } = render(<MarkdownInline source={"| a | b |\n| --- | --- |\n| 1 | 2 |"} />);
+
+    expect(container.querySelector("thead")).toBeNull();
+    expect(container.querySelector("tbody")).toBeNull();
+    expect(container.querySelector("tr")).toBeNull();
   });
 });

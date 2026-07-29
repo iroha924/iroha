@@ -120,17 +120,27 @@ export function Markdown({ source }: { source: string }) {
 
 /**
  * A summary rendered with its inline formatting but no block structure — the
- * places that show one (detail lead, search row, digest row) size it as one line,
+ * places that show one (the detail lead, a search row) size it as one line,
  * so a heading or list there would break the row rather than inform it.
  */
+const INLINE_COMPONENTS: Components = {
+  ...components,
+  p: ({ children }) => <>{children}</>,
+  // Dropped, not unwrapped — see `disallowedElements` below.
+  table: () => null,
+};
+
 export function MarkdownInline({ source }: { source: string }) {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
-      components={{ ...components, p: ({ children }) => <>{children}</> }}
+      components={INLINE_COMPONENTS}
       // A summary is one line by construction; anything block-level in it is a
-      // truncation artefact, not authored structure.
-      disallowedElements={["h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "table", "pre"]}
+      // truncation artefact, not authored structure. A table is *dropped* rather
+      // than unwrapped with the rest: unwrapping keeps its children, so the
+      // `<thead>`/`<tbody>` would land straight under a `<div>` — markup no
+      // browser accepts and React warns about.
+      disallowedElements={["h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "pre"]}
       unwrapDisallowed
     >
       {source}

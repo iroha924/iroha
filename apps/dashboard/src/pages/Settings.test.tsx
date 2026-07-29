@@ -27,7 +27,7 @@ const SHARED = {
 function settings(retentionDays: number | null) {
   return ok({
     shared: SHARED,
-    local: { embeddingKeyPresent: false, retentionDays, digestPeriodUnit: "week" },
+    local: { embeddingKeyPresent: false, retentionDays },
   });
 }
 

@@ -115,10 +115,11 @@ test.beforeAll(async () => {
     revisionToken: "e2e-token",
     createdAt: clock.now().toISOString(),
   });
-  // One diagnostics row, so Doctor renders its problems dialog. That dialog is
-  // the app's only `Dialog`, and a Dialog is exactly the kind of component that
-  // can inject a runtime <style> the strict CSP refuses — a state this journey
-  // cannot reach unless a problem exists to open it with.
+  // One diagnostics row, so Doctor renders its problems dialog. A Dialog is
+  // exactly the kind of component that can inject a runtime <style> the strict CSP
+  // refuses, and this journey cannot reach that state unless a problem exists to
+  // open one with. (The knowledge-detail modal is the app's other Dialog; the
+  // approve-candidate journey covers it.)
   await insertEventLog(db.value, {
     id: makeTypedId("log", clock, random),
     repositoryId: resolved.value.repositoryId,

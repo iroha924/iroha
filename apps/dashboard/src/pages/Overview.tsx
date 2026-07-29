@@ -169,6 +169,9 @@ export function Overview() {
             <CardTitle>
               {t("overview.denialsByRule").replace("{days}", String(d.denials.windowDays))}
             </CardTitle>
+            {/* Denials live only in this clone's index, so saying whose numbers
+                these are is not decoration: read as team-wide they are a lie. */}
+            <CardDescription>{t("overview.denialsScope")}</CardDescription>
           </CardHeader>
           <CardContent>
             {d.denials.byRule.length === 0 ? (
@@ -189,6 +192,7 @@ export function Overview() {
         <Card>
           <CardHeader>
             <CardTitle>{t("overview.clusters")}</CardTitle>
+            <CardDescription>{t("overview.denialsScope")}</CardDescription>
           </CardHeader>
           <CardContent>
             {d.denials.clusters.items.length === 0 ? (

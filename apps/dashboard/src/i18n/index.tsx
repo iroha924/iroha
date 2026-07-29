@@ -29,6 +29,8 @@ const ja: Dict = {
   "overview.noDenials": "Guardrail による拒否はありませんでした。",
   "overview.unattributed": "（ルール未特定）",
   "overview.clusters": "拒否が集中した場所",
+  "overview.denialsScope":
+    "この端末のローカル記録のみ。チームには共有されず、メンバー間で数値が異なります。",
   "overview.noClusters": "拒否が集中した場所はありません。",
   "overview.clustersTruncated": "上位のみ表示（全 {total} 箇所）。",
   "overview.advisoryNote":
@@ -140,6 +142,7 @@ const ja: Dict = {
   "doctor.resyncDone": "DB を再同期しました。",
   "doctor.events.title": "最近の問題",
   "doctor.events.open": "最近の問題 ({count})",
+  "doctor.events.unavailable": "最近の問題を読めません",
   "doctor.events.outcome": "結果",
   "doctor.events.event": "イベント",
   "doctor.events.source": "発生元",
@@ -195,6 +198,8 @@ const en: Dict = {
   "overview.noDenials": "No Guardrail denials.",
   "overview.unattributed": "(rule not recorded)",
   "overview.clusters": "Where denials clustered",
+  "overview.denialsScope":
+    "This machine's local record only. Not shared with your team, so teammates see different numbers.",
   "overview.noClusters": "Denials did not cluster anywhere.",
   "overview.clustersTruncated": "Showing the strongest ({total} in total).",
   "overview.advisoryNote":
@@ -306,6 +311,7 @@ const en: Dict = {
   "doctor.resyncDone": "Database resynced.",
   "doctor.events.title": "Recent problems",
   "doctor.events.open": "Recent problems ({count})",
+  "doctor.events.unavailable": "Recent problems unavailable",
   "doctor.events.outcome": "Outcome",
   "doctor.events.event": "Event",
   "doctor.events.source": "Source",

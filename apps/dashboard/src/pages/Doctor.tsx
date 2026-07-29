@@ -45,18 +45,21 @@ function outcomeTone(outcome: string): StatusTone {
  * successful tool call, and a 2xx request all append nothing — so this is a
  * problem list, and an empty one is the healthy state worth no page space.
  */
-function ProblemsDialog({ events }: { events: DiagnosticsEvent[] }) {
+function ProblemsDialog({ events, failed }: { events: DiagnosticsEvent[]; failed: boolean }) {
   const { t } = useI18n();
 
   return (
     <Dialog>
       <DialogTrigger render={<Button type="button" variant="outline" />}>
-        {t("doctor.events.open").replace("{count}", String(events.length))}
+        {failed
+          ? t("doctor.events.unavailable")
+          : t("doctor.events.open").replace("{count}", String(events.length))}
       </DialogTrigger>
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>{t("doctor.events.title")}</DialogTitle>
         </DialogHeader>
+        {failed && <ErrorState />}
         <Table>
           <TableHeader>
             <TableRow>
@@ -102,9 +105,11 @@ export function Doctor() {
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const q = useQuery({ queryKey: ["doctor"], queryFn: api.doctor });
-  // Not gated on `isPending`/`isError`: the checks below are the page, and this
-  // only decides whether an extra affordance appears next to them.
-  const problems = useQuery({ queryKey: ["events"], queryFn: api.events }).data?.events ?? [];
+  // A failed read is surfaced rather than folded into the empty case. `?? []` on
+  // its own makes a broken diagnostics fetch render exactly like a healthy
+  // repository — the one page where reporting health you did not measure is worst.
+  const events = useQuery({ queryKey: ["events"], queryFn: api.events });
+  const problems = events.data?.events ?? [];
 
   const repair = useMutation({
     mutationFn: () => api.doctorRepair("resync"),
@@ -128,7 +133,9 @@ export function Doctor() {
         title={t("doctor.title")}
         actions={
           <>
-            {problems.length > 0 && <ProblemsDialog events={problems} />}
+            {(problems.length > 0 || events.isError) && (
+              <ProblemsDialog events={problems} failed={events.isError} />
+            )}
             <Button
               type="button"
               variant="outline"

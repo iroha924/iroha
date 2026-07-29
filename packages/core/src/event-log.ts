@@ -24,12 +24,10 @@ export type McpToolName =
   | "create_checkpoint"
   | "get_active_rules"
   | "get_context"
-  | "get_digest_data"
   | "get_relations"
   | "get_session_state"
   | "link_entities"
   | "propose_knowledge"
-  | "save_digest_prose"
   | "search";
 
 export interface RecordEventInput {

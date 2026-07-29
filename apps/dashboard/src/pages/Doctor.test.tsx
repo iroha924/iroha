@@ -2,7 +2,7 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { Doctor } from "@/pages/Doctor.js";
-import { mockApi, ok, renderWithProviders } from "@/test-utils.js";
+import { fail, mockApi, ok, renderWithProviders } from "@/test-utils.js";
 
 const CHECKS = { checks: [{ name: "git", status: "ok", message: "git 2.49.0" }] };
 
@@ -58,5 +58,21 @@ describe("Doctor", () => {
     // The checks are the page; the healthy state must cost no space beyond them.
     expect(await screen.findByText("git 2.49.0")).toBeDefined();
     expect(screen.queryByRole("button", { name: /Recent problems/ })).toBeNull();
+  });
+
+  it("reports a failed diagnostics read instead of rendering it as healthy", async () => {
+    // `?? []` alone makes a broken events fetch indistinguishable from a repository
+    // with nothing wrong — on the one page whose job is to say whether anything is.
+    mockApi({
+      "GET /api/v1/doctor": ok(CHECKS),
+      "GET /api/v1/events": fail("INTERNAL_ERROR", 500),
+    });
+    renderWithProviders(<Doctor />);
+
+    await screen.findByText("git 2.49.0");
+    const trigger = await screen.findByRole("button", { name: "Recent problems unavailable" });
+    await userEvent.click(trigger);
+
+    expect(await screen.findByText(/Something went wrong/)).toBeDefined();
   });
 });

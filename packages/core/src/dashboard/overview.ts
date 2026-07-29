@@ -10,20 +10,12 @@ import {
   type KnowledgeEntityType,
   listApprovedRulesForRepository,
   listOpenDirtyMarkers,
-  listSessions,
   probeCapabilities,
   type StorageCapabilities,
 } from "@iroha/storage";
 import { classifyGuardSpec, type GuardEnforceability } from "../hooks/guardrail.js";
 import { readSchemaVersion } from "../schema-version.js";
 import { withDashboardRepository } from "./with-repository.js";
-
-export interface OverviewRecentSession {
-  id: string;
-  platform: string;
-  lastSeenAt: string;
-  latestRunStatus: string | null;
-}
 
 /**
  * How well the approved Guardrail set can actually be enforced by the hook —
@@ -63,9 +55,7 @@ export interface OverviewData {
   approvedKnowledge: number;
   /** Approved-knowledge composition by canonical type (feeds the Overview chart). */
   approvedKnowledgeByType: Record<KnowledgeEntityType, number>;
-  sessions: number;
   openDirtyMarkers: number;
-  recentSessions: OverviewRecentSession[];
   lastCanonicalSyncAt: string | null;
   rulesetAdequacy: RulesetAdequacy;
   denials: OverviewDenials;
@@ -175,10 +165,6 @@ export async function getOverview(
       if (!dirty.ok) {
         return dirty;
       }
-      const recent = await listSessions(ctx.db, ctx.repo.repositoryId, { limit: 5 });
-      if (!recent.ok) {
-        return recent;
-      }
       const cursor = await getSyncCursor(ctx.db, ctx.repo.repositoryId, "canonical");
       if (!cursor.ok) {
         return cursor;
@@ -206,14 +192,7 @@ export async function getOverview(
         oldestPendingCreatedAt: counts.value.oldestPendingCreatedAt,
         approvedKnowledge: counts.value.approvedKnowledge,
         approvedKnowledgeByType: counts.value.approvedKnowledgeByType,
-        sessions: counts.value.sessions,
         openDirtyMarkers: dirty.value.length,
-        recentSessions: recent.value.map((row) => ({
-          id: row.id,
-          platform: row.platform,
-          lastSeenAt: row.lastSeenAt,
-          latestRunStatus: row.latestRunStatus,
-        })),
         lastCanonicalSyncAt: cursor.value?.lastSuccessAt ?? null,
         rulesetAdequacy: adequacy.value,
         denials: {
