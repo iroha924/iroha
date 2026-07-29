@@ -116,7 +116,6 @@ Rules:
 ### Operations
 
 - `sync_cursors`, `dirty_markers`, `local_settings`, `event_log`.
-- `digest_issues`: 期間ごとのDigest prose（§16）。`migrations/006_digest_issues.sql`で追加。disposableなlocal viewであり、`sync --rebuild`後は空になる（proseは`/iroha:digest`で再生成する）。
 - `idempotency_keys`: MCP/HTTP mutationの再試行結果をrepository・operation・key単位で保持する。
 - `session_tokens`: SessionStart Hookが発行した256-bit session tokenの**salt-keyed HMAC-SHA-256 digestだけ**を保持する（平文tokenは保存しない、design.md §9 / contracts/mcp.md §5）。repository・Agent Session・Session Run・platformにbindし、`issued_at`/`last_used_at`/`expires_at`を持つ。MCP server（後続WP）が検証に読む。disposableなlocal運用状態であり、`sync --rebuild`はcanonicalのみ取り込むためrebuild後は空で再構築される。`migrations/002_session_tokens.sql`で追加。
 
@@ -396,144 +395,63 @@ one table retention never bounds.
   repository-level rebuild serialization §12 calls for, or a final merge before the swap —
   either is a change to the rebuild sequence, not to retention.
 
-## 16. Digest period facts and composed prose
+## 16. Front-page facts
 
-The Digest is the dashboard's front page: a per-period read model over facts already recorded,
-plus optional narration. Nothing here is canonical and nothing is committed to Git.
+The Overview page (`GET /api/v1/overview`) is the front page. Every number it reports is computed
+on request; there is no snapshot table and nothing here is canonical or committed to Git.
 
-- **The numbers are computed on request, never snapshotted.** `getDigestWindowFacts` runs seven
-  aggregates over one half-open window `[start, end)` and is called twice per page — for the
-  period and for the one before it, which is where the prior-period comparison comes from. There
-  is no snapshot table, so a trend resets on `sync --rebuild`; that is surfaced rather than
-  hidden.
-- **Periods are anchored calendar periods, not a rolling window.** A back issue needs a stable
-  identity: "the week of 2026-07-20" must mean the same seven days whenever it is opened, or
-  prose composed for it stops matching its numbers. Boundaries are calendar boundaries in the
-  host's local timezone, converted to UTC instants for querying (§8 of `dashboard-api.md`:
-  values UTC, display local). The window preference lives in `local_settings` under
-  `digest.period` as `{"unit": "week" | "month"}`, and a malformed value falls back to the
-  default rather than erroring — unlike `retention.local_events`, which governs deletion and so
-  must not guess at intent. It is still *rejected on write*: reading leniently and accepting
-  anything would return 200 for a typo and then silently ignore it.
-- **A period's end is the next period's start**, anchored the same way, never this start advanced
-  by one unit. On a day whose DST transition falls at local midnight the two differ, and adjacent
-  windows would overlap by an hour — counting one event in both a period and its predecessor.
-- **An out-of-range `offset` is clamped, not dropped.** Dropping it would answer a request for
-  520+ periods ago with the *current* period. The response carries the resolved `period.offset`,
-  so a client reads which issue it was served rather than trusting what it asked for.
-- **Two facts are current-state, not period-scoped**: `team.rulesetAdequacy` (how enforceable the
-  approved Guardrail set is *now*) and `local.pendingReviewLearnings`. §6 of `dashboard-api.md`
-  asks for them in the present tense; the page labels them so, because a back issue citing one
-  drifts from the period it names.
-
-### Two scopes
-
-A fact belongs to the **team** scope if and only if it is identical for every teammate who
-regenerates it from the same `.iroha/**` at the same Git HEAD; otherwise it is **local**.
-
-- **Local** — denials (`tool_events`), checkpoint outcomes, session counts, denial clusters, and
-  the count of pending `review_learning` candidates. These come from disposable index state that
-  is per-clone by construction.
-- **Team** — knowledge approved in the window, Guardrails added or changed, and promoted review
-  learnings, all windowed by `knowledge_items.approved_at`. That timestamp travels in the
-  canonical frontmatter and is restored by `syncCanonicalToDatabase`, so every clone's rebuild
-  yields the same numbers for the same period. `status = 'approved'` is also required, so a
-  tombstoned document whose `approved_at` is still set does not count.
-
-A **team-wide raw denial tally is not collectable** in this design: denials live only in each
-developer's local index and there is no shared telemetry store, which would require the
-forbidden daemon or upload. "Where the agent stumbles across the team" is therefore answerable
-only through the systemic lens — review recurrence and ruleset adequacy, both canonical.
-
-The window preference being per-developer does not break the team scope's identical-for-all
-property: that property is about the facts for a *given* window, not about everyone choosing the
-same window.
+- **Current state, not a period.** `rulesetAdequacy` classifies the approved Guardrail set as it
+  stands, and `pendingReviewLearnings` counts the queue as it stands. Neither is windowed.
+- **Denials cover a fixed recent window.** `getDenialFacts` runs two aggregates over one half-open
+  window `[start, end)`, and the response states its length in `denials.windowDays`. The window is
+  fixed rather than selectable: the page answers "which Rule keeps stopping the agent, and where",
+  which is a question about now.
+- **Activity volumes are deliberately absent.** Sessions started, Checkpoints written, and
+  per-period approval totals were on the Digest page this replaced. They were counted but never
+  acted on, and a number nobody acts on trains readers to ignore the ones they should. A fact
+  earns a place here only if a reader can do something differently because of it.
 
 ### Denial attribution
 
-A denied tool use is already recorded as `tool_events.phase = 'denied'` / `status = 'denied'`
-with the offending path in `target_summary`, but the Rule that denied it was only returned to the
-agent. `denied_by_rule_id` keeps it, so a denial count carries a lesson instead of being an
-unattributed number.
+A denied tool use is recorded as `tool_events.phase = 'denied'` / `status = 'denied'` with the
+offending path in `target_summary`, and `denied_by_rule_id` keeps the Rule that produced it, so a
+denial count carries a lesson instead of being an unattributed number.
 
 It is written on the row `handleToolStarted` already inserts. That is a requirement, not a
-convenience: §10 of `hooks.md` records a hook write waiting on libSQL's 2500 ms `busy_timeout`
-for 7932 ms on a PreToolUse denial against a 0.5 s budget, after which the platform kills the
-hook and the Guardrail deny is lost. This is also why the same denial is *not* recorded in
-`event_log` — the hook path writes no diagnostics row at all.
+convenience: §10 of `hooks.md` records a hook write waiting on libSQL's 2500 ms `busy_timeout` for
+7932 ms on a PreToolUse denial against a 0.5 s budget, after which the platform kills the hook and
+the Guardrail deny is lost. This is also why the same denial is *not* recorded in `event_log` — the
+hook path writes no diagnostics row at all.
 
 The column deliberately has **no foreign key**. The value always comes from a row
 `listApprovedRulesForRepository` just read from this same database, so a constraint could not be
 violated; a Rule removed from canonical is tombstoned in place rather than deleted, so
-`ON DELETE SET NULL` would never fire either. What a foreign key would add is a way for the
-insert to fail and lose the whole audit row on the one path that must not lose it. The read model
-resolves the title with a `LEFT JOIN`, so an id whose Rule is gone reads as an unattributed
-denial rather than a dangling link.
+`ON DELETE SET NULL` would never fire either. What a foreign key would add is a way for the insert
+to fail and lose the whole audit row on the one path that must not lose it. The read model resolves
+the title with a `LEFT JOIN`, so an id whose Rule is gone reads as an unattributed denial rather
+than a dangling link.
 
-### Composed prose (`digest_issues`)
+### No blended score, and no person
 
-One row per `(repository_id, period_unit, period_key)`, holding `prose_json` and `composed_at`.
-Recomposing overwrites: the numbers are recomputed on every read, so an older narration of the
-same period is stale by construction, not history worth versioning.
+The majority of `.claude/rules/*.md` are advisory prose with no machine-observable footprint, so no
+honest adherence total exists. The page shows separately sourced facts and states outright that
+advisory rules are not measured; do not blend them.
 
-The row is local index state. A Digest's headline facts come from `tool_events`/`checkpoints`,
-which `sync --rebuild` drops and which §2 of `canonical.md` keeps out of canonical (it excludes
-complete tool inputs and outputs) — so prose narrating them is not reconstructible from the
-committed files, and writing it into `.iroha/`
-would put a non-reconstructable artifact into a store whose §1 charter is that everything there
-is rebuildable. It also needs no approval gate: a Digest asserts no new team truth, so it sits
-outside the candidate→approve→canonical boundary rather than bypassing it. No `dispatch`/`digest`
-candidate or entity type was added for the same reason — it would have cost three CHECK-constraint
-migrations, a canonical directory, a body template, a `$defs` entry, a Zod mirror, and contract
-fixtures, for a newsletter.
+Frame enforceability symmetrically. A Guardrail that names no paths cannot be enforced at the hook
+and a malformed spec is skipped: "the setup failed the agent" is as much the story as "the agent
+broke a rule", and unlike a denial it is a defect the reader can go and fix.
 
-Prose is stored **redacted**: every free-text field (`headline`, `standfirst`, and each section's
-`heading` and `body` — `slot` is an enum and cannot carry a value) is secret-scanned before the
-write. The input is aggregates and approved-canonical titles and should hold no secret, but this
-is an at-rest store and a scan after the fact cannot strip what it never saw.
+No actor, author, email, or session-owner field may enter the payload. Free text in a fact is
+either an already-approved canonical entity's title or a repository-relative denied path
+(`tool_events.target_summary` — realpath-resolved and confined to the repository by
+`resolveTargets`, which `mcp.md` §8 permits persisting). Never a prompt, a transcript, a raw tool
+payload, or an absolute path.
 
-### The fact-ID seam
+### Removed: the period Digest
 
-`computeDigest` issues a flat `facts` list: a stable id, iroha's value, and an English label. The
-same list is used by the read path and by `save_digest_prose`, so validation cannot accept a
-reference the page will not render.
-
-The composing agent may reference a fact as `{{factId}}` and **has no field to write a number
-into**; the renderer substitutes iroha's value. A fabricated figure is therefore not expressible.
-Referencing an id the period did not issue is rejected; the offending ids are **not** returned,
-because §4 of `mcp.md` strips `details` from every failure envelope and echoing agent-supplied text
-into a message would put possibly-secret-shaped input into an error. The agent already holds the
-issued list and re-checks against it. An id that later disappears — a Rule deleted after
-composition takes its `byRule` fact with it — renders as an em dash, never a stale number.
-
-Writing a number as **digits** is rejected too. A reference gate alone does not deliver "a
-fabricated figure is inexpressible": "There were 999 denials" cites nothing, passes reference
-validation trivially, and renders as page copy. Digits inside an identifier, version, or date are
-left writable.
-
-What the seam does not prevent is prose that *contradicts* a correct number ("a quiet week" over
-a denial spike). That is inherent to narration, so numbers render as authoritative and prose
-carries an "unreviewed" label.
-
-**No blended adherence score.** The majority of `.claude/rules/*.md` are advisory prose with no
-machine-observable footprint, so there is no honest total. The Digest presents three separately
-sourced facts — enforceable stumbles, ruleset adequacy, review recurrence — and states that
-advisory rules are not measured.
-
-### Anti-surveillance, structurally
-
-`DigestData` has no field named or typed as actor, author, email, or session owner anywhere in
-it, and `get_digest_data` hands that payload to the agent verbatim. Per-person narration is
-therefore not something the composer could produce even if instructed to — the person data never
-arrives. Any free text quoted into a fact comes from an already-approved canonical entity's title
-or summary, never from a prompt, a transcript, or raw tool input.
-
-**Not yet in scope:**
-
-- The correlation set contains only `denial_cluster` (denied paths grouped by their leading two
-  segments). Intersecting a cluster with a review recurrence on the same paths — the
-  candidate-rule link — would need each pending `review_learning` candidate's payload parsed for
-  `scope.paths`; it is left out until there is data showing the intersection produces anything.
-- There is no `hasOlder`. Any calendar period exists, so navigating back always resolves; a period
-  before the data simply renders as zeros, which is honest but unbounded. Bounding it needs the
-  earliest-activity timestamp, a query the page does not otherwise want.
+Migration 008 dropped `digest_issues`, and the two MCP tools that wrote it
+(`get_digest_data` / `save_digest_prose`) are gone. The page was an editorial per-period issue whose
+prose the developer's own agent session composed against a fact-ID seam; its facts that changed a
+reader's next action moved here, and its activity volumes were dropped rather than moved. See
+ADR-016 in `architecture.md` for what the seam guaranteed and why the page it protected no longer
+exists.

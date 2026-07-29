@@ -280,8 +280,7 @@ Forge failureはcanonical/Git syncを失敗させない。GitHubはP1、GitLab�
 
 Initial UI:
 
-- Digest（front page `/`）
-- Overview（`/overview`）
+- Overview（front page `/`）
 - Sessions / Runs / Turns / Checkpoints
 - Candidate Review Queue
 - Knowledge
@@ -291,11 +290,13 @@ Initial UI:
 
 raw conversation endpoint、個人ranking、生産性scoreは作らない。Realtimeは不要で、mutation後invalidateとvisible pageの5秒pollingだけを使用する。WebSocket/SSEは使わない。
 
-### Digest（ADR-016）
+### Front page（ADR-016 → Superseded）
 
-front pageは期間（default 1 week、`local_settings`の`digest.period`で変更可）のeditorial digestである。数値はrequestごとにDBから再計算され、canonicalにもGitにも一切残らない。**prose composerは開発者自身のClaude Code / Codex session**（`/iroha:digest` skill → `get_digest_data` / `save_digest_prose`）であり、irohaのprocessが外部LLMを呼ぶことはない — 「no external LLM call without a new ADR」invariantに対する非違反をここに明記する（"iroha generates editorial prose"は逆に読まれやすいため）。
+front pageはOverviewである。数値はrequestごとにDBから再計算され、canonicalにもGitにも一切残らない。載せるのは**読者が次の行動を変えられるfactだけ**である（`contracts/database.md` §16）: 承認済みGuardrail setのenforceability、直近の固定windowにおけるRule別denialとその集中箇所、承認待ちreview learning、pending candidate、承認済みknowledgeのtype構成、未解決marker。
 
-数値とproseの境界は**fact-ID seam**である。agentはfact idを`{{factId}}`で参照するだけで、数値を書き込むfieldを持たない。renderer側がirohaの値を代入するため、捏造された数値はproseとして表現不能である。防げないのは「正しい数値と矛盾するprose」であり、そのため数値をauthoritativeとして描画し、proseには"unreviewed"を明示する。合成されたadherence scoreは提示しない（advisory ruleの多数はmachine-observableな痕跡を持たないため）。
+ADR-016のperiod Digestはここから削除された。session数・checkpoint数・期間ごとの承認合計といったactivity volumeは、計測されてはいたが誰の判断も変えなかった — 行動を変えないfactを並べることは、読者に「この画面の数字は読み飛ばしてよい」と教えることであり、行動を変えるfactの価値まで下げる。Digest固有のprose機構（agentが`{{factId}}`で参照するだけで数値を書き込むfieldを持たず、捏造された数値が表現不能になるfact-ID seam）は、それが守っていたページごと失われた。設計として正しかったが、守る対象が無くなった。
+
+合成されたadherence scoreは引き続き提示しない（advisory ruleの多数はmachine-observableな痕跡を持たないため）。
 
 ## 14. Privacy and security
 
@@ -362,7 +363,7 @@ end-to-endの受け入れは `apps/vertical-slice` と `apps/e2e` のテスト�
 | ADR-013 | No cloud、no daemon、no realtime | Accepted |
 | ADR-014 | No transcript core dependency、no surveillance | Accepted |
 | ADR-015 | scoped npm `@irohalabs/iroha` | Accepted |
-| ADR-016 | Digestのprose composerは開発者自身のagent session。irohaは外部LLMを呼ばない | Accepted |
+| ADR-016 | Digestのprose composerは開発者自身のagent session。irohaは外部LLMを呼ばない | Superseded（front pageをOverviewに統合しDigestを削除。irohaが外部LLMを呼ばない原則自体はinvariantとして存続） |
 | ADR-017 | 既存repository doc（`CLAUDE.md`/`AGENTS.md`/`.claude/rules`）はapprovalを経ず`source_kind='import'` entityとして取り込む | Accepted |
 
 Public licenseの選択だけは初回release前のdecision gateであり、local implementationを止めない。

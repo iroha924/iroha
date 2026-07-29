@@ -21,7 +21,6 @@ import {
   getLocalSetting,
   type LocalEventCounts,
   listPrunableSessions,
-  pruneDigestIssues,
   pruneEventLog,
   pruneSession,
 } from "@iroha/storage";
@@ -103,15 +102,6 @@ export interface PruneCounts {
   sessions: number;
   checkpoints: number;
   eventLogRows: number;
-  /**
-   * Composed Digest issues older than the window. Pruned with the data they
-   * narrate: an issue that says "{{local.denials.total}} denials, all in
-   * packages/git" renders "0 denials, all in packages/git" once the sweep removes
-   * the sessions behind it — an unreviewed claim outliving its evidence, under the
-   * one setting whose purpose is deliberate deletion. Losing it costs nothing;
-   * `/iroha:digest` regenerates prose.
-   */
-  digestIssues: number;
 }
 
 export interface RetentionOutcome {
@@ -158,7 +148,6 @@ export async function applyRetention(
     sessions: 0,
     checkpoints: 0,
     eventLogRows: 0,
-    digestIssues: 0,
   };
   let policyChanged = false;
   for (const sessionId of candidates.value) {
@@ -197,11 +186,6 @@ export async function applyRetention(
       return { status: "failed", days, errorCode: eventLogRows.error.code };
     }
     pruned.eventLogRows = eventLogRows.value;
-    const digestIssues = await pruneDigestIssues(db, repositoryId, cutoff);
-    if (!digestIssues.ok) {
-      return { status: "failed", days, errorCode: digestIssues.error.code };
-    }
-    pruned.digestIssues = digestIssues.value;
   }
 
   return { status: "pruned", days, pruned };

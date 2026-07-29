@@ -10,7 +10,6 @@ import { TooltipProvider } from "@/components/ui/tooltip.js";
 import { type Locale, useI18n } from "@/i18n/index.js";
 import { useBackgroundLocation } from "@/lib/modal-route.js";
 import { cn } from "@/lib/utils";
-import { Digest } from "@/pages/Digest.js";
 import { Doctor } from "@/pages/Doctor.js";
 import { GraphComingSoon } from "@/pages/GraphComingSoon.js";
 import { KnowledgeDetail } from "@/pages/KnowledgeDetail.js";
@@ -114,8 +113,7 @@ export function App() {
               {/* Two landmarks in one header: without labels a screen reader
                 announces "navigation" twice with no way to tell them apart. */}
               <nav aria-label={t("nav.primaryLabel")} className="flex items-center gap-6">
-                <NavItem to="/" label={t("nav.digest")} />
-                <NavItem to="/overview" label={t("nav.overview")} />
+                <NavItem to="/" label={t("nav.overview")} />
                 <NavItem to="/review" label={t("nav.review")} />
                 <NavItem to="/knowledge" label={t("nav.knowledge")} />
                 <NavItem to="/graph" label={t("nav.graph")} />
@@ -135,10 +133,8 @@ export function App() {
           {/* Routed against the background when one is set, so the list a dialog was
             opened from stays mounted underneath instead of unmounting under it. */}
           <Routes location={background ?? location}>
-            {/* The Digest is the front page; Overview keeps the non-period view of
-              standing state (pending pressure, totals, recent sessions). */}
-            <Route path="/" element={<Digest />} />
-            <Route path="/overview" element={<Overview />} />
+            {/* Overview is the front page; there is no separate route for it. */}
+            <Route path="/" element={<Overview />} />
             <Route path="/review" element={<ReviewQueue />} />
             <Route path="/review/:id" element={<ReviewDetail />} />
             <Route path="/knowledge" element={<KnowledgeList />} />

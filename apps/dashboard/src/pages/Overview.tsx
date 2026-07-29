@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { Bar, BarChart, Cell, XAxis, YAxis } from "recharts";
 import { api } from "@/api/client.js";
 import { ErrorState, InfoTip, Loading, PageHeader } from "@/components/brand.js";
+import { Badge } from "@/components/ui/badge.js";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card.js";
 import {
   type ChartConfig,
@@ -13,6 +14,9 @@ import {
 import { useI18n } from "@/i18n/index.js";
 import { KNOWLEDGE_TYPES } from "@/lib/status.js";
 
+/** The three adequacy buckets, so every one is reported even at zero. */
+const ADEQUACY_KINDS = ["enforceable", "not_hook_enforceable", "invalid"] as const;
+
 function MiniStat({ label, value }: { label: ReactNode; value: number }) {
   return (
     <Card>
@@ -21,6 +25,15 @@ function MiniStat({ label, value }: { label: ReactNode; value: number }) {
         <div className="mt-1 text-sm text-ink-muted">{label}</div>
       </CardContent>
     </Card>
+  );
+}
+
+function CountRow({ label, count }: { label: string; count: number }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 border-hairline border-b py-2 last:border-0">
+      <span className="min-w-0 truncate text-sm text-ink">{label}</span>
+      <span className="shrink-0 tabular-nums text-ink-muted">{count}</span>
+    </div>
   );
 }
 
@@ -109,13 +122,102 @@ export function Overview() {
         </Card>
       </div>
 
-      <div className="mt-6 grid gap-6 sm:grid-cols-2">
+      <div className="mt-6 grid gap-6 sm:grid-cols-3">
         <MiniStat label={t("overview.approved")} value={d.approvedKnowledge} />
         <MiniStat
           label={<InfoTip label={t("overview.dirty")} explanation={t("overview.dirtyHint")} />}
           value={d.openDirtyMarkers}
         />
+        <MiniStat
+          label={
+            <InfoTip
+              label={t("overview.pendingLearnings")}
+              explanation={t("overview.pendingLearningsHint")}
+            />
+          }
+          value={d.pendingReviewLearnings}
+        />
       </div>
+
+      {/* The setup failing the agent is as much the story as the agent breaking a
+          rule, and unlike a denial it is a defect the reader can go and fix. */}
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>
+            <InfoTip label={t("overview.adequacy")} explanation={t("overview.guardrailHint")} />
+          </CardTitle>
+          <CardDescription>{t("overview.adequacyNow")}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-6 sm:grid-cols-3">
+            {ADEQUACY_KINDS.map((kind) => (
+              <div key={kind}>
+                <div className="font-display text-3xl font-semibold tabular-nums text-ink">
+                  {d.rulesetAdequacy[kind]}
+                </div>
+                <div className="mt-1 text-sm text-ink-muted">{t(`overview.adequacy.${kind}`)}</div>
+              </div>
+            ))}
+          </div>
+          <p className="mt-5 text-pretty text-xs text-ink-muted">{t("overview.adequacyHint")}</p>
+        </CardContent>
+      </Card>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              {t("overview.denialsByRule").replace("{days}", String(d.denials.windowDays))}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {d.denials.byRule.length === 0 ? (
+              <p className="text-sm text-ink-faint">{t("overview.noDenials")}</p>
+            ) : (
+              <div>
+                {d.denials.byRule.map((row) => (
+                  <CountRow
+                    key={row.ruleId ?? "unattributed"}
+                    label={row.ruleTitle ?? row.ruleId ?? t("overview.unattributed")}
+                    count={row.count}
+                  />
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("overview.clusters")}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {d.denials.clusters.items.length === 0 ? (
+              <p className="text-sm text-ink-faint">{t("overview.noClusters")}</p>
+            ) : (
+              <>
+                <div className="flex flex-wrap gap-2">
+                  {d.denials.clusters.items.map((cluster) => (
+                    <Badge key={cluster.key} variant="pending">
+                      <span className="font-mono text-[11px]">{cluster.key}</span>
+                      <span className="tabular-nums">{cluster.count}</span>
+                    </Badge>
+                  ))}
+                </div>
+                {d.denials.clusters.truncated && (
+                  <p className="mt-3 text-xs text-ink-faint">
+                    {t("overview.clustersTruncated").replace(
+                      "{total}",
+                      String(d.denials.clusters.total),
+                    )}
+                  </p>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <p className="mt-10 text-pretty text-xs text-ink-faint">{t("overview.advisoryNote")}</p>
     </section>
   );
 }

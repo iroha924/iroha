@@ -23,8 +23,7 @@ const LAUNCH_TOKEN = "e2e-all-tabs-token";
  * state, a failed fetch, or an unhandled render throws instead.
  */
 const TABS = [
-  { path: "/", nav: "Digest" },
-  { path: "/overview", nav: "Overview" },
+  { path: "/", nav: "Overview" },
   { path: "/review", nav: "Candidates" },
   { path: "/knowledge", nav: "Knowledge" },
   { path: "/graph", nav: "Graph" },
@@ -243,8 +242,8 @@ test("every tab renders against the real API with no errors", async ({ page }) =
   }
 
   // Same reason as the dialog below: a tooltip only mounts its portal on hover, so
-  // walking past /overview never exercises the positioner the console watcher guards.
-  await page.goto(`${origin}/overview`);
+  // walking the front page never exercises the positioner the console watcher guards.
+  await page.goto(`${origin}/`);
   await settled(page);
   await page.locator('[data-slot="tooltip-trigger"]').first().hover();
   await expect(page.locator('[data-slot="tooltip-content"]')).toBeVisible();

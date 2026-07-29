@@ -28,6 +28,14 @@ const OVERVIEW = ok({
   openDirtyMarkers: 0,
   recentSessions: [],
   lastCanonicalSyncAt: null,
+  rulesetAdequacy: { enforceable: 2, not_hook_enforceable: 1, invalid: 0 },
+  denials: {
+    windowDays: 30,
+    total: 0,
+    byRule: [],
+    clusters: { items: [], total: 0, truncated: false },
+  },
+  pendingReviewLearnings: 0,
 });
 
 describe("App", () => {
