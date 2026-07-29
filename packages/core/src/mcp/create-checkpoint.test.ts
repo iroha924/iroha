@@ -81,10 +81,10 @@ describe("mcpCreateCheckpoint", () => {
     }
   });
 
-  // A secret in a proposal must not cost the checkpoint. mcp.md §6.6 replaces the
-  // flagged field and reports it through `redactions[]` on the successful response,
-  // so the template gate has to stand down rather than reject a placeholder.
-  it("saves the checkpoint but omits the proposal when a secret is in its body", async () => {
+  // Same verdict as `propose_knowledge`: a replaced field cannot form a canonical
+  // document, and §6.6 step 5 defines no partial success, so the call is rejected
+  // and the agent — which still holds the content — resubmits without the secret.
+  it("rejects the whole call when a secret is in a proposal body", async () => {
     repo = await setupMcpRepo(random);
     const seedDb = await openDatabase(repo.dbPath);
     expect(seedDb.ok).toBe(true);
@@ -106,19 +106,18 @@ describe("mcpCreateCheckpoint", () => {
       }),
     });
 
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.value.redactions.map((r) => r.field)).toContain("proposals[0].body");
-    // Omitted, not stored: a placeholder body can never satisfy the template, so
-    // enqueuing it would create a candidate nobody can approve.
-    expect(result.value.candidateIds).toEqual([]);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe("INVALID_INPUT");
+    expect(result.error.message).toContain("proposals[0]");
+    expect(result.error.message).toContain("secret was detected");
+    // Not the headings: they were fine until the scanner replaced the field.
+    expect(result.error.message).not.toContain("H1");
 
-    // The checkpoint itself survived, which is the whole point.
+    // Nothing was written — not the checkpoint, and not a placeholder candidate.
     const db = await openDatabase(repo.dbPath);
     expect(db.ok).toBe(true);
     if (!db.ok) return;
-    const checkpoint = await getCheckpointById(db.value, result.value.checkpointId);
-    expect(checkpoint.ok && checkpoint.value !== null).toBe(true);
     const candidates = await listCandidatesByStatus(db.value, repo.repositoryId, "pending");
     expect(candidates.ok && candidates.value.length).toBe(0);
     await closeDatabase(db.value);

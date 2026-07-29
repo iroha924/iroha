@@ -294,7 +294,11 @@ Transaction:
 2. secret-scan/redact allowed fields;
 3. resolve or create Turn association;
 4. insert entity and Checkpoint;
-5. create candidates from `proposals`;
+5. create candidates from `proposals` — every proposal body must satisfy the canonical body
+   template (`canonical.md` §7), and a field the secret scan replaced can no longer satisfy it, so
+   either case rejects the **whole call** with `INVALID_INPUT` and writes nothing. The agent still
+   holds the content and resubmits; a partial success that silently drops a proposal is not an
+   outcome this tool has. `propose_knowledge` rejects for the same two reasons;
 6. create explicit reference relations;
 7. set Turn `checkpoint_state=saved`;
 8. commit;

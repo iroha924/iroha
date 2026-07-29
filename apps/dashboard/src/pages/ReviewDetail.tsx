@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ApiClientError, api } from "@/api/client.js";
 import { BackLink, ErrorState, Loading } from "@/components/brand.js";
@@ -19,9 +19,6 @@ import {
 import { useI18n } from "@/i18n/index.js";
 import { knowledgeTypeTone } from "@/lib/status.js";
 import { cn } from "@/lib/utils";
-
-/** Above this, the body is folded: long enough to read a section, short enough not to bury the verdict buttons. */
-const COLLAPSED_BODY_LINES = 30;
 
 /**
  * Candidate review detail (contracts/dashboard-api.md §6): edit the draft, view the
@@ -52,6 +49,28 @@ export function ReviewDetail() {
   const [nameQuery, setNameQuery] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [bodyExpanded, setBodyExpanded] = useState(false);
+  // Whether the rendered body is actually clipped. Source lines are the wrong
+  // measure: one 20,000-character paragraph is a single line and still overflows,
+  // and without this the reader would be left with a clipped body and no way to
+  // open it.
+  const clampRef = useRef<HTMLDivElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const [overflows, setOverflows] = useState(false);
+  useEffect(() => {
+    const clamp = clampRef.current;
+    const content = contentRef.current;
+    if (clamp === null || content === null) return;
+    const measure = () => setOverflows(content.scrollHeight > clamp.clientHeight + 1);
+    measure();
+    // Observe the *content*, not the clamp: the clamp's own box is pinned by
+    // `max-h`, so it never resizes and an observer on it would never fire.
+    const observer = new ResizeObserver(measure);
+    observer.observe(content);
+    return () => observer.disconnect();
+    //  is in the deps because the component returns early while loading:
+    // on the first run both refs are still null, and without a re-run after the
+    // body renders the measurement never happens.
+  }, [bodyExpanded, q.data]);
 
   // The reviewer is almost always the person at the keyboard, so the local Git
   // identity seeds the field. Only while it is still untouched: retyping over a
@@ -107,7 +126,6 @@ export function ReviewDetail() {
   if (q.isPending) return <Loading />;
   if (q.isError || q.data === undefined) return <ErrorState />;
   const d = q.data;
-  const bodyLines = d.draft.body.split("\n").length;
   const secretBlocked = !d.validation.secretsClean;
   // Typing narrows the list rather than constraining it: the field is free text
   // so a name Git has never seen still approves. Matching is a plain
@@ -134,30 +152,30 @@ export function ReviewDetail() {
           <Badge variant={knowledgeTypeTone(d.type)} className="w-fit">
             {t(`ktype.${d.type}`)}
           </Badge>
-          <h1 className="font-display text-2xl font-semibold leading-snug tracking-tight text-ink">
-            {d.draft.title}
-          </h1>
+          {/* No separate title element: §7 makes the body's first H1 equal to the
+              title, so the rendered body already leads with it. */}
           <div className="space-y-1.5">
             {/* Rendered, not editable: the decision is whether this is worth
                 keeping, and Markdown source is harder to judge that from. */}
             <div
+              ref={clampRef}
               className={cn(
                 "rounded-xl bg-paper-inset px-4 py-3",
                 !bodyExpanded && "max-h-[36rem] overflow-hidden",
               )}
             >
-              <Markdown source={d.draft.body} />
+              <div ref={contentRef}>
+                <Markdown source={d.draft.body} />
+              </div>
             </div>
-            {bodyLines > COLLAPSED_BODY_LINES && (
+            {overflows && (
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
                 onClick={() => setBodyExpanded((open) => !open)}
               >
-                {bodyExpanded
-                  ? t("review.collapseBody")
-                  : t("review.expandBody").replace("{lines}", String(bodyLines))}
+                {bodyExpanded ? t("review.collapseBody") : t("review.expandBody")}
               </Button>
             )}
           </div>

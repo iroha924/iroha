@@ -44,7 +44,7 @@ const ja: Dict = {
   "review.reviewerPick": "一覧から選ぶ",
   "review.reviewerPickUnavailable":
     "リポジトリの人物一覧を取得できませんでした。名前は手入力できます。",
-  "review.expandBody": "全文を表示（{lines} 行）",
+  "review.expandBody": "全文を表示",
   "review.collapseBody": "折りたたむ",
   "knowledge.title": "承認済みナレッジ",
   "knowledge.empty": "承認済みナレッジはまだありません。",
@@ -226,7 +226,7 @@ const en: Dict = {
   "review.reviewerPick": "Pick from list",
   "review.reviewerPickUnavailable":
     "Could not read this repository's people. Type the name instead.",
-  "review.expandBody": "Show all {lines} lines",
+  "review.expandBody": "Show the whole body",
   "review.collapseBody": "Collapse",
   "knowledge.title": "Approved knowledge",
   "knowledge.empty": "No approved knowledge yet.",

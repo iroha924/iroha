@@ -230,7 +230,8 @@
         "title": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 160
+          "maxLength": 160,
+          "pattern": "^\\S(.*\\S)?$"
         },
         "status": {
           "enum": ["approved", "superseded", "archived"]

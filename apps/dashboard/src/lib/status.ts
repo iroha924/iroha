@@ -6,13 +6,13 @@ export type StatusTone =
   | "pending"
   | "reject"
   | "neutral"
-  | "matcha"
-  | "persimmon"
-  | "clay"
-  | "amber"
-  | "fuji"
+  | "ai"
   | "suou"
-  | "asagi";
+  | "tokusa"
+  | "fuji"
+  | "asagi"
+  | "kurikawa"
+  | "nibi";
 
 /** Approved-knowledge status → tone. */
 export function knowledgeStatusTone(status: string): StatusTone {
@@ -28,16 +28,17 @@ export function knowledgeStatusTone(status: string): StatusTone {
  * exactly what happened while the chart kept its own `--chart-*` series.
  *
  * Order is the canonical type order and is stable: the chart's bars are read
- * against it.
+ * against it. None of these are matcha, persimmon or amber — those carry
+ * approve / reject / pending, and a type badge must not look like a verdict.
  */
 export const KNOWLEDGE_TYPES = [
-  { key: "decision", tone: "matcha", color: "var(--color-matcha)" },
-  { key: "rule", tone: "persimmon", color: "var(--color-persimmon)" },
-  { key: "concept", tone: "clay", color: "var(--color-clay)" },
+  { key: "decision", tone: "ai", color: "var(--color-ai)" },
+  { key: "rule", tone: "tokusa", color: "var(--color-tokusa)" },
+  { key: "concept", tone: "kurikawa", color: "var(--color-kurikawa)" },
   { key: "insight", tone: "fuji", color: "var(--color-fuji)" },
   { key: "incident", tone: "suou", color: "var(--color-suou)" },
   { key: "pattern", tone: "asagi", color: "var(--color-asagi)" },
-  { key: "review_learning", tone: "amber", color: "var(--color-warn)" },
+  { key: "review_learning", tone: "nibi", color: "var(--color-nibi)" },
 ] as const satisfies ReadonlyArray<{ key: string; tone: StatusTone; color: string }>;
 
 /**

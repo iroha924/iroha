@@ -46,34 +46,26 @@ function renderDetail() {
 }
 
 describe("ReviewDetail", () => {
-  // The body is rendered, not editable, so the fold is a height clamp on the
-  // rendered block. jsdom loads no CSS, so the clamp class is the observable part.
-  it.each([
-    { case: "a short body", lines: 5, toggle: false },
-    { case: "a body past the fold", lines: 80, toggle: true },
-  ])("shows the expand toggle only for $case", async ({ lines, toggle }) => {
-    const body = Array.from({ length: lines }, (_, i) => `line ${i}`).join("\n");
+  it("renders the candidate read-only, with no draft editor", async () => {
     mockApi({
-      "GET /api/v1/candidates/cand_x": ok(candidate({ draft: { ...candidate().draft, body } })),
+      "GET /api/v1/candidates/cand_x": ok(candidate()),
       "GET /api/v1/people": ok({ self: null, names: [] }),
     });
     renderDetail();
 
-    // The title reads as a heading now, not as a form field.
-    expect(await screen.findByRole("heading", { name: "Use libSQL" })).toBeInTheDocument();
+    // Exactly one: the title is the body's own H1 (§7), not a second element
+    // repeating it above the body.
+    const headings = await screen.findAllByRole("heading", { name: "Use libSQL" });
+    expect(headings).toHaveLength(1);
     expect(screen.queryByLabelText("Markdown body")).toBeNull();
+    expect(screen.queryByLabelText("Title")).toBeNull();
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
-
-    if (!toggle) {
-      expect(screen.queryByText(/Show all/)).toBeNull();
-      return;
-    }
-
-    fireEvent.click(screen.getByText(`Show all ${lines} lines`));
-    expect(screen.getByText("Collapse")).toBeInTheDocument();
-    fireEvent.click(screen.getByText("Collapse"));
-    expect(screen.getByText(`Show all ${lines} lines`)).toBeInTheDocument();
   });
+
+  // The fold itself is not asserted here: it triggers on rendered overflow, and
+  // jsdom performs no layout, so `scrollHeight`/`clientHeight` are both 0.
+  // Stubbing them on `HTMLElement.prototype` breaks Testing Library's own
+  // queries, so the behaviour is covered in the e2e, which runs a real browser.
 
   it("enables approval only after a reviewer name is entered, then approves via keyboard", async () => {
     const fetchMock = mockApi({

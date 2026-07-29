@@ -122,6 +122,20 @@ const negativeFixtures: Array<[string, unknown]> = [
     "validation item negative duration",
     baseInput({ validation: [{ result: "passed", durationMs: -1 }] }),
   ],
+  // A padded title has no writable H1, so `canonical.md` §7's equality could never
+  // be met; both representations must reject it, not just one.
+  [
+    "proposal title with leading whitespace",
+    baseInput({ proposals: [{ ...minimalProposal, title: " Use libSQL" }] }),
+  ],
+  [
+    "proposal title with trailing whitespace",
+    baseInput({ proposals: [{ ...minimalProposal, title: "Use libSQL " }] }),
+  ],
+  [
+    "proposal title of whitespace only",
+    baseInput({ proposals: [{ ...minimalProposal, title: " " }] }),
+  ],
   ["reference missing ref", baseInput({ references: [{ type: "issue" }] })],
   [
     "reference unknown type (session is not a valid reference type here)",

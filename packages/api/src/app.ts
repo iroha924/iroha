@@ -673,7 +673,9 @@ export function createApp(config: AppConfig) {
         listKnowledge({
           ...useCaseCtx,
           ...numOpt("limit", firstOf(q.limit)),
-          ...numOpt("offset", firstOf(q.offset)),
+          // Same bounds as the review queue: clamped so a huge but parseable
+          // page number cannot reach SQLite as an out-of-range OFFSET and 500.
+          ...intOpt("offset", firstOf(q.offset), 0, Number.MAX_SAFE_INTEGER),
           ...strOpt("cursor", firstOf(q.cursor)),
           ...enumArrOpt("statuses", c.req.queries("status"), [
             "approved",

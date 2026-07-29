@@ -283,7 +283,7 @@ The detail view has:
 
 - source Session/Checkpoint/Review;
 - candidate type/status/confidence;
-- editable title, metadata, and Markdown body;
+- title, metadata, and the Markdown body **rendered, not editable** — the reviewer decides whether the knowledge is worth keeping, not what it should say;
 - rendered preview;
 - secret/path/schema validation results;
 - possible duplicates/contradictions;

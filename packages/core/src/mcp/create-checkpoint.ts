@@ -183,36 +183,36 @@ async function redactCheckpoint(
 }
 
 /**
- * The same gate as `propose_knowledge`: a body that cannot become a canonical
- * document is rejected while the agent can still rewrite it, not at approval.
+ * The same gate as `propose_knowledge`, and deliberately the same verdict.
  *
- * Runs inside the idempotent write rather than beside the redaction, so a retry
- * of a key that already committed still short-circuits to its stored result
- * (`contracts/mcp.md` §6.6 step 9) — otherwise upgrading past the release that
- * added this check would turn a settled write into `INVALID_INPUT`.
+ * A redacted field leaves a placeholder that can never satisfy §7, so the
+ * proposal cannot become a candidate. Omitting it silently would return a
+ * successful checkpoint while discarding submitted work, and §6.6 step 5 defines
+ * no such outcome — so the whole call is rejected and the agent, which still
+ * holds the content, resubmits without the secret. One rule for both tools.
+ *
+ * Runs inside the idempotent write, so a retry of a key that already committed
+ * still short-circuits to its stored result (§6.6 step 9).
  */
-function proposalsToStore(
+function validateProposals(
   proposals: CheckpointInput["proposals"],
   redactions: readonly FieldRedaction[],
-): Result<CheckpointInput["proposals"], IrohaError> {
-  const keep: CheckpointInput["proposals"] = [];
+): Result<void, IrohaError> {
   for (const [index, proposal] of proposals.entries()) {
-    // A redacted field is a placeholder that can never satisfy §7, so storing it
-    // would enqueue a candidate no reviewer can approve. Drop that proposal and
-    // keep the checkpoint: §6.6 reports the replacement through `redactions[]`,
-    // and the turn's objective, implementation and validation are not the
-    // agent's mistake to lose. The dropped one is visible as an id missing from
-    // `candidateIds` next to its entry in `redactions[]`.
     if (proposalWasRedacted(redactions, `proposals[${index}]`)) {
-      continue;
+      return err(
+        new IrohaErrorClass(
+          "INVALID_INPUT",
+          `proposals[${index}]: a secret was detected and the field was replaced, so the proposal can no longer form a canonical document; resubmit without the secret`,
+        ),
+      );
     }
     const body = validateProposalBody(proposal, `proposals[${index}]`, `proposals[${index}]: `);
     if (!body.ok) {
       return err(body.error);
     }
-    keep.push(proposal);
   }
-  return ok(keep);
+  return ok(undefined);
 }
 
 function storedToData(responseJson: string): McpCreateCheckpointData {
@@ -337,9 +337,9 @@ export async function mcpCreateCheckpoint(
           resultEntityId: data.checkpointId,
         }),
         work: async (tx) => {
-          const storable = proposalsToStore(redacted.value.proposals, redacted.value.redactions);
-          if (!storable.ok) {
-            return err(storable.error);
+          const proposals = validateProposals(redacted.value.proposals, redacted.value.redactions);
+          if (!proposals.ok) {
+            return err(proposals.error);
           }
           const entity = await insertEntity(tx, {
             id: checkpointId,
@@ -375,7 +375,7 @@ export async function mcpCreateCheckpoint(
           }
 
           const candidateIds: TypedId<"cand">[] = [];
-          for (const proposal of storable.value) {
+          for (const proposal of redacted.value.proposals) {
             const candidateId = makeTypedId("cand", ctx.clock, ctx.random);
             const revisionToken = Buffer.from(ctx.random.bytes(16)).toString("base64url");
             const candidate = await insertCandidate(tx, {
