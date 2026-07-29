@@ -1,6 +1,6 @@
 # iroha agent instructions
 
-iroha is a local-first Engineering Memory Graph for Claude Code and Codex (TypeScript/Node 24, pnpm workspaces, libSQL, Zod, MCP server, Hook adapters, a local Hono API + React dashboard). This file is the entry point for any coding agent working in this repo, including Codex reviewing a pull request in CI — it does not assume you have already read `CLAUDE.md` or `.claude/rules/*.md`, since those are loaded automatically only inside Claude Code sessions. Read the files this document points to; do not guess at their content.
+iroha is a local-first Engineering Memory Graph for Claude Code and Codex (TypeScript/Node 24, pnpm workspaces, libSQL, Zod, MCP server, Hook adapters, a local Hono API + React dashboard). This file is the entry point for any coding agent working in this repo, including Codex, which reviews a pull request as a hosted GitHub app and appears in no CI status check — it does not assume you have already read `CLAUDE.md` or `.claude/rules/*.md`, since those are loaded automatically only inside Claude Code sessions. Read the files this document points to; do not guess at their content.
 
 ## Read first
 

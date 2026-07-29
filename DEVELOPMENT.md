@@ -151,12 +151,12 @@ iroha の開発に使っている技術を「何か / iroha での役割 / い�
 | **typos**（CI 専用） | タイポ検査。ツール名がタイポに見えるもの（`sherif`→sheriff 等）は `_typos.toml` に許可登録 | docs-lint job。ローカル未導入 |
 | **mdast-util-from-markdown** | 構造化 Markdown の正しいパース（naive な `#` 正規表現はコードフェンス内を誤検出する） | canonical 文書等の Markdown 検証 |
 
-## 15. CI レビューボット（`.claude/skills/pr-review-status/`）
+## 15. レビューボット（`.claude/skills/pr-review-status/`）
 
 | ボット | 観測方法 | トリガー |
 |---|---|---|
 | **Greptile**（**現在 disabled**） | 有効時は CI status check「Greptile Review」（advisory・**findings 有無に関わらず pass**）+ Summary/inline コメント。P0/P1/P2 バッジ | 現状は動かないので「Greptile Review」チェックを待たない（永久に現れず post-push の確認が止まる） |
-| **Codex**（`chatgpt-codex-connector[bot]`） | **CI 非観測**。PR リアクション 👀（レビュー中）/ 👍（完了・問題なし）/ 👍消滅（完了・問題あり）+ 投稿レビュー | **PR open のみ自動**。再レビューは `@codex review [for security regressions]`。rate-limited なので claude が要否判断（既指摘の修正だけなら再依頼しない） |
+| **Codex**（`chatgpt-codex-connector[bot]`） | **CI 非観測**。PR リアクション 👀（レビュー中）/ 👍（完了・問題なし）/ 👍消滅（完了・問題あり）+ 投稿レビュー | **PR open で自動。push でも走ることがある**（PR #186 で実測 — オープン時と、その後の push で依頼していない 2 回目）。明示的な再依頼は `@codex review [for security regressions]`。rate-limited なので claude が要否判断（既指摘の修正だけなら再依頼しない） |
 
 **規律**: push 後は CI が全項目 pass するまで見届け、Codex が 👀 のままマージしない。全 finding（`<details>` 折り畳み含む）を読み、INVALID は再現で実証。修正 push 後はスレッドを resolve。
 
