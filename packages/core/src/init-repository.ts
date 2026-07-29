@@ -27,7 +27,7 @@ import {
   runMigrations,
 } from "@iroha/storage";
 import { stringify } from "yaml";
-import { scanDocsIntoCandidates } from "./docs-scan.js";
+import { importRepositoryDocs } from "./docs-import.js";
 import { assertSupportedSchemaVersion, readSchemaVersion } from "./schema-version.js";
 
 const CANONICAL_SUBDIRECTORIES = [
@@ -223,25 +223,19 @@ export interface InitRepositoryResult {
   irohaCanonicalDir: string;
   dbPath: string;
   freshInit: boolean;
-  docsScanned: string[];
-  candidatesCreated: number;
-}
-
-export interface InitRepositoryOptions {
-  /** contracts/canonical.md §14: `iroha init --scan` only. Plain `iroha init` never scans. */
-  scan?: boolean;
+  docsImported: string[];
+  entitiesWritten: number;
 }
 
 /**
  * `iroha init`:
  * resolves Git identity, bootstraps `.iroha/` on a genuinely fresh
  * repository (or reuses the existing `repository_id` otherwise), opens and
- * migrates the local DB, ensures the `repositories` row exists, and — only
- * when `options.scan` is set (contracts/canonical.md §14: `iroha init --scan`)
- * — scans `AGENTS.md`/`CLAUDE.md`/`.claude/rules/**\/*.md` into local
- * (non-canonical) `rule` candidates. Idempotent: a second run against the
- * same repository makes no further changes (Scenario A: "a re-run does not
- * destroy existing data").
+ * migrates the local DB, ensures the `repositories` row exists, and imports
+ * `AGENTS.md`/`CLAUDE.md`/`.claude/rules/**\/*.md` as `source_kind = 'import'`
+ * entities (contracts/canonical.md §14 / ADR-017). Idempotent: a second run
+ * against the same repository makes no further changes (Scenario A: "a re-run
+ * does not destroy existing data").
  *
  * Canonical-file import is deliberately not done here — that is
  * `syncCanonicalToDatabase`'s job; the CLI layer composes the two so `iroha
@@ -252,7 +246,6 @@ export async function initRepository(
   clock: Clock,
   random: RandomSource,
   migrationsDir: string,
-  options: InitRepositoryOptions = {},
 ): Promise<Result<InitRepositoryResult, IrohaError>> {
   const locationResult = await resolveGitLocation(cwd);
   if (!locationResult.ok) {
@@ -311,21 +304,15 @@ export async function initRepository(
       await mkdir(join(irohaStateDir, subdirectory), { recursive: true });
     }
 
-    let docsScanned: string[] = [];
-    let candidatesCreated = 0;
-    if (options.scan) {
-      const scanResult = await scanDocsIntoCandidates(
-        db,
-        gitLocation.root,
-        repositoryId,
-        clock,
-        random,
-      );
-      if (!scanResult.ok) {
-        return scanResult;
-      }
-      docsScanned = scanResult.value.docsScanned;
-      candidatesCreated = scanResult.value.candidatesCreated;
+    const importResult = await importRepositoryDocs(
+      db,
+      gitLocation.root,
+      repositoryId,
+      clock,
+      random,
+    );
+    if (!importResult.ok) {
+      return importResult;
     }
 
     return ok({
@@ -334,8 +321,8 @@ export async function initRepository(
       irohaCanonicalDir,
       dbPath,
       freshInit,
-      docsScanned,
-      candidatesCreated,
+      docsImported: importResult.value.docsImported,
+      entitiesWritten: importResult.value.entitiesWritten,
     });
   } finally {
     await closeDatabase(db);

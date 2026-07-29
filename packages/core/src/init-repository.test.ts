@@ -6,6 +6,7 @@ import {
   closeDatabase,
   getRepositoryById,
   listCandidatesByStatus,
+  listKnowledgeEntities,
   openDatabase,
 } from "@iroha/storage";
 import { afterEach, describe, expect, it } from "vitest";
@@ -33,8 +34,8 @@ describe("initRepository", () => {
     if (!result.ok) return;
 
     expect(result.value.freshInit).toBe(true);
-    expect(result.value.docsScanned).toEqual([]);
-    expect(result.value.candidatesCreated).toBe(0);
+    expect(result.value.docsImported).toEqual([]);
+    expect(result.value.entitiesWritten).toBe(0);
 
     const schemaVersion = await readFile(join(repoDir, ".iroha", "schema-version"), "utf8");
     expect(schemaVersion.trim()).toBe("1");
@@ -73,52 +74,49 @@ describe("initRepository", () => {
 
     expect(second.value.freshInit).toBe(false);
     expect(second.value.repositoryId).toBe(first.value.repositoryId);
-    expect(second.value.candidatesCreated).toBe(0);
+    expect(second.value.entitiesWritten).toBe(0);
   });
 
-  it("does not scan docs into candidates unless options.scan is set (contracts/canonical.md §14: --scan only)", async () => {
+  it("imports repository docs as knowledge, never as candidates (contracts/canonical.md §14)", async () => {
     repoDir = await createTempGitRepo();
     await writeFile(join(repoDir, "AGENTS.md"), "# Agents\n\nFollow these rules.", "utf8");
 
-    const withoutScan = await initRepository(
-      repoDir,
-      CLOCK,
-      new CryptoRandomSource(),
-      MIGRATIONS_DIR,
-    );
-    expect(withoutScan.ok).toBe(true);
-    if (!withoutScan.ok) return;
-    expect(withoutScan.value.docsScanned).toEqual([]);
-    expect(withoutScan.value.candidatesCreated).toBe(0);
+    const result = await initRepository(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.docsImported).toEqual(["AGENTS.md"]);
+    expect(result.value.entitiesWritten).toBe(1);
 
-    const withScan = await initRepository(
-      repoDir,
-      CLOCK,
-      new CryptoRandomSource(),
-      MIGRATIONS_DIR,
-      {
-        scan: true,
-      },
-    );
-    expect(withScan.ok).toBe(true);
-    if (!withScan.ok) return;
-    expect(withScan.value.docsScanned).toEqual(["AGENTS.md"]);
-    expect(withScan.value.candidatesCreated).toBe(1);
-
-    const opened = await openDatabase(withScan.value.dbPath);
+    const opened = await openDatabase(result.value.dbPath);
     expect(opened.ok).toBe(true);
     if (opened.ok) {
       const pending = await listCandidatesByStatus(
         opened.value,
-        withScan.value.repositoryId,
+        result.value.repositoryId,
         "pending",
       );
       expect(pending.ok).toBe(true);
       if (pending.ok) {
-        expect(pending.value.length).toBe(1);
-        expect(pending.value[0]?.candidateType).toBe("rule");
+        expect(pending.value).toEqual([]);
+      }
+
+      const imported = await listKnowledgeEntities(opened.value, result.value.repositoryId, {
+        statuses: ["imported"],
+        limit: 10,
+      });
+      expect(imported.ok).toBe(true);
+      if (imported.ok) {
+        expect(imported.value).toHaveLength(1);
+        expect(imported.value[0]?.sourceRef).toBe("AGENTS.md");
+        expect(imported.value[0]?.sourceKind).toBe("import");
       }
       await closeDatabase(opened.value);
+    }
+
+    const rerun = await initRepository(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR);
+    expect(rerun.ok).toBe(true);
+    if (rerun.ok) {
+      expect(rerun.value.entitiesWritten).toBe(0);
     }
   });
 

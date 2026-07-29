@@ -63,6 +63,9 @@ function formatSync(data: RunSyncResult): string {
   }
 
   const lines = formatSyncCounts(data.sync);
+  if (data.imported.entitiesWritten > 0) {
+    lines.push(note("ok", `Imported ${data.imported.entitiesWritten} repository doc(s).`));
+  }
   const embedding = data.embedding;
   if (embedding.skipped === null && embedding.processed + embedding.failed + embedding.dead > 0) {
     // A dead-lettered job is non-retryable or out of retry budget and writes a

@@ -128,6 +128,7 @@ Rules:
 |---|---:|
 | approved canonical | 100 |
 | verified Git/Forge artifact | 80 |
+| imported repository doc（canonical.md §14） | 80 |
 | local structured Checkpoint | 60 |
 | pending candidate | 30 |
 | inferred relation-only entity | 20 |

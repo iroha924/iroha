@@ -23,6 +23,7 @@ import {
   upsertEmbedding,
   upsertLocalSetting,
 } from "@iroha/storage";
+import { importRepositoryDocs } from "./docs-import.js";
 import { computeRootFingerprint } from "./init-repository.js";
 import { resolveInitializedRepository } from "./resolve-repository.js";
 import { type SyncCanonicalResult, syncCanonicalToDatabase } from "./sync-canonical.js";
@@ -235,6 +236,23 @@ export async function rebuildDatabase(
     await closeDatabase(siblingDb);
     await removeSiblingDatabase(siblingDbPath);
     return syncResult;
+  }
+
+  // Imported repository docs live only in the index, so unlike approved
+  // knowledge they are not carried over from the primary DB — they are
+  // re-derived from the source files, which are Git-tracked and therefore just
+  // as reconstructable as `.iroha/` (contracts/canonical.md §14).
+  const importResult = await importRepositoryDocs(
+    siblingDb,
+    gitLocation.root,
+    repositoryId,
+    clock,
+    random,
+  );
+  if (!importResult.ok) {
+    await closeDatabase(siblingDb);
+    await removeSiblingDatabase(siblingDbPath);
+    return importResult;
   }
 
   await reuseEmbeddings(siblingDb, primaryDbPath, clock);

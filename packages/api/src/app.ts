@@ -662,7 +662,7 @@ export function createApp(config: AppConfig) {
       tags: ["knowledge"],
       summary: "List approved knowledge",
       description:
-        "Repeatable `status` (approved|superseded|archived) and `type` (entity type) filters narrow the list; invalid values are ignored.",
+        "Repeatable `status` (approved|imported|superseded|archived) and `type` (entity type) filters narrow the list; invalid values are ignored.",
       request: { query: knowledgeQuery },
       responses: RESPONSES,
     }),
@@ -679,6 +679,7 @@ export function createApp(config: AppConfig) {
           ...strOpt("cursor", firstOf(q.cursor)),
           ...enumArrOpt("statuses", c.req.queries("status"), [
             "approved",
+            "imported",
             "superseded",
             "archived",
           ]),

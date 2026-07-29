@@ -362,5 +362,6 @@ end-to-endの受け入れは `apps/vertical-slice` と `apps/e2e` のテスト�
 | ADR-014 | No transcript core dependency、no surveillance | Accepted |
 | ADR-015 | scoped npm `@irohalabs/iroha` | Accepted |
 | ADR-016 | Digestのprose composerは開発者自身のagent session。irohaは外部LLMを呼ばない | Accepted |
+| ADR-017 | 既存repository doc（`CLAUDE.md`/`AGENTS.md`/`.claude/rules`）はapprovalを経ず`source_kind='import'` entityとして取り込む | Accepted |
 
 Public licenseの選択だけは初回release前のdecision gateであり、local implementationを止めない。
