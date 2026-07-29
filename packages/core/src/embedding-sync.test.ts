@@ -237,7 +237,7 @@ describe("runEmbeddingSync", () => {
         expect(check?.status).toBe("warning");
         // One, not two: the run stopped before touching the second job, which is
         // still `pending` and has failed at nothing.
-        expect(check?.message).toContain("1 document failed to embed");
+        expect(check?.message).toContain("1 failed to embed");
       } finally {
         await restore();
       }

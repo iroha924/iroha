@@ -249,7 +249,13 @@ async function writeApiKeyUnlocked(
     // `mkdir`'s mode applies only when it creates the directory, so a directory
     // that already existed (`~/.config` is usually 0755) keeps its own mode.
     await chmod(dir, 0o700).catch(() => undefined);
-    await writeFile(join(dir, ".gitignore"), SELF_IGNORE, "utf8").catch(() => undefined);
+    // `wx` fails rather than following an existing path. A dotfiles manager that
+    // symlinked this `.gitignore` to a shared source would otherwise have that
+    // file's contents replaced with `*` because someone saved an API key.
+    await writeFile(join(dir, ".gitignore"), SELF_IGNORE, {
+      encoding: "utf8",
+      flag: "wx",
+    }).catch(() => undefined);
     await writeFile(tempPath, `${JSON.stringify(next, null, 2)}\n`, {
       encoding: "utf8",
       mode: 0o600,

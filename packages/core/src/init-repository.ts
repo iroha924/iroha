@@ -5,7 +5,7 @@ import {
   findRemovedSecretLocations,
   parseRepositoryConfig,
   type RepositoryConfig,
-  serializeRepositoryConfig,
+  withoutLegacySecretLocationKeys,
 } from "@iroha/config";
 import {
   type Clock,
@@ -155,7 +155,7 @@ async function resolveOrRegisterRepository(
   gitLocation: GitLocation,
   clock: Clock,
   random: RandomSource,
-): Promise<Result<TypedId<"repo">, IrohaError>> {
+): Promise<Result<{ repositoryId: TypedId<"repo">; pastedSecrets: string[] }, IrohaError>> {
   const now = clock.now().toISOString();
   const rootFingerprint = computeRootFingerprint(gitLocation.commonDir);
 
@@ -170,6 +170,7 @@ async function resolveOrRegisterRepository(
 
   let repositoryId: TypedId<"repo">;
   let migratedConfig: string | undefined;
+  let pastedSecrets: string[] = [];
   if (existingConfig !== undefined) {
     const parsed = parseRepositoryConfig(existingConfig);
     if (!parsed.ok) {
@@ -180,11 +181,16 @@ async function resolveOrRegisterRepository(
     // was read from, but only in memory. Rewriting here is what makes the
     // deletion reach the file every teammate reads and Git tracks — otherwise a
     // teammate sets the environment variable the committed file still names and
-    // silently gets nothing. `serializeRepositoryConfig` writes every key
-    // explicitly, so the user's own settings survive the rewrite.
-    if (findRemovedSecretLocations(existingConfig).length > 0) {
-      migratedConfig = serializeRepositoryConfig(parsed.value);
-    }
+    // silently gets nothing.
+    migratedConfig = withoutLegacySecretLocationKeys(existingConfig) ?? undefined;
+    // 0.5.x rejected anything but an environment-variable name here, so a value
+    // that is not one is plausibly the key itself. The rewrite below removes it
+    // from the file, which also removes the only thing `doctor` can notice — so
+    // this is the last moment it can be said at all, and it still needs saying:
+    // the value is already in the repository's Git history.
+    pastedSecrets = findRemovedSecretLocations(existingConfig)
+      .filter((found) => !found.looksLikeEnvVarName)
+      .map((found) => found.path);
   } else {
     const byFingerprint = await getRepositoryByRootFingerprint(db, rootFingerprint);
     if (!byFingerprint.ok) {
@@ -223,13 +229,20 @@ async function resolveOrRegisterRepository(
     }
   }
 
-  if (existingConfig === undefined) {
-    await writeConfigAtomic(irohaCanonicalDir, stringify(buildDefaultConfig(repositoryId)), random);
-  } else if (migratedConfig !== undefined) {
-    await writeConfigAtomic(irohaCanonicalDir, migratedConfig, random);
+  const content =
+    existingConfig === undefined ? stringify(buildDefaultConfig(repositoryId)) : migratedConfig;
+  if (content !== undefined) {
+    try {
+      await writeConfigAtomic(irohaCanonicalDir, content, random);
+    } catch (cause) {
+      // A read-only checkout, a full disk, a failed rename: a rejection here
+      // would escape `initRepository` and reach the CLI as an unstructured throw,
+      // printing a stack with absolute temp paths instead of an iroha error.
+      return err(new IrohaError("INTERNAL_ERROR", "Failed to write .iroha/config.yaml", { cause }));
+    }
   }
 
-  return ok(repositoryId);
+  return ok({ repositoryId, pastedSecrets });
 }
 
 export interface InitRepositoryResult {
@@ -240,6 +253,16 @@ export interface InitRepositoryResult {
   freshInit: boolean;
   docsImported: string[];
   entitiesWritten: number;
+  /**
+   * Dotted paths in `config.yaml` that held a pre-0.6.0 secret-location key whose
+   * value was not an environment-variable name — plausibly the key itself.
+   *
+   * Reported here because this run just deleted them from the file, which is also
+   * the only thing `iroha doctor` could see. Removing the value from `HEAD` does
+   * not remove it from the history that already carries it, so this is the last
+   * moment anyone can be told to rotate it.
+   */
+  pastedSecrets: string[];
 }
 
 /**
@@ -313,7 +336,7 @@ export async function initRepository(
     if (!repositoryIdResult.ok) {
       return repositoryIdResult;
     }
-    const repositoryId = repositoryIdResult.value;
+    const { repositoryId, pastedSecrets } = repositoryIdResult.value;
 
     for (const subdirectory of LOCAL_STATE_SUBDIRECTORIES) {
       await mkdir(join(irohaStateDir, subdirectory), { recursive: true });
@@ -338,6 +361,7 @@ export async function initRepository(
       freshInit,
       docsImported: importResult.value.docsImported,
       entitiesWritten: importResult.value.entitiesWritten,
+      pastedSecrets,
     });
   } finally {
     await closeDatabase(db);

@@ -1,5 +1,5 @@
 import type { IrohaError, Result } from "@iroha/domain";
-import { parse as parseYaml } from "yaml";
+import { parseDocument, parse as parseYaml } from "yaml";
 import { parseYamlDocument } from "./parse-yaml-document.js";
 import { type RepositoryConfig, repositoryConfigSchema } from "./schemas/repository-config.js";
 
@@ -64,6 +64,28 @@ export function findRemovedSecretLocations(content: string): RemovedSecretLocati
           },
         ];
   });
+}
+
+/**
+ * The same YAML with the removed keys deleted, or `null` when it carries none.
+ *
+ * Edits the parsed document rather than re-serializing the validated object:
+ * `serializeRepositoryConfig` rebuilds the file from scratch, which would drop
+ * every comment a team wrote in its own `config.yaml` — a migration nobody asked
+ * for, on a file nobody touched. Deleting the two nodes leaves the rest byte-for
+ * -byte alone, so the change really does land in Git as a one-line deletion.
+ */
+export function withoutLegacySecretLocationKeys(content: string): string | null {
+  let document: ReturnType<typeof parseDocument>;
+  try {
+    document = parseDocument(content);
+  } catch {
+    return null;
+  }
+  const removed = REMOVED_SECRET_LOCATION_KEYS.map((path) => document.deleteIn([...path])).some(
+    Boolean,
+  );
+  return removed ? String(document) : null;
 }
 
 function withoutRemovedKeys(document: unknown): unknown {

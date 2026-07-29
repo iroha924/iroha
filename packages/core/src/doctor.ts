@@ -342,15 +342,22 @@ async function checkProviders(
   const stranded = await countStrandedEmbeddings(cwd);
   const detail = [
     `key ${embeddingKeySet ? "set" : "not set"}`,
-    ...(stranded > 0
-      ? [`${stranded} document${stranded === 1 ? "" : "s"} failed to embed — run \`iroha sync\``]
+    ...(stranded.failed > 0
+      ? [`${stranded.failed} failed to embed — run \`iroha sync\` to retry`]
+      : []),
+    // A dead job is not retried by `iroha sync`: `listDueEmbeddingJobs` selects
+    // only `pending`/`failed`, and enqueueing revives only `completed` jobs. Only
+    // rebuilding the index re-enqueues it, so naming `sync` here would send the
+    // reader to a command that cannot clear what they are being warned about.
+    ...(stranded.dead > 0
+      ? [`${stranded.dead} gave up — run \`iroha sync --rebuild\` to re-embed`]
       : []),
   ].join(", ");
   return [
     ...configChecks,
     {
       name: "embedding-provider",
-      status: !embeddingKeySet || stranded > 0 ? "warning" : "ok",
+      status: !embeddingKeySet || stranded.failed > 0 || stranded.dead > 0 ? "warning" : "ok",
       message: `${search.embedding.provider}/${search.embedding.model} (${detail})`,
     },
   ];
@@ -368,18 +375,19 @@ async function checkProviders(
  * losing the whole embedding line to a database problem `storage-capabilities`
  * already reports would trade a useful report for a redundant error.
  */
-async function countStrandedEmbeddings(cwd: string): Promise<number> {
+async function countStrandedEmbeddings(cwd: string): Promise<{ failed: number; dead: number }> {
+  const none = { failed: 0, dead: 0 };
   const resolved = await resolveInitializedRepository(cwd);
   if (!resolved.ok) {
-    return 0;
+    return none;
   }
   const opened = await openDatabase(resolved.value.dbPath);
   if (!opened.ok) {
-    return 0;
+    return none;
   }
   try {
-    const failed = await countFailedEmbeddingJobs(opened.value);
-    return failed.ok ? failed.value : 0;
+    const counts = await countFailedEmbeddingJobs(opened.value);
+    return counts.ok ? counts.value : none;
   } finally {
     await closeDatabase(opened.value);
   }

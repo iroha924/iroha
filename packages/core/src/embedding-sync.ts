@@ -239,7 +239,16 @@ export async function runEmbeddingSync(
       const marked = await updateEmbeddingJobStatus(db, job.id, {
         status,
         attempts,
-        ...(status === "failed" ? { nextAttemptAt: backoffAt(clock, Math.max(1, attempts)) } : {}),
+        // Due immediately on a credential failure: the CLI has just told the
+        // user to replace the key, and the outage backoff would make the first
+        // document sit out the `iroha sync` they run right after doing so.
+        ...(status === "failed"
+          ? {
+              nextAttemptAt: credential
+                ? clock.now().toISOString()
+                : backoffAt(clock, Math.max(1, attempts)),
+            }
+          : {}),
         lastErrorCode: embedded.error.code,
         updatedAt: clock.now().toISOString(),
       });

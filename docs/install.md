@@ -113,5 +113,5 @@ It also leaves any API keys you registered, because they are machine-scoped
 rather than part of the package. To remove them:
 
 ```bash
-rm -rf ~/.config/iroha
+rm -rf "${XDG_CONFIG_HOME:-$HOME/.config}/iroha"
 ```
