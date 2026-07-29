@@ -28,6 +28,14 @@ const OVERVIEW = ok({
   openDirtyMarkers: 0,
   recentSessions: [],
   lastCanonicalSyncAt: null,
+  rulesetAdequacy: { enforceable: 2, not_hook_enforceable: 1, invalid: 0 },
+  denials: {
+    windowDays: 30,
+    total: 0,
+    byRule: [],
+    clusters: { items: [], total: 0, truncated: false },
+  },
+  pendingReviewLearnings: 0,
 });
 
 describe("App", () => {
@@ -54,5 +62,14 @@ describe("App", () => {
     await screen.findByRole("link", { name: "Candidates" });
     expect(screen.queryByText(/ranking/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/leaderboard/i)).not.toBeInTheDocument();
+  });
+
+  it("redirects an unknown path to the front page instead of rendering it blank", async () => {
+    // `/overview` moved to `/` in this change; a bookmark of it — or any typo —
+    // matched no route and left `main` empty, which reads as a broken app.
+    mockApi({ "GET /api/v1/bootstrap": BOOTSTRAP, "GET /api/v1/overview": OVERVIEW });
+    renderWithProviders(<App />, ["/overview"]);
+
+    expect(await screen.findByText("Guardrail enforceability")).toBeInTheDocument();
   });
 });

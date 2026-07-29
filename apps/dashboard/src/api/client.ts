@@ -5,8 +5,6 @@ import type {
   CandidateQueuePage,
   CandidateStatusChangeData,
   DiagnosticsEventsData,
-  DigestData,
-  DigestPeriodUnit,
   DoctorRepairData,
   DoctorReport,
   GraphData,
@@ -55,11 +53,6 @@ export interface CandidateListParams {
   cursor?: string;
   status?: CandidateStatusFilter;
   limit?: number;
-  offset?: number;
-}
-export interface DigestParams {
-  unit?: DigestPeriodUnit;
-  /** 0 (or omitted) is the current period; higher values are back issues. */
   offset?: number;
 }
 export interface KnowledgeListParams {
@@ -142,15 +135,6 @@ export const api = {
   logout: () => request<{ authenticated: boolean }>("POST", "/auth/logout"),
   bootstrap: () => request<BootstrapData>("GET", "/v1/bootstrap"),
   overview: () => request<OverviewData>("GET", "/v1/overview"),
-  digest: (params: DigestParams = {}) =>
-    request<DigestData>(
-      "GET",
-      `/v1/digest${queryString({
-        unit: params.unit,
-        offset: params.offset === undefined ? undefined : String(params.offset),
-      })}`,
-    ),
-
   candidates: (params: CandidateListParams = {}) =>
     request<CandidateQueuePage>(
       "GET",

@@ -147,12 +147,12 @@ function formatSync(data: RunSyncResult): string {
       ),
     );
   } else if (retention.pruned !== undefined) {
-    const { sessions, checkpoints, eventLogRows, digestIssues } = retention.pruned;
-    if (sessions + checkpoints + eventLogRows + digestIssues > 0) {
+    const { sessions, checkpoints, eventLogRows } = retention.pruned;
+    if (sessions + checkpoints + eventLogRows > 0) {
       lines.push(
         note(
           "ok",
-          `Retention: pruned ${sessions} session(s), ${checkpoints} checkpoint(s), ${eventLogRows} diagnostics row(s), and ${digestIssues} digest issue(s) older than ${retention.days} days.`,
+          `Retention: pruned ${sessions} session(s), ${checkpoints} checkpoint(s), and ${eventLogRows} diagnostics row(s) older than ${retention.days} days.`,
         ),
       );
     }

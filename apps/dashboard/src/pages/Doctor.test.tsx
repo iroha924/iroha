@@ -1,7 +1,8 @@
 import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { Doctor } from "@/pages/Doctor.js";
-import { mockApi, ok, renderWithProviders } from "@/test-utils.js";
+import { fail, mockApi, ok, renderWithProviders } from "@/test-utils.js";
 
 const CHECKS = { checks: [{ name: "git", status: "ok", message: "git 2.49.0" }] };
 
@@ -34,6 +35,8 @@ describe("Doctor", () => {
     });
     renderWithProviders(<Doctor />);
 
+    await userEvent.click(await screen.findByRole("button", { name: "Recent problems (2)" }));
+
     expect(await screen.findByText("api.request")).toBeDefined();
     expect(screen.getByText("NOT_FOUND")).toBeDefined();
     expect(screen.getByText("GET /api/v1/knowledge/:id")).toBeDefined();
@@ -45,13 +48,31 @@ describe("Doctor", () => {
     expect(screen.getByText("2026-01-01 09:29:00")).toBeDefined();
   });
 
-  it("shows an empty state when nothing has failed", async () => {
+  it("offers no problems affordance at all when nothing has failed", async () => {
     mockApi({
       "GET /api/v1/doctor": ok(CHECKS),
       "GET /api/v1/events": ok({ events: [] }),
     });
     renderWithProviders(<Doctor />);
 
-    expect(await screen.findByText(/Nothing has failed/)).toBeDefined();
+    // The checks are the page; the healthy state must cost no space beyond them.
+    expect(await screen.findByText("git 2.49.0")).toBeDefined();
+    expect(screen.queryByRole("button", { name: /Recent problems/ })).toBeNull();
+  });
+
+  it("reports a failed diagnostics read instead of rendering it as healthy", async () => {
+    // `?? []` alone makes a broken events fetch indistinguishable from a repository
+    // with nothing wrong — on the one page whose job is to say whether anything is.
+    mockApi({
+      "GET /api/v1/doctor": ok(CHECKS),
+      "GET /api/v1/events": fail("INTERNAL_ERROR", 500),
+    });
+    renderWithProviders(<Doctor />);
+
+    await screen.findByText("git 2.49.0");
+    const trigger = await screen.findByRole("button", { name: "Recent problems unavailable" });
+    await userEvent.click(trigger);
+
+    expect(await screen.findByText(/Something went wrong/)).toBeDefined();
   });
 });

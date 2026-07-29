@@ -123,18 +123,12 @@ The API is built with `@hono/zod-openapi`: each route validates its request body
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/api/v1/digest` | one period's Digest: aggregate facts, prior-period comparison, and composed prose |
-| `GET` | `/api/v1/overview` | counts, recent Sessions, pending Candidates, unresolved items |
+| `GET` | `/api/v1/overview` | front-page facts: counts, unresolved items, Guardrail enforceability, recent denials |
 | `GET` | `/api/v1/sessions` | paginated Sessions (the graph's seed picker; no page lists them) |
 
-`GET /api/v1/digest` query parameters: `unit` (`week`|`month`, default this developer's stored
-`digest.period`) and `offset` (integer 0–520; 0 is the current period, higher values are back
-issues). Neither is rejected: an unknown `unit` is ignored and falls back to the stored preference,
-while an out-of-range `offset` is **clamped** to `0..520` rather than ignored — ignoring it would
-answer a request for 520+ periods ago with the *current* period. The response carries the resolved
-`period.offset`, which is what a client must read to know which issue it was served. Period
-boundaries are UTC calendar boundaries, so the same key names the same window for every teammate.
-Read-only; prose is written through MCP (`save_digest_prose`), not through this API.
+`GET /api/v1/overview` takes no parameters. Its denial facts cover a fixed recent window whose
+length the response states in `denials.windowDays`; there is no period selector, because the page
+reports current state rather than a period (see the front page below).
 
 Session filters: platform, actor, status, label, Issue/PR ref, date range, unresolved-only.
 
@@ -235,7 +229,6 @@ Repair operations are allowlisted. The browser cannot run arbitrary shell comman
 
 ```text
 /
-/overview
 /review
 /review/:candidateId
 /knowledge
@@ -246,35 +239,31 @@ Repair operations are allowlisted. The browser cannot run arbitrary shell comman
 /doctor
 ```
 
-### Digest (`/`)
+Any other path redirects to `/`. A route the SPA does not know renders an empty main
+area otherwise, which reads as a broken page rather than a wrong address — including for a
+bookmark of a route that has since moved.
 
-The front page is the period Digest (architecture.md ADR-016). Show:
+### Overview (`/`)
 
-- the composed headline and deck for the period, or templated copy when none has been composed —
-  the page is never blank, because the numbers are computed on request;
-- Guardrail denials for the period, attributed to the Rule that produced each one, with the
-  previous period's total beside it;
-- where denials clustered, when iroha found a cluster;
-- Sessions, Checkpoints by outcome, and pending recurring review lessons;
-- knowledge approved in the period, Guardrails added or changed, promoted review lessons;
-- how enforceable the approved Guardrail set is (enforceable / not-hook-enforceable / malformed).
-
-Label composed prose as auto-composed and unreviewed, and render numbers as authoritative beside
-it. Do not present a blended adherence score, and state that advisory rules are not machine-
-observable rather than implying they were measured. As everywhere else: no individual ranking, no
-hours worked, no per-person attribution.
-
-### Overview (`/overview`)
-
-Show:
+The front page. Show:
 
 - pending Candidate count;
 - approved knowledge count and its composition by type;
-- open dirty markers.
+- open dirty markers;
+- pending recurring review lessons;
+- how enforceable the approved Guardrail set is (enforceable / not-hook-enforceable / malformed),
+  as current state rather than a period total;
+- Guardrail denials over a fixed recent window, attributed to the Rule that produced each one, and
+  where those denials clustered.
 
-Session activity is deliberately absent: browsing an activity log is not what this product is for,
-and the pages that did it were removed rather than kept for completeness.
+**Every number here must be one a reader can act on.** Activity volumes — Sessions started,
+Checkpoints written, per-period approval totals — are deliberately absent. They were on the page
+this replaced and were counted but never acted on; browsing an activity log is not what this
+product is for, and a number nobody acts on trains readers to ignore the ones they should.
 
+Do not present a blended adherence score, and state that advisory rules are not machine-observable
+rather than implying they were measured. Frame enforceability symmetrically: a Guardrail that names
+no paths is the setup failing the agent, which is as much the story as the agent breaking a rule.
 Do not show individual ranking, hours worked, prompt count leaderboard, or a productivity score.
 
 ### Review Queue

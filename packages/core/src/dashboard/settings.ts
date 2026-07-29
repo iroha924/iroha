@@ -9,12 +9,6 @@ import {
   readRetentionSetting,
   retentionSettingSchema,
 } from "../retention.js";
-import {
-  DIGEST_PERIOD_SETTING_KEY,
-  digestPeriodSettingSchema,
-  readDigestPeriodSetting,
-} from "./digest.js";
-import type { DigestPeriodUnit } from "./digest-period.js";
 import { withDashboardRepository } from "./with-repository.js";
 
 export interface SettingsData {
@@ -24,8 +18,6 @@ export interface SettingsData {
     embeddingKeyPresent: boolean;
     /** Local event-data retention: the window in days, or `null` when off. */
     retentionDays: number | null;
-    /** The Digest window this developer reads (`digest.period`). */
-    digestPeriodUnit: DigestPeriodUnit;
   };
 }
 
@@ -48,17 +40,12 @@ export async function getSettings(
       // doctor` keeps reporting the invalid setting. Reading it as "off" is safe:
       // `applyRetention` still refuses to delete anything it cannot parse.
       const retention = await readRetentionSetting(ctx.db, ctx.repo.repositoryId);
-      const digestPeriod = await readDigestPeriodSetting(ctx.db, ctx.repo.repositoryId);
-      if (!digestPeriod.ok) {
-        return digestPeriod;
-      }
       return ok({
         shared: ctx.repo.config,
         local: {
           embeddingKeyPresent:
             process.env[ctx.repo.config.search.embedding.api_key_env] !== undefined,
           retentionDays: retention.ok ? retention.value.setting.days : null,
-          digestPeriodUnit: digestPeriod.value.unit,
         },
       });
     },
@@ -138,22 +125,6 @@ export async function updateLocalSettings(
             new IrohaErrorClass(
               "INVALID_INPUT",
               `${RETENTION_SETTING_KEY} must be {"days": <1-3650>} or {"days": null}`,
-            ),
-          );
-        }
-      }
-      // The Digest window reads leniently — a malformed value falls back to the
-      // default rather than breaking the front page — which is exactly why it must
-      // be rejected on the way *in*: stored unvalidated, a typo would return 200
-      // and then be silently ignored, with nothing to tell the developer why their
-      // setting did not take.
-      if (input.key === DIGEST_PERIOD_SETTING_KEY) {
-        const parsed = digestPeriodSettingSchema.safeParse(input.value);
-        if (!parsed.success) {
-          return err(
-            new IrohaErrorClass(
-              "INVALID_INPUT",
-              `${DIGEST_PERIOD_SETTING_KEY} must be {"unit": "week"} or {"unit": "month"}`,
             ),
           );
         }

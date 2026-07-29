@@ -242,13 +242,24 @@ test("approve a fixture candidate, write canonical, and read it as approved know
   // Reload: the approved decision now appears as approved knowledge.
   await page.getByRole("link", { name: "Knowledge", exact: true }).click();
   await expect(page).toHaveURL(/\/knowledge$/);
+  // Reached from the list, the detail is a dialog layered over it — the URL still
+  // changes, so the link stays shareable.
   await page.getByRole("link", { name: DECISION_TITLE }).click();
   await expect(page).toHaveURL(/\/knowledge\/[^/]+$/);
-  await expect(page.getByText(DECISION_TITLE).first()).toBeVisible();
+  // Named, not a bare `getByRole("dialog")`: a Base UI toast carries that role too,
+  // so an unnamed query is ambiguous for as long as one is on screen.
+  await expect(page.getByRole("dialog", { name: DECISION_TITLE })).toBeVisible();
+  // The list it was opened from is still mounted underneath, which is the whole
+  // point of routing this against a background location.
+  await expect(page.locator("main")).toContainText("Knowledge");
 
-  // A direct-route reload is served by the packaged server's SPA fallback.
+  // A direct-route reload is served by the packaged server's SPA fallback. It
+  // carries no background location, so the same URL must fall back to a full page.
   await page.reload();
-  await expect(page.getByText(DECISION_TITLE).first()).toBeVisible();
+  // `.first()`: §7 makes the body's first H1 equal to the title, so the rendered
+  // page legitimately carries two headings with this name.
+  await expect(page.getByRole("heading", { level: 1, name: DECISION_TITLE }).first()).toBeVisible();
+  await expect(page.getByRole("dialog", { name: DECISION_TITLE })).toHaveCount(0);
 
   // The strict `style-src 'self'` header (no nonce) must have refused nothing across
   // the journey (Digest → Review → Review detail → Knowledge → Knowledge detail) —

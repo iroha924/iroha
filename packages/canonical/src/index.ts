@@ -5,6 +5,7 @@ export const packageName = "@iroha/canonical";
 
 export * from "./body-template.js";
 export * from "./canonical-sync.js";
+export * from "./derive-summary.js";
 export * from "./parse-and-validate.js";
 export * from "./parse-canonical-document.js";
 export * from "./scan-canonical-directory.js";

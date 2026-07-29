@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select.js";
+import { toast } from "@/components/ui/toast.js";
 import { useI18n } from "@/i18n/index.js";
 import { knowledgeTypeTone } from "@/lib/status.js";
 import { cn } from "@/lib/utils";
@@ -47,7 +48,6 @@ export function ReviewDetail() {
   // as its value: prefilling and picking from the list both set a name without
   // expressing an intent to search. Empty means "no search, show everyone".
   const [nameQuery, setNameQuery] = useState("");
-  const [notice, setNotice] = useState<string | null>(null);
   const [bodyExpanded, setBodyExpanded] = useState(false);
   // Whether the rendered body is actually clipped. Source lines are the wrong
   // measure: one 20,000-character paragraph is a single line and still overflows,
@@ -91,7 +91,7 @@ export function ReviewDetail() {
   };
 
   const onError = (error: unknown) => {
-    setNotice(t("common.error"));
+    toast.add({ type: "error", title: t("common.error") });
     if (error instanceof ApiClientError && error.code === "CONFLICT") {
       void queryClient.invalidateQueries({ queryKey: ["candidate", id] });
     }
@@ -105,6 +105,7 @@ export function ReviewDetail() {
     },
     onSuccess: () => {
       invalidate();
+      toast.add({ type: "success", title: t("review.approveDone") });
       navigate("/review");
     },
     onError,
@@ -118,6 +119,7 @@ export function ReviewDetail() {
     },
     onSuccess: () => {
       invalidate();
+      toast.add({ type: "success", title: t("review.rejectDone") });
       navigate("/review");
     },
     onError,
@@ -142,10 +144,6 @@ export function ReviewDetail() {
   return (
     <section className="space-y-5">
       <BackLink to="/review">{t("common.back")}</BackLink>
-
-      {notice !== null && (
-        <p className="rounded-xl bg-warn-tint px-3 py-2 text-sm text-warn">{notice}</p>
-      )}
 
       <Card>
         <CardContent className="space-y-4">

@@ -103,7 +103,7 @@ describe("migration 007: drop imported-doc candidates", () => {
     const migrated = await runMigrations(db, REAL_MIGRATIONS_DIR, dbPath, CLOCK);
     expect(migrated.ok).toBe(true);
     if (migrated.ok) {
-      expect(migrated.value.map((m) => m.version)).toEqual([7]);
+      expect(migrated.value.map((m) => m.version)).toEqual([7, 8]);
     }
 
     const candidates = await db.execute("SELECT id FROM candidates ORDER BY id");
@@ -119,6 +119,6 @@ describe("migration 007: drop imported-doc candidates", () => {
     expect(settings.rows.map((r) => r.key)).toEqual(["retention.local_events"]);
 
     const userVersion = await db.execute("PRAGMA user_version");
-    expect(userVersion.rows[0]?.user_version).toBe(7);
+    expect(userVersion.rows[0]?.user_version).toBe(8);
   });
 });

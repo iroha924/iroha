@@ -1,15 +1,16 @@
 ---
 name: pr-review-status
-description: Find out what the AI reviewer said about a pull request, and respond to it. The hosted OpenAI Codex reviewer is invisible to CI — it appears in no status check — so `gh pr checks` being green says nothing about whether a review ran, is still running, or left findings. Use after pushing to a PR and before reporting the work as done, when deciding whether a re-review is worth its rate limit, and when replying to or resolving a review thread. Not for reviewing a diff yourself — that is `iroha-review`.
+description: Find out what the AI reviewers said about a pull request, and respond to them. Two run here — hosted OpenAI Codex and Gemini Code Assist — and Codex is invisible to CI, appearing in no status check, so `gh pr checks` being green says nothing about whether a review ran, is still running, or left findings. Use after pushing to a PR and before reporting the work as done, when deciding whether a re-review is worth its rate limit, and when replying to or resolving a review thread. Not for reviewing a diff yourself — that is `iroha-review`.
 user-invocable: true
 allowed-tools: Bash(curl *) Bash(gh api *) Bash(gh pr *) Read Grep
 ---
 
 # Reading and answering the AI reviewer on a PR
 
-**Greptile is currently disabled for this repo**, so Codex is the only AI reviewer running. Waiting
-for a "Greptile Review" check that will never appear stalls the whole post-push check — the Greptile
-section at the bottom is kept for the day it is re-enabled and should not be acted on until then.
+**Two reviewers run here: Codex and Gemini Code Assist.** Both must be read before calling a PR
+reviewed. **Greptile is disabled** — waiting for a "Greptile Review" check that will never appear
+stalls the whole post-push check, so the Greptile section at the bottom is kept for the day it is
+re-enabled and should not be acted on until then.
 
 ## 1. Find Codex's state
 
@@ -105,6 +106,30 @@ primary-source URL) — again as a plain comment with no `@codex` mention.
 - [ ] Codex polled and **not mid-review** — no lingering 👀. Only after the limit is confirmed clear
       and no reaction appears do you state "Codex did not run" and apply §2
 - [ ] Threads for the findings you addressed are resolved
+
+## Gemini Code Assist
+
+Configured in-repo, unlike Codex: `.gemini/config.yaml` sets the behaviour and `.gemini/styleguide.md`
+is the review standard (it defers to `AGENTS.md` so both reviewers are held to one bar). Changing how
+Gemini reviews is a normal PR, not a dashboard setting.
+
+- **Triggers**: PR opened, and a draft marked ready. `include_drafts: false` in the config means a
+  PR that is still a draft is not reviewed. Manual: `/gemini review` (whole PR), `/gemini summary`,
+  `/gemini help`.
+- **Output**: a summary comment plus inline review comments. The config runs it at
+  `comment_severity_threshold: LOW` with `max_review_comments: -1`, so expect a long list on a large
+  diff — that is deliberate (the reasoning is in `config.yaml`'s own comments), and the triage rules
+  in `~/.claude/rules/code-review-triage.md` are what keep it survivable: read every finding, fix by
+  an explicit standard, record every rejection.
+- **Re-review**: `/gemini review`, scoped in the same comment if you want a narrower pass. Apply §2's
+  judgement — a re-review costs a round trip and re-posts on unchanged code, so do not fire one for a
+  formatting or docs-only push.
+- **Unverified**: whether Gemini surfaces as a GitHub status check in this repo has not been observed
+  yet. Until it has, read its comments directly rather than trusting `gh pr checks` to represent it,
+  and correct this line once you have seen a real PR.
+
+Read it the same way as Codex — the same `pulls/<PR>/reviews` and `pulls/<PR>/comments` endpoints
+return its output, filtered on its bot login instead of `chatgpt-codex-connector[bot]`.
 
 ## Greptile — disabled; reference only
 

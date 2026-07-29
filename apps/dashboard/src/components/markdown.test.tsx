@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { Markdown } from "@/components/markdown.js";
+import { Markdown, MarkdownInline } from "@/components/markdown.js";
 
 describe("Markdown", () => {
   it("renders headings and lists as elements, not literal markers", () => {
@@ -59,5 +59,43 @@ describe("Markdown", () => {
 
     expect(container.querySelector("a")).toBeNull();
     expect(screen.getByText("text")).toBeDefined();
+  });
+});
+
+describe("MarkdownInline", () => {
+  it("renders inline formatting without a block wrapper", () => {
+    const { container } = render(<MarkdownInline source={"**bold** and `code`"} />);
+
+    expect(container.querySelector("p")).toBeNull();
+    expect(container.querySelector("strong")?.textContent).toBe("bold");
+    expect(container.querySelector("code")?.textContent).toBe("code");
+  });
+
+  it("emits no block element, whatever the summary contains", () => {
+    // One case per block construct Markdown can produce. A denylist had to name
+    // each of these; missing one put it inside the <p> a summary renders in.
+    for (const source of [
+      "| a | b |\n| --- | --- |\n| 1 | 2 |",
+      "> quoted finding",
+      "---",
+      "# heading",
+      "- item one\n- item two",
+      "```\ncode block\n```",
+    ]) {
+      const { container } = render(<MarkdownInline source={source} />);
+      const blocks = container.querySelectorAll(
+        "p, div, table, thead, tbody, tr, td, th, blockquote, hr, h1, h2, h3, h4, h5, h6, ul, ol, li, pre",
+      );
+      expect(blocks.length, `block element rendered for: ${source}`).toBe(0);
+    }
+  });
+
+  it("renders a link's text without an anchor, so a row's outer Link stays the only one", () => {
+    // A search row wraps the summary in a router <Link>; an anchor here would
+    // nest one interactive element inside another.
+    const { container } = render(<MarkdownInline source={"see [the docs](https://example.com)"} />);
+
+    expect(container.querySelector("a")).toBeNull();
+    expect(container.textContent).toBe("see the docs");
   });
 });

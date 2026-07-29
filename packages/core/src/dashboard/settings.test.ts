@@ -4,61 +4,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { RETENTION_SETTING_KEY } from "../retention.js";
 import { type McpTestRepo, setupMcpRepo } from "../test-helpers/mcp-repo.js";
 import { removeTempDir } from "../test-helpers/tmp-repo.js";
-import { DIGEST_PERIOD_SETTING_KEY } from "./digest.js";
 import { getSettings, updateLocalSettings } from "./settings.js";
 
 const clock = new FixedClock(new Date("2026-07-01T00:00:00.000Z"));
 const random = new CryptoRandomSource();
-
-describe("local digest period setting", () => {
-  let repo: McpTestRepo | undefined;
-
-  afterEach(async () => {
-    if (repo) {
-      await removeTempDir(repo.repoDir);
-      repo = undefined;
-    }
-  });
-
-  it("defaults to the weekly window", async () => {
-    repo = await setupMcpRepo(random);
-    const settings = await getSettings({ cwd: repo.repoDir, clock, random });
-    expect(settings.ok && settings.value.local.digestPeriodUnit).toBe("week");
-  });
-
-  it("stores a window and reads it back", async () => {
-    repo = await setupMcpRepo(random);
-    const updated = await updateLocalSettings({
-      cwd: repo.repoDir,
-      clock,
-      random,
-      key: DIGEST_PERIOD_SETTING_KEY,
-      value: { unit: "month" },
-    });
-    expect(updated.ok).toBe(true);
-
-    const settings = await getSettings({ cwd: repo.repoDir, clock, random });
-    expect(settings.ok && settings.value.local.digestPeriodUnit).toBe("month");
-  });
-
-  it("rejects an unknown unit instead of storing it to be ignored later", async () => {
-    repo = await setupMcpRepo(random);
-    // The reader falls back to the default for a malformed value, so accepting the
-    // write would return success for a setting that never takes effect.
-    for (const value of [{ unit: "monthly" }, { unit: null }, {}, { unit: "week", extra: 1 }]) {
-      const updated = await updateLocalSettings({
-        cwd: repo.repoDir,
-        clock,
-        random,
-        key: DIGEST_PERIOD_SETTING_KEY,
-        value,
-      });
-      expect(updated.ok, `expected ${JSON.stringify(value)} to be rejected`).toBe(false);
-    }
-    const settings = await getSettings({ cwd: repo.repoDir, clock, random });
-    expect(settings.ok && settings.value.local.digestPeriodUnit).toBe("week");
-  });
-});
 
 describe("local retention setting", () => {
   let repo: McpTestRepo | undefined;

@@ -29,8 +29,6 @@ export {
 } from "@iroha/domain";
 export type {
   CandidateType,
-  DigestKnowledgeRef,
-  DigestList,
   EntityType,
   RelationDirection,
   RelationType,

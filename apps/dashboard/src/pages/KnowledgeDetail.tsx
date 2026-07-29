@@ -1,10 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "@/api/client.js";
-import { BackLink, ErrorState, Loading } from "@/components/brand.js";
-import { Markdown } from "@/components/markdown.js";
+import { BackLink, ErrorState, InfoTip, Loading } from "@/components/brand.js";
+import { Markdown, MarkdownInline } from "@/components/markdown.js";
 import { Badge } from "@/components/ui/badge.js";
+import { DialogTitle } from "@/components/ui/dialog.js";
 import { useI18n } from "@/i18n/index.js";
+import { useModalLinkState } from "@/lib/modal-route.js";
 import { knowledgeStatusTone, knowledgeTypeTone } from "@/lib/status.js";
 
 /** Canonical frontmatter is snake_case free-form JSON (`unknown` over the wire), narrowed defensively. */
@@ -64,30 +67,54 @@ function provenanceFrom(frontmatter: unknown): Provenance {
 
 const SAFE_URL = /^https?:\/\//i;
 
-/** Approved-knowledge detail with rendered body, provenance, and relations (contracts/dashboard-api.md §6). */
-export function KnowledgeDetail() {
+const TITLE_CLASS = "font-display text-2xl font-semibold tracking-[-0.005em] text-ink";
+
+/**
+ * Approved-knowledge detail with rendered body, provenance, and relations
+ * (contracts/dashboard-api.md §6). `asDialog` is the same content layered over the
+ * list it was opened from: it drops the back link the dialog's own dismissal
+ * replaces, and demotes the heading to an `h2` so the page behind keeps the only `h1`.
+ */
+export function KnowledgeDetail({ asDialog = false }: { asDialog?: boolean }) {
   const { t } = useI18n();
   const { id = "" } = useParams();
+  const linkState = useModalLinkState();
   const q = useQuery({ queryKey: ["knowledge", id], queryFn: () => api.knowledgeDetail(id) });
 
-  if (q.isPending) return <Loading />;
-  if (q.isError || q.data === undefined) return <ErrorState />;
+  // A dialog is named by its title, so one has to exist in *every* state: without
+  // this the modal is unnamed for as long as the query is cold, and stays unnamed
+  // if it fails. The loaded branch below replaces this with the document's title.
+  const state = (children: ReactNode) =>
+    asDialog ? (
+      <>
+        <DialogTitle className={TITLE_CLASS}>{t("knowledge.title")}</DialogTitle>
+        {children}
+      </>
+    ) : (
+      children
+    );
+  if (q.isPending) return state(<Loading />);
+  if (q.isError || q.data === undefined) return state(<ErrorState />);
   const d = q.data;
   const p = provenanceFrom(d.frontmatter);
   const approver = p.approvedBy?.displayName ?? p.approvedBy?.provider ?? null;
 
   return (
     <section>
-      <BackLink to="/knowledge">{t("common.back")}</BackLink>
-      <h1 className="font-display text-2xl font-semibold tracking-[-0.005em] text-ink">
-        {d.title}
-      </h1>
+      {!asDialog && <BackLink to="/knowledge">{t("common.back")}</BackLink>}
+      {/* DialogTitle already renders an h2, which is the level this wants: the page
+          behind the dialog keeps the only h1. */}
+      {asDialog ? (
+        <DialogTitle className={TITLE_CLASS}>{d.title}</DialogTitle>
+      ) : (
+        <h1 className={TITLE_CLASS}>{d.title}</h1>
+      )}
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-ink-muted">
         <Badge variant={knowledgeTypeTone(d.type)}>{t(`ktype.${d.type}`)}</Badge>
         <Badge variant={knowledgeStatusTone(d.status)}>{t(`status.${d.status}`)}</Badge>
-        <span className="tabular-nums">
-          {t("knowledge.authority")} {d.authority}
-        </span>
+        {/* No authority: it is a pure function of the status badge beside it
+            (approved 100 / imported 80 / superseded 70 / archived 60), so showing
+            it restated what the badge already said. */}
         {d.revision !== null && (
           <span className="tabular-nums">
             {t("knowledge.revision")} {d.revision}
@@ -96,7 +123,9 @@ export function KnowledgeDetail() {
       </div>
 
       {d.summary !== null && d.summary.length > 0 && (
-        <p className="mt-4 text-[15px] leading-relaxed text-ink-muted">{d.summary}</p>
+        <p className="mt-4 text-[15px] leading-relaxed text-ink-muted">
+          <MarkdownInline source={d.summary} />
+        </p>
       )}
 
       {d.body !== null && (
@@ -165,12 +194,26 @@ export function KnowledgeDetail() {
           </Meta>
         )}
         {d.canonicalPath !== null && (
-          <Meta label={t("knowledge.canonicalPath")}>
+          <Meta
+            label={
+              <InfoTip
+                label={t("knowledge.canonicalPath")}
+                explanation={t("knowledge.canonicalPathHint")}
+              />
+            }
+          >
             <span className="font-mono text-[13px]">{d.canonicalPath}</span>
           </Meta>
         )}
         {d.sourcePath !== null && (
-          <Meta label={t("knowledge.sourcePath")}>
+          <Meta
+            label={
+              <InfoTip
+                label={t("knowledge.sourcePath")}
+                explanation={t("knowledge.sourcePathHint")}
+              />
+            }
+          >
             <span className="font-mono text-[13px]">{d.sourcePath}</span>
           </Meta>
         )}
@@ -182,7 +225,16 @@ export function KnowledgeDetail() {
             <li key={`${r.direction}-${r.relationType}-${r.entityId}`}>
               <span className="text-ink-faint">{r.direction === "outgoing" ? "→" : "←"}</span>{" "}
               <span className="font-medium text-ink">{r.relationType}</span>{" "}
-              <Link to={`/knowledge/${r.entityId}`} className="text-matcha hover:underline">
+              {/* `replace` inside the dialog: the entry being left is another
+                  detail at the same depth, so pushing would make closing walk
+                  back through every hop as a dialog instead of returning to the
+                  list. From the full page it is a normal push. */}
+              <Link
+                to={`/knowledge/${r.entityId}`}
+                state={linkState}
+                replace={asDialog}
+                className="text-matcha hover:underline"
+              >
                 {r.entityId}
               </Link>
             </li>
@@ -193,7 +245,7 @@ export function KnowledgeDetail() {
   );
 }
 
-function Meta({ label, children }: { label: string; children: React.ReactNode }) {
+function Meta({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
   return (
     <div>
       <dt className="text-[11.5px] font-semibold uppercase tracking-wider text-ink-faint">

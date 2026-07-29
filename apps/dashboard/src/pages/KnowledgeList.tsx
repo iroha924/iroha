@@ -2,7 +2,14 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api, type KnowledgeStatusFilter } from "@/api/client.js";
-import { EmptyState, ErrorState, FilterChip, Loading, PageHeader } from "@/components/brand.js";
+import {
+  EmptyState,
+  ErrorState,
+  FilterChip,
+  InfoTip,
+  Loading,
+  PageHeader,
+} from "@/components/brand.js";
 import { Badge } from "@/components/ui/badge.js";
 import {
   Pagination,
@@ -14,6 +21,7 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination.js";
 import { useI18n } from "@/i18n/index.js";
+import { useModalLinkState } from "@/lib/modal-route.js";
 import { pageWindow, parsePage } from "@/lib/pagination.js";
 import { KNOWLEDGE_TYPES, knowledgeStatusTone, knowledgeTypeTone } from "@/lib/status.js";
 
@@ -58,6 +66,7 @@ function readFilter(params: URLSearchParams, key: string, allowed: readonly stri
  */
 export function KnowledgeList() {
   const { t } = useI18n();
+  const linkState = useModalLinkState();
   const [params, setParams] = useSearchParams();
 
   const statuses = readFilter(params, "status", KNOWLEDGE_STATUSES) as KnowledgeStatusFilter[];
@@ -128,7 +137,7 @@ export function KnowledgeList() {
       <div className="mb-6 flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-ink-faint">
-            {t("common.status")}
+            <InfoTip label={t("common.status")} explanation={t("knowledge.statusHint")} />
           </span>
           {KNOWLEDGE_STATUSES.map((s) => (
             <FilterChip key={s} active={statuses.includes(s)} onClick={() => toggle("statuses", s)}>
@@ -164,6 +173,7 @@ export function KnowledgeList() {
                 <li key={item.id}>
                   <Link
                     to={`/knowledge/${item.id}`}
+                    state={linkState}
                     className="flex items-center gap-3 px-5 py-4 transition-colors hover:bg-paper-inset"
                   >
                     <Badge variant={knowledgeTypeTone(item.type)}>{t(`ktype.${item.type}`)}</Badge>
@@ -171,9 +181,6 @@ export function KnowledgeList() {
                       {t(`status.${item.status}`)}
                     </Badge>
                     <span className="flex-1 truncate font-medium text-ink">{item.title}</span>
-                    <span className="shrink-0 text-xs tabular-nums text-ink-faint">
-                      {t("knowledge.authority")} {item.authority}
-                    </span>
                   </Link>
                 </li>
               ))}
