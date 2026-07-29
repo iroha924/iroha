@@ -9,6 +9,49 @@ Entries are written by hand as part of the release, alongside the four version
 strings (`PLUGIN_VERSION`, the plugin `package.json`, `CLI_VERSION`, `SERVER_VERSION`)
 that `manifests.test.ts` asserts agree.
 
+## 0.5.0
+
+- **Breaking: the Digest is gone, and with it two MCP tools and a skill.**
+  `get_digest_data` and `save_digest_prose` are removed from the MCP server, and
+  `/iroha:digest` is removed from both plugin manifests. An agent that calls
+  either tool now gets an unknown-tool error. Nothing else replaces them: the
+  Digest was a per-period editorial page whose prose your own agent session
+  composed, and the page it narrated no longer exists.
+- **The dashboard's front page is now the Overview, at `/`.** It carries only
+  numbers you can act on: how enforceable your approved Guardrail set actually is
+  (a Guardrail that names no paths cannot be enforced at the hook at all), which
+  Rules denied what over the last 30 days and where those denials clustered, plus
+  the pending review queue and approved-knowledge composition. Activity volumes —
+  sessions started, checkpoints written, per-period approval totals — are
+  deliberately absent; they were counted but never acted on, and a number nobody
+  acts on only teaches you to skip the ones you should read. `/overview` now
+  redirects to `/`, as does any unknown path.
+- **Markdown in the dashboard renders GitHub-flavored.** Tables and task lists in
+  an imported `CLAUDE.md` or `.claude/rules/*.md` rendered as literal pipes and
+  brackets before; they now render as tables and checkboxes. Raw HTML in a
+  document is still shown as inert text and never as markup.
+- **Imported documents get a readable summary.** The one-line summary was taken
+  from a document's first *line*, so a paragraph wrapped across source lines was
+  cut at whatever column the author's editor wrapped at — this repository's own
+  `CLAUDE.md` was summarized as "…for Claude Code and Codex. It ships as". It is
+  now taken from the first paragraph, with Markdown emphasis stripped and any
+  truncation landing on a sentence boundary. Existing entries keep their old
+  summary until the document changes; `iroha sync --rebuild` refreshes them all.
+- **Saving, approving, rejecting, and resyncing now confirm themselves.**
+  Approving or rejecting a candidate returns you to the queue, and until now that
+  navigation discarded the only feedback you would have got.
+- **Knowledge detail opens over the list instead of replacing it**, while a
+  direct link or a reload still opens the full page, so a shared URL keeps working.
+- **Doctor no longer shows an empty "recent problems" table.** That table only
+  ever holds failures, so on a healthy repository it was permanently empty; it is
+  now a dialog that appears only when there is something in it. A failed read of
+  the diagnostics themselves now says so instead of rendering as a clean bill of
+  health.
+- **`iroha sync` no longer reports pruned digest issues**, and migration `008`
+  drops the `digest_issues` table and the `digest.period` local setting. Both were
+  local, disposable index state that `sync --rebuild` already discarded, so
+  nothing reconstructible is lost.
+
 ## 0.4.0
 
 - **`iroha init` and `iroha sync` now index the repository's own instruction
