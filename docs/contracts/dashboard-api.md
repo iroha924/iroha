@@ -119,16 +119,13 @@ The API is built with `@hono/zod-openapi`: each route validates its request body
 | `GET` | `/api/v1/health` | process and DB liveness |
 | `GET` | `/api/v1/bootstrap` | repository, user, feature, schema summary |
 
-### Overview and sessions
+### Overview
 
 | Method | Path | Purpose |
 |---|---|---|
 | `GET` | `/api/v1/digest` | one period's Digest: aggregate facts, prior-period comparison, and composed prose |
 | `GET` | `/api/v1/overview` | counts, recent Sessions, pending Candidates, unresolved items |
-| `GET` | `/api/v1/sessions` | paginated Sessions |
-| `GET` | `/api/v1/sessions/:id` | Session, Runs, summary, relations |
-| `GET` | `/api/v1/sessions/:id/runs/:runId` | Turns, Tool summaries, Checkpoints |
-| `GET` | `/api/v1/checkpoints/:id` | structured Checkpoint detail |
+| `GET` | `/api/v1/sessions` | paginated Sessions (the graph's seed picker; no page lists them) |
 
 `GET /api/v1/digest` query parameters: `unit` (`week`|`month`, default this developer's stored
 `digest.period`) and `offset` (integer 0–520; 0 is the current period, higher values are back
@@ -198,7 +195,9 @@ Approval invokes the exact transaction in `contracts/canonical.md`. The API does
 | `POST` | `/api/v1/graph/query` | graph roots, types, direction, depth |
 | `GET` | `/api/v1/graph/path` | bounded path between two IDs |
 
-`GET /api/v1/knowledge` query parameters: `cursor`, `limit`, `status` (repeatable; `approved`|`superseded`|`archived`, default `approved`), `type` (repeatable; one of the seven knowledge `entity_type`s). Values outside these sets are ignored, and `type` never widens beyond the knowledge set.
+`GET /api/v1/knowledge` query parameters: `cursor`, `limit`, `offset`, `status` (repeatable; `approved`|`superseded`|`archived`, default `approved`), `type` (repeatable; one of the seven knowledge `entity_type`s). Values outside these sets are ignored, and `type` never widens beyond the knowledge set. The response carries `total` alongside `items` and `nextCursor`, so the page can number itself.
+
+`offset` addresses a row position and is ignored when `cursor` is given. The dropped-row hazard recorded for the review queue does not apply here: that queue shrinks under the reader because deciding a candidate removes it, whereas this list only grows — approving adds a row and superseding changes a status. The page and `total` are still read in one transaction, so a concurrent `sync` cannot make the count disagree with the rows it is counting.
 
 Graph query limits: depth 4, 200 edges, 200 nodes. UI must show truncation.
 
@@ -236,9 +235,6 @@ Repair operations are allowlisted. The browser cannot run arbitrary shell comman
 ```text
 /
 /overview
-/sessions
-/sessions/:sessionId
-/sessions/:sessionId/runs/:runId
 /review
 /review/:candidateId
 /knowledge
@@ -271,28 +267,14 @@ hours worked, no per-person attribution.
 
 Show:
 
-- pending Candidate count and oldest age;
-- Sessions with active/interrupted status;
-- unresolved Checkpoint items;
-- recent approved knowledge;
-- dirty/sync/schema warnings;
-- knowledge growth by type over time.
+- pending Candidate count;
+- approved knowledge count and its composition by type;
+- open dirty markers.
+
+Session activity is deliberately absent: browsing an activity log is not what this product is for,
+and the pages that did it were removed rather than kept for completeness.
 
 Do not show individual ranking, hours worked, prompt count leaderboard, or a productivity score.
-
-### Session detail
-
-Hierarchy:
-
-```text
-Session
-└── Run
-    └── Turn
-        ├── Tool summary
-        └── Checkpoint
-```
-
-Show actor, platform, branch, SHA window, Issue/PR links, changed paths, validation, decisions, unresolved items, and related approved knowledge. Do not show raw conversation.
 
 ### Review Queue
 

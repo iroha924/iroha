@@ -17,14 +17,16 @@ function knowledgeItem(id: string, overrides: Record<string, unknown> = {}) {
   };
 }
 
-/** Serves page 1 with no cursor and page 2 when a cursor is present. */
-function mockTwoPages(): ReturnType<typeof vi.fn> {
+/** Serves a distinct row per page, so a wrong `offset` shows the wrong title. */
+function mockPagedByOffset(total: number): ReturnType<typeof vi.fn> {
   const fn = vi.fn(async (input: string | URL | Request) => {
     const url = new URL(String(input), "http://x");
-    const data =
-      url.searchParams.get("cursor") === null
-        ? { items: [knowledgeItem("First")], nextCursor: "CUR1" }
-        : { items: [knowledgeItem("Second", { type: "rule" })], nextCursor: null };
+    const offset = Number(url.searchParams.get("offset") ?? "0");
+    const data = {
+      items: [knowledgeItem(`Row at ${offset}`)],
+      nextCursor: null,
+      total,
+    };
     return new Response(JSON.stringify({ ok: true, data, meta: { requestId: "r" } }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
@@ -35,31 +37,40 @@ function mockTwoPages(): ReturnType<typeof vi.fn> {
 }
 
 describe("KnowledgeList", () => {
-  it("loads the next page via cursor and hides Load more when exhausted", async () => {
-    mockTwoPages();
+  it("requests the page's offset and renders that page's rows", async () => {
+    mockPagedByOffset(25);
     renderWithProviders(<KnowledgeList />);
 
-    expect(await screen.findByText("First")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Load more" }));
+    // Page 1 asks for offset 0; the fixture echoes it back in the title, so a
+    // page button that did not change the offset would still show "Row at 0".
+    expect(await screen.findByText("Row at 0")).toBeInTheDocument();
 
-    expect(await screen.findByText("Second")).toBeInTheDocument();
-    await waitFor(() =>
-      expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument(),
-    );
+    await userEvent.click(screen.getByRole("button", { name: "3" }));
+    expect(await screen.findByText("Row at 20")).toBeInTheDocument();
   });
 
-  it("sends the selected type as a repeated query param", async () => {
-    const fn = mockApi({ "GET /api/v1/knowledge": ok({ items: [], nextCursor: null }) });
+  it("shows no pagination when everything fits on one page", async () => {
+    mockPagedByOffset(4);
+    renderWithProviders(<KnowledgeList />);
+
+    await screen.findByText("Row at 0");
+    expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
+  });
+
+  it("sends the selected type as a repeated query param and returns to page 1", async () => {
+    const fn = mockApi({
+      "GET /api/v1/knowledge": ok({ items: [], nextCursor: null, total: 0 }),
+    });
     renderWithProviders(<KnowledgeList />);
     await screen.findByText(/No approved knowledge/);
 
     await userEvent.click(screen.getByRole("button", { name: "Decision" }));
-    await waitFor(() =>
-      expect(
-        fn.mock.calls.some((c) =>
-          new URL(String(c[0]), "http://x").searchParams.getAll("type").includes("decision"),
-        ),
-      ).toBe(true),
-    );
+    await waitFor(() => {
+      const last = new URL(String(fn.mock.calls.at(-1)?.[0]), "http://x").searchParams;
+      expect(last.getAll("type")).toContain("decision");
+      // A filter change that kept the old page would ask past the end of the
+      // smaller result set and render an empty page instead of the matches.
+      expect(last.get("offset")).toBe("0");
+    });
   });
 });

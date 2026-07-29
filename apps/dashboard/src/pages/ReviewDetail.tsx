@@ -17,6 +17,11 @@ import {
 } from "@/components/ui/select.js";
 import { Textarea } from "@/components/ui/textarea.js";
 import { useI18n } from "@/i18n/index.js";
+import { knowledgeTypeTone } from "@/lib/status.js";
+import { cn } from "@/lib/utils";
+
+/** Tall enough to read a section without scrolling, short enough not to bury the buttons. */
+const COLLAPSED_BODY_ROWS = 30;
 
 /**
  * Candidate review detail (contracts/dashboard-api.md §6): edit the draft, view the
@@ -48,6 +53,8 @@ export function ReviewDetail() {
   // expressing an intent to search. Empty means "no search, show everyone".
   const [nameQuery, setNameQuery] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
+  const [bodyExpanded, setBodyExpanded] = useState(false);
+  const bodyLines = body.split("\n").length;
 
   // Sync the editable form from the loaded draft when navigating to a candidate
   // (keyed on the candidate id, not every refetch, so in-progress edits survive polling).
@@ -148,7 +155,7 @@ export function ReviewDetail() {
 
       <Card>
         <CardContent className="space-y-4">
-          <Badge variant="pending" className="w-fit">
+          <Badge variant={knowledgeTypeTone(d.type)} className="w-fit">
             {t(`ktype.${d.type}`)}
           </Badge>
           <div className="space-y-1.5">
@@ -161,9 +168,26 @@ export function ReviewDetail() {
               id="cand-body"
               value={body}
               onChange={(e) => setBody(e.target.value)}
-              rows={10}
-              className="bg-paper-inset font-mono text-[13px]"
+              rows={bodyExpanded ? bodyLines : COLLAPSED_BODY_ROWS}
+              // Textarea carries `field-sizing-content`, which sizes to the content
+              // and makes `rows` inert — the fold does nothing without overriding it.
+              className={cn(
+                "bg-paper-inset font-mono text-[13px]",
+                !bodyExpanded && "field-sizing-fixed overflow-auto",
+              )}
             />
+            {bodyLines > COLLAPSED_BODY_ROWS && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setBodyExpanded((open) => !open)}
+              >
+                {bodyExpanded
+                  ? t("review.collapseBody")
+                  : t("review.expandBody").replace("{lines}", String(bodyLines))}
+              </Button>
+            )}
             <Button
               type="button"
               variant="outline"

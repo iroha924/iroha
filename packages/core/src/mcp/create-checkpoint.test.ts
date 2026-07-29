@@ -81,9 +81,10 @@ describe("mcpCreateCheckpoint", () => {
     }
   });
 
-  // Redaction replaces the whole field, so the template check sees a placeholder
-  // and would blame a missing H1 — false, and unfixable by editing headings.
-  it("blames the redaction, not the headings, when a secret is in a conforming body", async () => {
+  // A secret in a proposal must not cost the checkpoint. mcp.md §6.6 replaces the
+  // flagged field and reports it through `redactions[]` on the successful response,
+  // so the template gate has to stand down rather than reject a placeholder.
+  it("saves the checkpoint and reports the redaction when a secret is in a proposal body", async () => {
     repo = await setupMcpRepo(random);
     const seedDb = await openDatabase(repo.dbPath);
     expect(seedDb.ok).toBe(true);
@@ -105,10 +106,17 @@ describe("mcpCreateCheckpoint", () => {
       }),
     });
 
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.error.message).toContain("secret was detected");
-    expect(result.error.message).not.toContain("H1");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.redactions.map((r) => r.field)).toContain("proposals[0].body");
+
+    // The checkpoint itself survived, which is the whole point.
+    const db = await openDatabase(repo.dbPath);
+    expect(db.ok).toBe(true);
+    if (!db.ok) return;
+    const checkpoint = await getCheckpointById(db.value, result.value.checkpointId);
+    expect(checkpoint.ok && checkpoint.value !== null).toBe(true);
+    await closeDatabase(db.value);
   }, 15000);
 
   it("rejects a proposal whose body is not a canonical body, naming its index", async () => {

@@ -26,7 +26,8 @@ iroha's visual identity is **organic color** (an unbleached-cream ("kinari") bas
 | warn / tint | `#A8823F` / `#F0E7D6` | Warning, pending |
 | clay | `#BC9870` | **Decoration only** (never a text color on paper) |
 
-- **Restraint**: the only brand color that carries weight is matcha (primary + approve). persimmon is reject-only. clay is decoration. Leave room to add a muted violet/purple as a fourth badge color to the family in the future.
+- **Restraint**: the only brand color that carries weight is matcha (primary + approve). persimmon is reject-only. clay is decoration.
+- **Knowledge-type tones** extend the family with three more traditional colors — fuji `#7C6A82` (wisteria), suou `#9C5A62` (sappanwood), asagi `#5A7A78` (rusted teal) — so each of the seven canonical knowledge types has one of its own. They are *identity*, not state: a type is the same color on every page and in every state, and status keeps the approve/pending/reject tones. Pick them from `KNOWLEDGE_TYPES` in `apps/dashboard/src/lib/status.ts`, which the badges and the Overview composition chart both read; holding two lists is what let a type render as two different colors.
 - Already defined as Tailwind v4 `@theme` tokens in `apps/dashboard/src/index.css` (`bg-paper` `text-ink` `bg-matcha`, etc.).
 
 ## Typography (CSP forbids remote fonts = system stack only)

@@ -107,6 +107,24 @@ describe("validateBodyForType", () => {
     expect(result.ok).toBe(false);
   });
 
+  // Both sides are trimmed, so without a blank-title guard `" "` matches a bare `#`.
+  it.each(["", " ", "\t\n "])("rejects a title that trims to empty: %j", (title) => {
+    const result = validateBodyForType("rule", title, ruleBody("#"));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.message).toContain("blank");
+  });
+
+  // The heading is caller-supplied and reaches the model through the MCP envelope.
+  it("bounds the heading it echoes back", () => {
+    const heading = "x".repeat(5000);
+    const result = validateBodyForType("rule", "Short title", ruleBody(`# ${heading}`));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.message.length).toBeLessThan(400);
+    expect(result.error.details).toEqual({ expected: "Short title", actual: heading });
+  });
+
   it("names every required section when the H1 is missing", () => {
     const result = validateBodyForType("insight", "Some insight", "no headings here");
     expect(result.ok).toBe(false);

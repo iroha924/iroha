@@ -501,6 +501,8 @@ export interface ListKnowledgeEntitiesFilter {
   /** Keyset cursor: return rows strictly older than this `(updated_at, id)` pair. */
   beforeUpdatedAt?: string;
   beforeId?: string;
+  /** Rows to skip, for numbered pages. Ignored when a cursor is given. */
+  offset?: number;
 }
 
 /**
@@ -538,15 +540,58 @@ export async function listKnowledgeEntities(
     args.push(filter.beforeUpdatedAt, filter.beforeId);
   }
   args.push(filter.limit);
+  // A non-integer would reach SQLite as a datatype mismatch and surface as a 500;
+  // the offset is a row position, so anything else is not one.
+  const usingCursor = filter.beforeUpdatedAt !== undefined && filter.beforeId !== undefined;
+  const skip =
+    !usingCursor && filter.offset !== undefined && Number.isInteger(filter.offset)
+      ? Math.max(0, filter.offset)
+      : 0;
+  if (skip > 0) {
+    args.push(skip);
+  }
   try {
     const result = await db.execute({
       sql: `SELECT * FROM entities WHERE ${conditions.join(" AND ")}
-        ORDER BY updated_at DESC, id DESC LIMIT ?`,
+        ORDER BY updated_at DESC, id DESC LIMIT ?${skip > 0 ? " OFFSET ?" : ""}`,
       args,
     });
     return ok(result.rows.map(rowToEntity));
   } catch (cause) {
     return err(mapLibsqlError(cause, "Failed to list knowledge entities"));
+  }
+}
+
+/**
+ * How many knowledge entities match, so the Knowledge page can show numbered
+ * pages. Same filters as the list, minus the cursor — separate from the list
+ * query for the same reason `countCandidates` is: that query's `LIMIT`
+ * deliberately never sees the rest of the set.
+ */
+export async function countKnowledgeEntities(
+  db: Executor,
+  repositoryId: TypedId<"repo">,
+  filter: Pick<ListKnowledgeEntitiesFilter, "statuses" | "entityTypes">,
+): Promise<Result<number, IrohaError>> {
+  const statuses = filter.statuses ?? ["approved"];
+  const requestedTypes = filter.entityTypes?.filter(
+    (t): t is (typeof KNOWLEDGE_ENTITY_TYPES)[number] =>
+      (KNOWLEDGE_ENTITY_TYPES as readonly string[]).includes(t),
+  );
+  const entityTypes =
+    requestedTypes !== undefined && requestedTypes.length > 0
+      ? requestedTypes
+      : KNOWLEDGE_ENTITY_TYPES;
+  try {
+    const result = await db.execute({
+      sql: `SELECT COUNT(*) AS c FROM entities WHERE repository_id = ?
+        AND entity_type IN (${entityTypes.map(() => "?").join(", ")})
+        AND status IN (${statuses.map(() => "?").join(", ")})`,
+      args: [repositoryId, ...entityTypes, ...statuses],
+    });
+    return ok(Number(result.rows[0]?.c ?? 0));
+  } catch (cause) {
+    return err(mapLibsqlError(cause, "Failed to count knowledge entities"));
   }
 }
 

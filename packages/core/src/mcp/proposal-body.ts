@@ -23,20 +23,17 @@ export function validateProposalBody(
   redactionField: string,
   messagePrefix: string,
 ): Result<void, IrohaError> {
-  // The secret scan replaces the *whole* field with a placeholder. Both fields the
-  // template compares can be replaced, and either one makes the check blame a
-  // heading — false, not fixable by editing headings, and it buries the only fact
-  // the caller can act on.
-  const replaced = (["title", "body"] as const).filter((field) =>
+  // The secret scan replaces the *whole* field with a placeholder, so the template
+  // check would see no headings and reject. Skip it instead of failing: §6.6 says a
+  // flagged field is replaced and reported through `redactions[]` on the *successful*
+  // response, and this gate exists to catch a body the agent wrote wrong, not one the
+  // scanner took away. Failing here would also discard the rest of a checkpoint —
+  // objective, implementation, validation — over a secret in one proposal.
+  const replaced = (["title", "body"] as const).some((field) =>
     redactions.some((redaction) => redaction.field === `${redactionField}.${field}`),
   );
-  if (replaced.length > 0) {
-    return err(
-      new IrohaErrorClass(
-        "INVALID_INPUT",
-        `${messagePrefix}${replaced.join(" and ")} ${replaced.length > 1 ? "were" : "was"} replaced because a secret was detected; resubmit without the secret`,
-      ),
-    );
+  if (replaced) {
+    return ok(undefined);
   }
 
   const body = validateBodyForType(proposal.type, proposal.title, proposal.body);

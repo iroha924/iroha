@@ -6,7 +6,6 @@ import { Mark } from "@/components/brand.js";
 import { Card, CardContent } from "@/components/ui/card.js";
 import { type Locale, useI18n } from "@/i18n/index.js";
 import { cn } from "@/lib/utils";
-import { CheckpointDetail } from "@/pages/CheckpointDetail.js";
 import { Digest } from "@/pages/Digest.js";
 import { Doctor } from "@/pages/Doctor.js";
 import { GraphComingSoon } from "@/pages/GraphComingSoon.js";
@@ -15,10 +14,7 @@ import { KnowledgeList } from "@/pages/KnowledgeList.js";
 import { Overview } from "@/pages/Overview.js";
 import { ReviewDetail } from "@/pages/ReviewDetail.js";
 import { ReviewQueue } from "@/pages/ReviewQueue.js";
-import { RunDetail } from "@/pages/RunDetail.js";
 import { Search } from "@/pages/Search.js";
-import { SessionDetail } from "@/pages/SessionDetail.js";
-import { Sessions } from "@/pages/Sessions.js";
 import { Settings } from "@/pages/Settings.js";
 
 function LanguageToggle() {
@@ -112,7 +108,6 @@ export function App() {
             <nav aria-label={t("nav.primaryLabel")} className="flex items-center gap-6">
               <NavItem to="/" label={t("nav.digest")} />
               <NavItem to="/overview" label={t("nav.overview")} />
-              <NavItem to="/sessions" label={t("nav.sessions")} />
               <NavItem to="/review" label={t("nav.review")} />
               <NavItem to="/knowledge" label={t("nav.knowledge")} />
               <NavItem to="/graph" label={t("nav.graph")} />
@@ -134,10 +129,6 @@ export function App() {
               standing state (pending pressure, totals, recent sessions). */}
           <Route path="/" element={<Digest />} />
           <Route path="/overview" element={<Overview />} />
-          <Route path="/sessions" element={<Sessions />} />
-          <Route path="/sessions/:id" element={<SessionDetail />} />
-          <Route path="/sessions/:id/runs/:runId" element={<RunDetail />} />
-          <Route path="/sessions/:id/checkpoints/:checkpointId" element={<CheckpointDetail />} />
           <Route path="/review" element={<ReviewQueue />} />
           <Route path="/review/:id" element={<ReviewDetail />} />
           <Route path="/knowledge" element={<KnowledgeList />} />

@@ -22,6 +22,18 @@ const badgeVariants = cva(
         pending: "bg-warn-tint text-warn",
         reject: "bg-persimmon-tint text-persimmon-hover",
         neutral: "bg-paper-inset text-ink-muted",
+        // Knowledge-type tints, one per canonical type, drawn from the same brand
+        // family as the chart series so the Review queue and the Overview
+        // composition read as the same palette (`lib/status.ts`).
+        matcha: "bg-approve-tint text-approve",
+        persimmon: "bg-persimmon-tint text-persimmon-hover",
+        // clay is decoration-only per brand-and-design.md, so it tints the surface
+        // and the label stays sumi ink rather than becoming clay-coloured text.
+        clay: "bg-clay-tint text-ink",
+        amber: "bg-warn-tint text-warn",
+        fuji: "bg-fuji-tint text-fuji",
+        suou: "bg-suou-tint text-suou",
+        asagi: "bg-asagi-tint text-asagi",
       },
     },
     defaultVariants: {

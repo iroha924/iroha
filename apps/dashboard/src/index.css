@@ -45,6 +45,18 @@
   --color-warn-tint: #f0e7d6;
 
   --color-clay: #bc9870;
+  --color-clay-tint: #f1e7d9;
+
+  /* Three more traditional tones so each of the seven knowledge types reads as
+     its own colour. Chosen from the same muted earth range as matcha and clay —
+     a wisteria, a sappanwood rose and a rusted teal — rather than from a bright
+     categorical scale, so the set still looks grown rather than generated. */
+  --color-fuji: #7c6a82;
+  --color-fuji-tint: #eae5ec;
+  --color-suou: #9c5a62;
+  --color-suou-tint: #f1e0e2;
+  --color-asagi: #5a7a78;
+  --color-asagi-tint: #e1eae9;
 
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
