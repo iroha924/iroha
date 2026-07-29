@@ -1,5 +1,7 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
+  "//": "Repo-root files no package directory contains. Without them a task is keyed on its own package only, so editing a migration or a schema replays a cached green from before the edit — which is how an added migration once shipped with seven broken migrator tests reported as passing.",
+  "globalDependencies": ["migrations/**", "schemas/**"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

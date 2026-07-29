@@ -259,14 +259,15 @@ Recursive CTE queries must track visited IDs in the path and enforce both depth 
 2. create a sibling DB with a random temporary name;
 3. apply all migrations;
 4. import `.iroha/config.yaml`, taxonomy, and every canonical document;
-5. import local Git commit/ref metadata;
-6. validate every canonical reference and collect non-fatal unresolved external refs;
-7. build search documents and FTS indexes;
-8. reuse compatible embeddings from the old DB by content hash when available;
-9. queue missing embeddings;
-10. run integrity checks;
-11. close connections and atomically replace the DB;
-12. retain the old DB as a timestamped backup until the next successful start.
+5. import the repository's own instruction documents (canonical.md §14) — they live only in the index, so unlike approved knowledge they are re-derived from the source files rather than carried over;
+6. import local Git commit/ref metadata;
+7. validate every canonical reference and collect non-fatal unresolved external refs;
+8. build search documents and FTS indexes;
+9. reuse compatible embeddings from the old DB by content hash when available;
+10. queue missing embeddings;
+11. run integrity checks;
+12. close connections and atomically replace the DB;
+13. retain the old DB as a timestamped backup until the next successful start.
 
 Canonical parse or schema errors fail the rebuild without replacing the current DB.
 

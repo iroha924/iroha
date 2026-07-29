@@ -129,18 +129,28 @@ export async function approveCandidate(
       const nowIso = ctx.clock.now().toISOString();
 
       // Steps 3-7: build, validate, and atomically write the canonical file.
-      const built = buildCanonicalDocumentFromCandidate({
-        candidateType: candidate.candidateType,
-        draft,
-        repositoryId: ctx.repo.repositoryId,
-        candidateId,
-        createdBy: AGENT_ACTOR,
-        approvedBy: { provider: input.actor.provider, display_name: input.actor.displayName },
-        createdAt: candidate.createdAt,
-        approvedAt: nowIso,
-        revision: 1,
-        provenance: provenanceFor(candidate.sourceSessionId, candidate.sourceCheckpointId),
-      });
+      // Guarded for the same reason `getCandidateDetail` is: a payload written
+      // by an older build can be a shape this one cannot read, and that must
+      // refuse the approval rather than escape as an unhandled throw.
+      let built: ReturnType<typeof buildCanonicalDocumentFromCandidate>;
+      try {
+        built = buildCanonicalDocumentFromCandidate({
+          candidateType: candidate.candidateType,
+          draft,
+          repositoryId: ctx.repo.repositoryId,
+          candidateId,
+          createdBy: AGENT_ACTOR,
+          approvedBy: { provider: input.actor.provider, display_name: input.actor.displayName },
+          createdAt: candidate.createdAt,
+          approvedAt: nowIso,
+          revision: 1,
+          provenance: provenanceFor(candidate.sourceSessionId, candidate.sourceCheckpointId),
+        });
+      } catch {
+        return err(
+          new IrohaErrorClass("INVALID_INPUT", "This candidate's stored payload cannot be read."),
+        );
+      }
       if (!built.ok) {
         return built;
       }

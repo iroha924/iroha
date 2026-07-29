@@ -5,6 +5,7 @@ import {
   type EntityRow,
   getCanonicalDocumentByEntityId,
   getEntityById,
+  getKnowledgeItemById,
   getNeighbors,
   listKnowledgeEntities,
   withTransaction,
@@ -143,6 +144,8 @@ export interface KnowledgeDetailData {
   revision: number | null;
   approvedAt: string | null;
   frontmatter: unknown;
+  /** The repository-relative file an imported document was read from; `null` for canonical knowledge. */
+  sourcePath: string | null;
   relations: KnowledgeRelation[];
 }
 
@@ -173,6 +176,16 @@ export async function getKnowledgeDetail(
         return docResult;
       }
       const doc = docResult.value;
+      // An imported repository doc (canonical.md §14) has no canonical file, so
+      // its body lives only in `knowledge_items`. Reading it here is what keeps
+      // the detail page from rendering a title and nothing else.
+      const knowledgeResult =
+        doc === null ? await getKnowledgeItemById(ctx.db, input.entityId) : null;
+      if (knowledgeResult !== null && !knowledgeResult.ok) {
+        return knowledgeResult;
+      }
+      const knowledgeBody =
+        knowledgeResult?.ok === true ? (knowledgeResult.value?.body ?? null) : null;
       const neighborsResult = await getNeighbors(ctx.db, input.entityId, {
         direction: "both",
         limit: 200,
@@ -192,11 +205,12 @@ export async function getKnowledgeDetail(
         summary: entity.summary,
         status: entity.status,
         authority: entity.authority,
-        body: doc?.body ?? null,
+        body: doc?.body ?? knowledgeBody,
         canonicalPath: doc?.canonicalPath ?? null,
         revision: doc?.revision ?? null,
         approvedAt: doc?.approvedAt ?? null,
         frontmatter: doc === null ? null : JSON.parse(doc.frontmatterJson),
+        sourcePath: entity.sourceKind === "import" ? entity.sourceRef : null,
         relations,
       });
     },

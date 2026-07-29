@@ -370,6 +370,28 @@ export async function getEntityById(
 }
 
 /**
+ * Every entity a given writer produced, at any status. The doc import
+ * (contracts/canonical.md §14) needs the full set to notice which of its
+ * previous entities no longer have a source file, which is the one thing an
+ * upsert-only pass cannot see. Served by `idx_entities_source`.
+ */
+export async function listEntitiesBySourceKind(
+  db: Executor,
+  repositoryId: TypedId<"repo">,
+  sourceKind: EntitySourceKind,
+): Promise<Result<EntityRow[], IrohaError>> {
+  try {
+    const result = await db.execute({
+      sql: "SELECT * FROM entities WHERE repository_id = ? AND source_kind = ? ORDER BY id",
+      args: [repositoryId, sourceKind],
+    });
+    return ok(result.rows.map(rowToEntity));
+  } catch (cause) {
+    return err(mapLibsqlError(cause, "Failed to list entities by source kind"));
+  }
+}
+
+/**
  * Batched `getEntityById`: fetches many entities in one `IN (...)` query, keyed
  * by `id`. Returns an empty Map (with no query) for empty input — never emits
  * `IN ()`. Missing ids are simply absent from the Map, exactly like a `null`

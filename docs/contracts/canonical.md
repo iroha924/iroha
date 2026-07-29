@@ -374,7 +374,9 @@ Each imported entity must retain:
 Consequences:
 
 - Re-import is keyed on the repository-relative path, so an edited document updates its entity rather than creating a second one; an unchanged document is skipped on its content hash.
-- `status = 'imported'` is outside the `approved` set, so `get_active_rules` does not serve these to agents. Claude Code already auto-loads `CLAUDE.md` and path-scoped `.claude/rules/*.md`; serving the same text again would deliver it twice.
+- A document that resolves outside the repository once symlinks are followed is not read at all. A repository can commit `.claude/rules` or `CLAUDE.md` as a symlink, and this runs on `init` with no opt-in, so containment is checked rather than assumed.
+- A document that disappears has its entity moved to `status = 'tombstoned'`, the same reconcile `.iroha/` deletions get. Without it a renamed rule would be served under both names and a deleted one served forever.
+- `status = 'imported'` is outside the `approved` set, so `get_active_rules` does not serve these — Claude Code already auto-loads `CLAUDE.md` and path-scoped `.claude/rules/*.md`, and pushing the same text again would deliver it twice. `search` and `get_context` **do** return them, at authority 80: those are pull, not push, and a repository whose harness does not auto-load `.claude/rules/*.md` (Codex reads `AGENTS.md`) has no other way to reach them.
 - A rebuild re-derives them from the source files, exactly as it re-derives approved knowledge from `.iroha/`.
 - Importing neither deletes nor edits the source document.
 

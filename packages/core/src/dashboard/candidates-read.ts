@@ -199,18 +199,31 @@ export async function getCandidateDetail(
       };
       let canonicalPreview: string | null = null;
 
-      const built = buildCanonicalDocumentFromCandidate({
-        candidateType: candidate.candidateType,
-        draft,
-        repositoryId: ctx.repo.repositoryId,
-        candidateId,
-        createdBy: AGENT_ACTOR,
-        approvedBy: REVIEWER_ACTOR,
-        createdAt: candidate.createdAt,
-        approvedAt: ctx.clock.now().toISOString(),
-        revision: 1,
-        provenance: [],
-      });
+      // `payloadJson` is persisted data, so it can predate this build: a
+      // candidate written by a version whose payload shape no longer exists
+      // makes the builder read a field that is not there and throw past its
+      // `Result`. Reviewing it is still a legitimate request — the queue is
+      // where a reviewer goes to get rid of it — so an unbuildable payload
+      // becomes a validation issue on a rendered page rather than a 500.
+      let built: ReturnType<typeof buildCanonicalDocumentFromCandidate>;
+      try {
+        built = buildCanonicalDocumentFromCandidate({
+          candidateType: candidate.candidateType,
+          draft,
+          repositoryId: ctx.repo.repositoryId,
+          candidateId,
+          createdBy: AGENT_ACTOR,
+          approvedBy: REVIEWER_ACTOR,
+          createdAt: candidate.createdAt,
+          approvedAt: ctx.clock.now().toISOString(),
+          revision: 1,
+          provenance: [],
+        });
+      } catch {
+        built = err(
+          new IrohaErrorClass("INVALID_INPUT", "This candidate's stored payload cannot be read."),
+        );
+      }
       if (!built.ok) {
         validation.issues.push(built.error.message);
       } else {

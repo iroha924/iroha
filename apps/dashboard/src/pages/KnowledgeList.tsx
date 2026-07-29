@@ -24,6 +24,15 @@ const KNOWLEDGE_STATUSES: readonly KnowledgeStatusFilter[] = [
   "archived",
 ];
 
+/**
+ * What an unfiltered page shows: current knowledge, whichever way it got here.
+ * The API's own default is `approved` alone, so this is sent explicitly —
+ * leaving it off would hide every imported repository doc until a reader
+ * thought to click a chip they had no reason to suspect existed. `superseded`
+ * and `archived` stay opt-in; they are history, not current knowledge.
+ */
+const DEFAULT_STATUSES: readonly KnowledgeStatusFilter[] = ["approved", "imported"];
+
 const PAGE_SIZE = 10;
 
 /** A repeatable filter param, kept sorted so the query key is click-order-insensitive. */
@@ -75,7 +84,7 @@ export function KnowledgeList() {
       api.knowledge({
         limit: PAGE_SIZE,
         offset: (requestedPage - 1) * PAGE_SIZE,
-        ...(statuses.length > 0 ? { statuses } : {}),
+        statuses: statuses.length > 0 ? statuses : [...DEFAULT_STATUSES],
         ...(types.length > 0 ? { types } : {}),
       }),
     // Keep the current rows on screen while a filter or page change refetches.

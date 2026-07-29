@@ -97,7 +97,20 @@ describe("KnowledgeList", () => {
     await userEvent.click(screen.getByRole("button", { name: "Imported" }));
     await waitFor(() => {
       const last = new URL(String(fn.mock.calls.at(-1)?.[0]), "http://x").searchParams;
-      expect(last.getAll("status")).toContain("imported");
+      expect(last.getAll("status")).toEqual(["imported"]);
     });
+  });
+
+  it("asks for imported docs alongside approved knowledge when no chip is active", async () => {
+    const fn = mockApi({
+      "GET /api/v1/knowledge": ok({ items: [], nextCursor: null, total: 0 }),
+    });
+    renderWithProviders(<KnowledgeList />);
+    await screen.findByText(/No knowledge yet/);
+
+    // The API defaults to `approved` alone, so an omitted status param would
+    // silently hide every imported repository doc on the unfiltered page.
+    const first = new URL(String(fn.mock.calls.at(0)?.[0]), "http://x").searchParams;
+    expect(first.getAll("status")).toEqual(["approved", "imported"]);
   });
 });

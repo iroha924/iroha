@@ -258,8 +258,9 @@ Hook contextは最大8,000文字・12 items。ID、短い要約、関連理由�
 2. canonical manifest/hash比較
 3. changed documentのparse/validate
 4. entity/relation/search documentをtransactional upsert
-5. Git metadata更新
-6. Embedding job queue更新
+5. repository doc（`CLAUDE.md`/`AGENTS.md`/`.claude/rules`）の再取り込みと、消えたもののtombstone（contracts/canonical.md §14）
+6. Git metadata更新
+7. Embedding job queue更新
 
 `iroha sync --rebuild`は新しいsibling DBへ全migrationとimportを行い、integrity check成功後だけatomic replaceする。Canonical parse/schema errorがあれば現DBを置き換えない。compatible vectorはcontent hashで再利用できる。
 

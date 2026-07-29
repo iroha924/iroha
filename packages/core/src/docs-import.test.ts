@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { CryptoRandomSource, FixedClock, makeTypedId, type TypedId } from "@iroha/domain";
 import {
@@ -53,6 +53,16 @@ describe("importRepositoryDocs", () => {
       statuses: ["imported"],
       limit: 50,
     });
+  }
+
+  function importDocs(database: Database, repositoryRoot: string, repositoryId: TypedId<"repo">) {
+    return importRepositoryDocs(
+      database,
+      repositoryRoot,
+      repositoryId,
+      CLOCK,
+      new CryptoRandomSource(),
+    );
   }
 
   it("imports AGENTS.md/CLAUDE.md at the repository root, skipping unchanged content", async () => {
@@ -295,6 +305,180 @@ describe("importRepositoryDocs", () => {
     expect(knowledge.ok).toBe(true);
     if (knowledge.ok) {
       expect(JSON.parse(knowledge.value?.scopeJson ?? "{}").paths).toEqual([]);
+    }
+  });
+
+  it("does not follow a symlinked .claude/rules or root doc out of the repository", async () => {
+    const { repositoryRoot, repositoryId } = await setup();
+    if (!db) return;
+    const outside = join(repositoryRoot, "..", "outside-the-repo");
+    await mkdir(join(outside, "rules"), { recursive: true });
+    await writeFile(join(outside, "rules", "leaked.md"), "OUTSIDE-RULE-BODY", "utf8");
+    await writeFile(join(outside, "root-target.md"), "OUTSIDE-ROOT-BODY", "utf8");
+    await mkdir(join(repositoryRoot, ".claude"), { recursive: true });
+    await symlink(join(outside, "rules"), join(repositoryRoot, ".claude", "rules"));
+    await symlink(join(outside, "root-target.md"), join(repositoryRoot, "AGENTS.md"));
+
+    const result = await importDocs(db, repositoryRoot, repositoryId);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.docsImported).toEqual([]);
+    expect(result.value.entitiesWritten).toBe(0);
+    expect(result.value.docsSkipped).toBe(2);
+
+    const imported = await listImported(db, repositoryId);
+    expect(imported.ok).toBe(true);
+    if (imported.ok) {
+      expect(imported.value).toEqual([]);
+    }
+  });
+
+  it("records a symlink that stays inside the repository under its real path", async () => {
+    const { repositoryRoot, repositoryId } = await setup();
+    if (!db) return;
+    await mkdir(join(repositoryRoot, "shared"), { recursive: true });
+    await mkdir(join(repositoryRoot, ".claude"), { recursive: true });
+    await writeFile(join(repositoryRoot, "shared", "inside.md"), "# Inside", "utf8");
+    await symlink(join(repositoryRoot, "shared"), join(repositoryRoot, ".claude", "rules"));
+
+    const result = await importDocs(db, repositoryRoot, repositoryId);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.docsImported).toEqual(["shared/inside.md"]);
+    expect(result.value.docsSkipped).toBe(0);
+  });
+
+  it("skips an unreadable document instead of throwing out of the Result", async () => {
+    const { repositoryRoot, repositoryId } = await setup();
+    if (!db) return;
+    await mkdir(join(repositoryRoot, ".claude", "rules"), { recursive: true });
+    const unreadable = join(repositoryRoot, ".claude", "rules", "locked.md");
+    await writeFile(unreadable, "# Locked", "utf8");
+    await chmod(unreadable, 0o000);
+    // A directory where a root doc is expected, and a symlink that loops.
+    await mkdir(join(repositoryRoot, "CLAUDE.md"), { recursive: true });
+    await symlink(join(repositoryRoot, "AGENTS.md"), join(repositoryRoot, "AGENTS.md"));
+
+    const result = await importDocs(db, repositoryRoot, repositoryId);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.docsImported).toEqual([]);
+
+    await chmod(unreadable, 0o644);
+  });
+
+  it("reads frontmatter from a CRLF checkout and from a file with a BOM", async () => {
+    const { repositoryRoot, repositoryId } = await setup();
+    if (!db) return;
+    await mkdir(join(repositoryRoot, ".claude", "rules"), { recursive: true });
+    await writeFile(
+      join(repositoryRoot, ".claude", "rules", "crlf.md"),
+      ["---", "paths:", '  - "packages/*/src/**/*.ts"', "---", "", "# CRLF rule"].join("\r\n"),
+      "utf8",
+    );
+    await writeFile(
+      join(repositoryRoot, ".claude", "rules", "bom.md"),
+      `﻿${["---", "paths:", '  - "apps/**/*.tsx"', "---", "", "# BOM rule"].join("\n")}`,
+      "utf8",
+    );
+
+    const result = await importDocs(db, repositoryRoot, repositoryId);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.entitiesWritten).toBe(2);
+
+    const imported = await listImported(db, repositoryId);
+    expect(imported.ok).toBe(true);
+    if (!imported.ok) return;
+    const byPath = new Map(imported.value.map((e) => [e.sourceRef, e.id]));
+    for (const [path, expectedPaths] of [
+      [".claude/rules/crlf.md", ["packages/*/src/**/*.ts"]],
+      [".claude/rules/bom.md", ["apps/**/*.tsx"]],
+    ] as const) {
+      const id = byPath.get(path);
+      expect(id).toBeDefined();
+      const knowledge = await getKnowledgeItemById(db, id ?? "");
+      expect(knowledge.ok).toBe(true);
+      if (!knowledge.ok) return;
+      expect(JSON.parse(knowledge.value?.scopeJson ?? "{}").paths).toEqual(expectedPaths);
+      expect(knowledge.value?.body).not.toContain("paths:");
+      expect(knowledge.value?.body).not.toContain("\r");
+    }
+  });
+
+  it("tombstones an entity whose source document was deleted or renamed", async () => {
+    const { repositoryRoot, repositoryId } = await setup();
+    if (!db) return;
+    await mkdir(join(repositoryRoot, ".claude", "rules"), { recursive: true });
+    const oldPath = join(repositoryRoot, ".claude", "rules", "old.md");
+    await writeFile(oldPath, "# Old rule", "utf8");
+
+    const first = await importDocs(db, repositoryRoot, repositoryId);
+    expect(first.ok).toBe(true);
+    if (first.ok) {
+      expect(first.value.entitiesTombstoned).toBe(0);
+    }
+
+    await rm(oldPath);
+    await writeFile(join(repositoryRoot, ".claude", "rules", "new.md"), "# Old rule", "utf8");
+
+    const second = await importDocs(db, repositoryRoot, repositoryId);
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(second.value.entitiesTombstoned).toBe(1);
+
+    const stillImported = await listImported(db, repositoryId);
+    expect(stillImported.ok).toBe(true);
+    if (!stillImported.ok) return;
+    expect(stillImported.value.map((e) => e.sourceRef)).toEqual([".claude/rules/new.md"]);
+
+    const tombstoned = await listKnowledgeEntities(db, repositoryId, {
+      statuses: ["tombstoned"],
+      limit: 10,
+    });
+    expect(tombstoned.ok).toBe(true);
+    if (tombstoned.ok) {
+      expect(tombstoned.value.map((e) => e.sourceRef)).toEqual([".claude/rules/old.md"]);
+    }
+  });
+
+  it("revives a tombstoned entity when its document comes back unchanged", async () => {
+    const { repositoryRoot, repositoryId } = await setup();
+    if (!db) return;
+    const path = join(repositoryRoot, "CLAUDE.md");
+    await writeFile(path, "# Claude\n\nBody.", "utf8");
+    await importDocs(db, repositoryRoot, repositoryId);
+    await rm(path);
+    await importDocs(db, repositoryRoot, repositoryId);
+
+    await writeFile(path, "# Claude\n\nBody.", "utf8");
+    const revived = await importDocs(db, repositoryRoot, repositoryId);
+    expect(revived.ok).toBe(true);
+    if (!revived.ok) return;
+    // The content hash still matches, so only the status check can bring it back.
+    expect(revived.value.entitiesWritten).toBe(1);
+
+    const imported = await listImported(db, repositoryId);
+    expect(imported.ok).toBe(true);
+    if (imported.ok) {
+      expect(imported.value.map((e) => e.sourceRef)).toEqual(["CLAUDE.md"]);
+    }
+  });
+
+  it("gives an imported entity a summary so search results are not blank", async () => {
+    const { repositoryRoot, repositoryId } = await setup();
+    if (!db) return;
+    await writeFile(
+      join(repositoryRoot, "CLAUDE.md"),
+      "# Heading only\n\nThe first real sentence.\n",
+      "utf8",
+    );
+
+    await importDocs(db, repositoryRoot, repositoryId);
+    const imported = await listImported(db, repositoryId);
+    expect(imported.ok).toBe(true);
+    if (imported.ok) {
+      expect(imported.value[0]?.summary).toBe("The first real sentence.");
     }
   });
 });

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -541,6 +541,45 @@ describe("dashboard API", () => {
 
     // An out-of-enum `type` is ignored (never applied, never widened to non-knowledge).
     expect((await items(await get(app, "/api/v1/knowledge?type=session", cookie))).length).toBe(1);
+  });
+
+  it("serves an imported repository doc with its body and source path", async () => {
+    const dirWithDocs = await mkdtemp(join(tmpdir(), "iroha-api-import-"));
+    dir = dirWithDocs;
+    await runGit(["init", "--initial-branch=main"], { cwd: dirWithDocs });
+    await runGit(["config", "user.email", "iroha-test@example.com"], { cwd: dirWithDocs });
+    await runGit(["config", "user.name", "iroha test"], { cwd: dirWithDocs });
+    await writeFile(join(dirWithDocs, "CLAUDE.md"), "# Project\n\nAlways run the tests.\n", "utf8");
+    const init = await runInit(dirWithDocs, MIGRATIONS_DIR);
+    expect(init.ok).toBe(true);
+
+    const { app } = makeApp(dirWithDocs);
+    const cookie = await exchange(app);
+
+    // The status is a real filter value end to end, not just a dashboard constant.
+    const listed = (await (await get(app, "/api/v1/knowledge?status=imported", cookie)).json()) as {
+      data: { items: { id: string; type: string; status: string }[] };
+    };
+    expect(listed.data.items.length).toBe(1);
+    const item = listed.data.items[0];
+    expect(item?.type).toBe("rule");
+    expect(item?.status).toBe("imported");
+
+    // Detail reads the body from `knowledge_items`; an imported entity has no
+    // canonical document, and sourcing the body only from there rendered a page
+    // with a title and nothing else.
+    const detail = (await (await get(app, `/api/v1/knowledge/${item?.id}`, cookie)).json()) as {
+      data: { body: string | null; sourcePath: string | null; canonicalPath: string | null };
+    };
+    expect(detail.data.body).toContain("Always run the tests.");
+    expect(detail.data.sourcePath).toBe("CLAUDE.md");
+    expect(detail.data.canonicalPath).toBeNull();
+
+    // The default list is approved-only, so imported docs are opt-in at the API.
+    const defaulted = (await (await get(app, "/api/v1/knowledge", cookie)).json()) as {
+      data: { items: unknown[] };
+    };
+    expect(defaulted.data.items).toEqual([]);
   });
 
   it("filters the session list by last_seen_at range and ignores a non-RFC-3339 bound", async () => {

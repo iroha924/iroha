@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Dirent } from "node:fs";
-import { readdir, readFile } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { readdir, readFile, stat } from "node:fs/promises";
+import { join } from "node:path";
 import {
   type Clock,
   type IrohaError,
@@ -12,12 +12,16 @@ import {
   type Result,
   type TypedId,
 } from "@iroha/domain";
+import { toRepoRelativePath } from "@iroha/git";
 import {
   type Database,
   getEntityById,
+  listEntitiesBySourceKind,
+  updateEntityStatus,
   upsertEntity,
   upsertKnowledgeItem,
   upsertSearchDocument,
+  withTransaction,
 } from "@iroha/storage";
 import { parse as parseYaml } from "yaml";
 
@@ -38,65 +42,78 @@ const RULES_SUBDIRECTORY = join(".claude", "rules");
  */
 const IMPORTED_STATUS = "imported";
 
+/** Matches `syncCanonicalToDatabase`; the FTS candidate query excludes only this status. */
+const TOMBSTONED_STATUS = "tombstoned";
+
 /** contracts/database.md §6: same tier as a verified Git/Forge artifact. */
 const IMPORTED_AUTHORITY = 80;
 
 interface DiscoveredDoc {
-  /** Repository-root-relative, POSIX-normalized. */
+  /** Repository-root-relative and POSIX-normalized, resolved through symlinks. */
   relativePath: string;
   absolutePath: string;
 }
 
-async function pathExists(path: string): Promise<boolean> {
+async function isReadableFile(path: string): Promise<boolean> {
   try {
-    await readFile(path);
-    return true;
-  } catch (cause) {
-    if ((cause as NodeJS.ErrnoException).code === "ENOENT") {
-      return false;
-    }
-    throw cause;
+    return (await stat(path)).isFile();
+  } catch {
+    // Absent, unreadable, a broken symlink, or a symlink loop — all mean "no
+    // document here". Which of those it is does not change what we do, and the
+    // errno carries an absolute path we must not surface.
+    return false;
   }
 }
 
-function toPosixPath(path: string): string {
-  return path.split("\\").join("/");
+function candidateRootDocs(repositoryRoot: string): string[] {
+  return ROOT_DOC_FILENAMES.map((filename) => join(repositoryRoot, filename));
 }
 
-async function discoverRootDocs(repositoryRoot: string): Promise<DiscoveredDoc[]> {
-  const found: DiscoveredDoc[] = [];
-  for (const filename of ROOT_DOC_FILENAMES) {
-    const absolutePath = join(repositoryRoot, filename);
-    if (await pathExists(absolutePath)) {
-      found.push({ relativePath: filename, absolutePath });
-    }
-  }
-  return found;
-}
-
-async function discoverRuleDocs(repositoryRoot: string): Promise<DiscoveredDoc[]> {
+async function candidateRuleDocs(repositoryRoot: string): Promise<string[]> {
   const rulesDir = join(repositoryRoot, RULES_SUBDIRECTORY);
   let entries: Dirent[];
   try {
     entries = await readdir(rulesDir, { recursive: true, withFileTypes: true, encoding: "utf8" });
-  } catch (cause) {
-    if ((cause as NodeJS.ErrnoException).code === "ENOENT") {
-      return [];
-    }
-    throw cause;
+  } catch {
+    // No `.claude/rules`, or it is a file rather than a directory, or it is
+    // unreadable. None of those is an error worth failing an `iroha sync` over.
+    return [];
   }
-  const found: DiscoveredDoc[] = [];
-  for (const entry of entries) {
-    if (!entry.isFile() || !entry.name.endsWith(".md")) {
+  return entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+    .map((entry) => join(entry.parentPath, entry.name));
+}
+
+/**
+ * Turns candidate absolute paths into repository-relative ones, dropping every
+ * path that leaves the repository once symlinks are resolved.
+ *
+ * `readdir` follows a symlinked `.claude/rules` and walks the real target, and
+ * `readFile` follows a symlinked `CLAUDE.md`, so without this a repository
+ * could point either at anything the running user can read and have it indexed
+ * — on `init` and on every `sync`, with no opt-in. `toRepoRelativePath`
+ * resolves both sides and rejects the escape; taking the resolved path as the
+ * recorded one also stops a link inside the repository from filing its content
+ * under the link's name rather than the target's.
+ */
+async function resolveInsideRepository(
+  repositoryRoot: string,
+  absolutePaths: readonly string[],
+): Promise<{ docs: DiscoveredDoc[]; skipped: number }> {
+  const docs: DiscoveredDoc[] = [];
+  let skipped = 0;
+  for (const absolutePath of absolutePaths) {
+    if (!(await isReadableFile(absolutePath))) {
       continue;
     }
-    const absolutePath = join(entry.parentPath, entry.name);
-    found.push({
-      relativePath: toPosixPath(relative(repositoryRoot, absolutePath)),
-      absolutePath,
-    });
+    const relative = await toRepoRelativePath(repositoryRoot, absolutePath);
+    if (!relative.ok || relative.value.length === 0) {
+      skipped += 1;
+      continue;
+    }
+    docs.push({ relativePath: relative.value, absolutePath });
   }
-  return found;
+  return { docs, skipped };
 }
 
 interface ParsedFrontmatter {
@@ -110,24 +127,30 @@ interface ParsedFrontmatter {
  * instruction docs, not canonical documents, and frontmatter here is
  * optional. Any parse failure or unexpected shape falls back to "no
  * frontmatter, whole file is body" rather than failing the import.
+ *
+ * Unlike the canonical parser this accepts CRLF and a BOM instead of rejecting
+ * them. A CRLF checkout is a supported Tier 1 configuration
+ * (contracts/compatibility.md §6), and matching `"---"` against a line still
+ * carrying its `\r` would silently drop the `paths:` scope §14 requires the
+ * import to retain.
  */
 function splitOptionalFrontmatter(content: string): {
   frontmatter: ParsedFrontmatter | undefined;
   body: string;
 } {
-  const lines = content.split("\n");
+  const lines = content.replace(/^﻿/, "").split(/\r?\n/);
   if (lines[0] !== "---") {
-    return { frontmatter: undefined, body: content };
+    return { frontmatter: undefined, body: lines.join("\n") };
   }
   const closingIndex = lines.indexOf("---", 1);
   if (closingIndex === -1) {
-    return { frontmatter: undefined, body: content };
+    return { frontmatter: undefined, body: lines.join("\n") };
   }
   let parsed: unknown;
   try {
     parsed = parseYaml(lines.slice(1, closingIndex).join("\n"));
   } catch {
-    return { frontmatter: undefined, body: content };
+    return { frontmatter: undefined, body: lines.join("\n") };
   }
   const body = lines.slice(closingIndex + 1).join("\n");
   if (typeof parsed !== "object" || parsed === null) {
@@ -150,9 +173,25 @@ function entityIdForDoc(relativePath: string): TypedId<"rul"> {
   return makeDeterministicTypedId("rul", seed);
 }
 
+/** The first non-empty, non-heading line, as the one-line summary the search and context tools show. */
+function deriveSummary(body: string): string | undefined {
+  for (const line of body.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0 || trimmed.startsWith("#")) {
+      continue;
+    }
+    return trimmed.slice(0, 500);
+  }
+  return undefined;
+}
+
 export interface ImportRepositoryDocsResult {
   docsImported: string[];
   entitiesWritten: number;
+  /** Discovered documents that resolve outside the repository, so were not read. */
+  docsSkipped: number;
+  /** Previously imported documents whose source file is gone. */
+  entitiesTombstoned: number;
 }
 
 /**
@@ -166,7 +205,7 @@ export interface ImportRepositoryDocsResult {
  * timestamp), and the rule's own `paths:` frontmatter (detected scope).
  *
  * Unchanged documents are skipped on the entity's stored content hash, so a
- * re-run costs one read per document and writes nothing.
+ * re-run costs one stat and one read per document and writes nothing.
  */
 export async function importRepositoryDocs(
   db: Database,
@@ -175,16 +214,24 @@ export async function importRepositoryDocs(
   clock: Clock,
   random: RandomSource,
 ): Promise<Result<ImportRepositoryDocsResult, IrohaError>> {
-  const docs = [
-    ...(await discoverRootDocs(repositoryRoot)),
-    ...(await discoverRuleDocs(repositoryRoot)),
-  ];
+  const { docs, skipped } = await resolveInsideRepository(repositoryRoot, [
+    ...candidateRootDocs(repositoryRoot),
+    ...(await candidateRuleDocs(repositoryRoot)),
+  ]);
   const now = clock.now().toISOString();
   const docsImported: string[] = [];
   let entitiesWritten = 0;
 
   for (const doc of docs) {
-    const content = await readFile(doc.absolutePath, "utf8");
+    let content: string;
+    try {
+      content = await readFile(doc.absolutePath, "utf8");
+    } catch {
+      // Vanished or became unreadable between the stat above and here. Skipping
+      // one document is the proportionate response; failing would abort an
+      // `iroha sync` whose canonical work has already committed.
+      continue;
+    }
     const contentHash = `sha256:${createHash("sha256").update(content).digest("hex")}`;
     docsImported.push(doc.relativePath);
 
@@ -193,68 +240,130 @@ export async function importRepositoryDocs(
     if (!existing.ok) {
       return existing;
     }
-    if (existing.value?.contentHash === contentHash) {
+    // Also re-imports an entity a previous run tombstoned, whose file is back.
+    if (existing.value?.contentHash === contentHash && existing.value.status === IMPORTED_STATUS) {
       continue;
     }
 
     const { frontmatter, body } = splitOptionalFrontmatter(content);
+    const title = `Project instructions from ${doc.relativePath}`;
+    const summary = deriveSummary(body);
 
-    const entityResult = await upsertEntity(db, {
-      id: entityId,
-      repositoryId,
-      entityType: "rule",
-      title: `Project instructions from ${doc.relativePath}`,
-      status: IMPORTED_STATUS,
-      authority: IMPORTED_AUTHORITY,
-      sourceKind: "import",
-      sourceRef: doc.relativePath,
-      contentHash,
-      createdAt: existing.value?.createdAt ?? now,
-      updatedAt: now,
-    });
-    if (!entityResult.ok) {
-      return entityResult;
-    }
+    // One transaction for all three rows. The skip guard above reads
+    // `entities.content_hash`, which the first write sets — so an interruption
+    // between the writes would otherwise commit the new hash, abandon the body,
+    // and make every later run skip the repair.
+    const written = await withTransaction(db, "write", async (tx) => {
+      const entityResult = await upsertEntity(tx, {
+        id: entityId,
+        repositoryId,
+        entityType: "rule",
+        title,
+        ...(summary !== undefined ? { summary } : {}),
+        status: IMPORTED_STATUS,
+        authority: IMPORTED_AUTHORITY,
+        sourceKind: "import",
+        sourceRef: doc.relativePath,
+        contentHash,
+        createdAt: existing.value?.createdAt ?? now,
+        updatedAt: now,
+      });
+      if (!entityResult.ok) {
+        return entityResult;
+      }
 
-    const knowledgeResult = await upsertKnowledgeItem(db, {
-      id: entityId,
-      knowledgeType: "rule",
-      body,
-      scopeJson: JSON.stringify({
-        repository: repositoryId,
-        paths: frontmatter?.paths ?? [],
-        symbols: [],
-      }),
-      // Advisory even for a rule the repository treats as mandatory: a
-      // guardrail needs a machine-evaluable guard spec, and a prose document
-      // does not carry one.
-      enforcement: "advisory",
-    });
-    if (!knowledgeResult.ok) {
-      return knowledgeResult;
-    }
+      const knowledgeResult = await upsertKnowledgeItem(tx, {
+        id: entityId,
+        knowledgeType: "rule",
+        body,
+        scopeJson: JSON.stringify({
+          repository: repositoryId,
+          paths: frontmatter?.paths ?? [],
+          symbols: [],
+        }),
+        // Advisory even for a rule the repository treats as mandatory: a
+        // guardrail needs a machine-evaluable guard spec, and a prose document
+        // does not carry one.
+        enforcement: "advisory",
+      });
+      if (!knowledgeResult.ok) {
+        return knowledgeResult;
+      }
 
-    // Lexical index only — no embedding job is enqueued. Embedding these would
-    // pay a provider per token to vectorize text the agent harness already
-    // auto-loads into the same session; FTS is enough to find them, and
-    // lexical-only entries are an already-supported state.
-    const searchResult = await upsertSearchDocument(db, {
-      id: makeTypedId("sdoc", clock, random),
-      entityId,
-      documentKind: "rule",
-      title: `Project instructions from ${doc.relativePath}`,
-      body,
-      codeTerms: "",
-      authority: IMPORTED_AUTHORITY,
-      contentHash,
-      indexedAt: now,
+      // Lexical index only — no embedding job is enqueued. Embedding these would
+      // pay a provider per token to vectorize text the agent harness already
+      // auto-loads into the same session; FTS is enough to find them, and
+      // lexical-only entries are an already-supported state.
+      return upsertSearchDocument(tx, {
+        id: makeTypedId("sdoc", clock, random),
+        entityId,
+        documentKind: "rule",
+        title,
+        body,
+        codeTerms: "",
+        authority: IMPORTED_AUTHORITY,
+        contentHash,
+        indexedAt: now,
+      });
     });
-    if (!searchResult.ok) {
-      return searchResult;
+    if (!written.ok) {
+      return written;
     }
 
     entitiesWritten += 1;
   }
 
-  return ok({ docsImported, entitiesWritten });
+  const tombstoned = await tombstoneDisappearedDocs(db, repositoryId, docsImported, now);
+  if (!tombstoned.ok) {
+    return tombstoned;
+  }
+
+  return ok({
+    docsImported,
+    entitiesWritten,
+    docsSkipped: skipped,
+    entitiesTombstoned: tombstoned.value,
+  });
+}
+
+/**
+ * Retires the entities whose source document is no longer there. An upsert-only
+ * pass cannot see a deletion, so without this a renamed rule is served under
+ * both names and a deleted one is served forever — the FTS candidate query
+ * excludes `tombstoned` and nothing else. `syncCanonicalToDatabase` reconciles
+ * its own deletions the same way.
+ *
+ * The row is retired rather than deleted so a file that comes back keeps its
+ * identity and `created_at`, and so a rebuild and an incremental sync converge
+ * on the same graph.
+ */
+async function tombstoneDisappearedDocs(
+  db: Database,
+  repositoryId: TypedId<"repo">,
+  presentPaths: readonly string[],
+  now: string,
+): Promise<Result<number, IrohaError>> {
+  const existing = await listEntitiesBySourceKind(db, repositoryId, "import");
+  if (!existing.ok) {
+    return existing;
+  }
+  const present = new Set(presentPaths);
+  let tombstoned = 0;
+  for (const entity of existing.value) {
+    if (entity.status !== IMPORTED_STATUS || (entity.sourceRef ?? "") === "") {
+      continue;
+    }
+    if (present.has(entity.sourceRef ?? "")) {
+      continue;
+    }
+    const updated = await updateEntityStatus(db, entity.id, {
+      status: TOMBSTONED_STATUS,
+      updatedAt: now,
+    });
+    if (!updated.ok) {
+      return updated;
+    }
+    tombstoned += 1;
+  }
+  return ok(tombstoned);
 }
