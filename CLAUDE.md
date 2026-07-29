@@ -72,28 +72,21 @@ pnpm test:package
 
 Do not claim a command passed unless it was executed. Record skipped verification and the reason in the final response and in the Checkpoint fixture when applicable.
 
-After `gh pr create`, if `/iroha-review` left a draft and its head SHA is still `HEAD`, post the draft
-as a PR comment — a posted self-review is evidence, a checkbox is not. The draft path is fixed, so a
-stale one would silently misdescribe the diff it is attached to; refuse rather than post it.
+Immediately after `gh pr create`, post the development self-review as a PR comment — a posted
+self-review is evidence, a checkbox is not:
 
 ```bash
-draft="$(git rev-parse --git-path iroha-review-draft.md)"
-if [ -f "$draft" ]; then
-  range="$(grep -m1 -oE '[0-9a-f]{40}\.\.[0-9a-f]{40}' "$draft")"
-  drafted="${range##*..}"
-  if [ "$drafted" = "$(git rev-parse HEAD)" ]; then
-    gh pr comment <PR> --edit-last --create-if-none --body-file "$draft"
-  else
-    echo "stale draft (head ${drafted:-unreadable} is not HEAD) — re-run /iroha-review; do not post"
-  fi
-fi
+bash .claude/skills/iroha-review/post-summary.sh
 ```
 
-One sticky comment, updated in place. `--edit-last` targets your *last* comment, so once a triage
-reply sits after the summary, edit the summary by its comment id instead — found by its
-`<!-- iroha-review-summary -->` marker, never by author. No draft means no comment: the review is
-optional, and an empty placeholder is worse than nothing
-(`.claude/skills/iroha-review/pr-comment-template.md`).
+That script is the only place the posting rules live, so the two do not drift. It exits quietly when
+`/iroha-review` left no draft (the review is optional — no draft means no comment, never an empty
+placeholder), refuses when the draft is not current with `HEAD` rather than attaching a summary that
+misdescribes the diff, and identifies the existing comment by its hidden
+`<!-- iroha-review-summary -->` marker so a later run updates it in place, and deletes the draft once
+the post succeeds so nothing accumulates in `.git/`. Do not reach for `gh pr comment --edit-last`
+instead: it targets your *last* comment, which after a `@codex review` or a triage reply is not the
+summary. Format: `.claude/skills/iroha-review/pr-comment-template.md`.
 
 After pushing to a pull request, a green `gh pr checks` is not the whole verdict: the Codex reviewer
 appears in no status check at all. Run the `pr-review-status` skill before reporting the work as

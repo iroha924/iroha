@@ -1,15 +1,14 @@
 # PR comment template — the iroha-review summary
 
-Step 6 of `SKILL.md` renders this into the draft file; the step recorded in `CLAUDE.md` and
-`AGENTS.md` posts it after `gh pr create`. The rendered comment is English, like every other comment
-in this repository.
+Step 6 of `SKILL.md` renders this into the draft file; `post-summary.sh` posts it after
+`gh pr create`. The rendered comment is English, like every other comment in this repository.
 
 ## Severity levels
 
 `ReportFindings` has no `severity` field — its `level` is the effort the review ran at — so severity
-exists only in this comment and in the order the report is sorted. These four definitions are
-authoritative; the reviewer agents defer to "the same severity framing as the project's other review
-tooling", and this is it.
+exists only in this comment and in the order the report is sorted. The reviewer agents describe a
+finding's consequence in prose and do not name a level; the orchestrator assigns one, and these are
+the definitions it applies:
 
 | Severity | What belongs here |
 |---|---|
@@ -18,21 +17,29 @@ tooling", and this is it.
 | MEDIUM | A real defect confined to an edge case, a safe-but-degraded behaviour, or a prose/contract discrepancy with no data consequence. |
 | LOW | Correct today but fragile: a claim the diff makes with no test behind it, an error a reader cannot act on, a comment that no longer matches the code. |
 
-CRITICAL and HIGH are exactly the two that Step 4 sends to `finding-validator`. Severity decides
-whether a finding is adjudicated at all, so it is pinned here rather than left to four adjectives an
-implementer guesses at.
+Severity decides whether a finding is adjudicated at all — Step 4 sends a CRITICAL or HIGH finding to
+`finding-validator` **when it arrived without a reproduction**, and never sends MEDIUM or LOW. So the
+levels are pinned here rather than left to four adjectives an implementer guesses at. Read this table
+at Step 4, not only at Step 6.
 
 ## Template
 
-Both SHAs on the range line are written **in full (40 characters)**: the posting step greps that line
-for the head SHA and refuses to post when it is no longer `HEAD`.
+Two SHAs, with different jobs:
+
+- The **reviewed range** is what the reviewer agents actually read. It never changes once they ran.
+- The hidden **`iroha-review-draft-head`** marker is the commit the draft is current as of, and it is
+  what `post-summary.sh` compares against `HEAD`. Re-render it every time the draft is updated —
+  including after each fix commit. Without that, a review that fixed anything could never be posted.
+
+Both are full 40-character SHAs in the marker; the visible line may abbreviate for readability.
 
 ````markdown
 <!-- iroha-review-summary -->
+<!-- iroha-review-draft-head: 0000000000000000000000000000000000000000 -->
 ## iroha-review (development self-review)
 
-`<merge-base sha>..<head sha>` · N files, +A/-B · scope: committed only
-reviewers: adversarial (xhigh), spec-compliance (medium), security
+reviewed `<merge-base sha>..<reviewed head sha>` · N files, +A/-B · scope: committed only
+reviewers: adversarial (xhigh), spec-compliance (medium), security (medium)
 security-diff-reviewer: skipped — diff outside `packages/git|forge*|adapter-*`
 
 ### Findings
@@ -44,6 +51,7 @@ security-diff-reviewer: skipped — diff outside `packages/git|forge*|adapter-*`
 
 Excluded: 1 — finding-validator returned invalid (<one-line reason>)
 Duplicates collapsed: 2 — two reviewers reported the same defect, counted once (corroborated)
+Fix commits `abc1234`, `def5678` landed after the reviewed head and were not themselves reviewed.
 
 ### Not covered
 
@@ -54,8 +62,8 @@ Duplicates collapsed: 2 — two reviewers reported the same defect, counted once
 <details><summary>Deterministic checks</summary>
 
 ```text
-$ pnpm lint && pnpm typecheck && pnpm test && pnpm build
-<output>
+pnpm lint / typecheck / test / build — pass (test: 34/34 tasks, 0 cached)
+pnpm lint:md — 0 issues in 39 files
 ```
 
 </details>
@@ -70,9 +78,27 @@ Filling it in:
 - **A review that found nothing still gets a draft.** Replace the table with a single line
   `Findings: none`; keep the section. "Not covered" is never empty — it is the part of the comment
   that a human reviewer cannot reconstruct from the diff.
-- Drop the `Excluded:` / `Duplicates collapsed:` lines when the count is zero.
-- Name the reviewers that actually ran, with the effort each ran at, and say in one line why
+- Drop the `Excluded:` / `Duplicates collapsed:` / `Fix commits` lines when they do not apply.
+- Name the reviewers that actually ran with the effort each ran at, and say in one line why
   `security-diff-reviewer` was or was not among them.
+- A Step 2 failure is a finding like any other and belongs in the table, not in the `<details>`
+  fold. It has no `file:line`, so write the command in the Site column and what it printed in the
+  Failure scenario column.
+
+### Never paste raw command output
+
+Summarize the deterministic checks; do not paste transcripts. Verified by reproduction: `pnpm test`
+opens with `RUN v4.1.10 <absolute path to the package>` and `turbo run build` prints
+`config file: <absolute path>/package.json`. Those are local absolute paths, which `AGENTS.md` lists
+under **Never** for artifacts and the Definition of done forbids. This body is machine-rendered and
+posted verbatim, so no human reads it before it ships; the permission prompt shows the command, not
+the file's contents.
+
+- Report each check as one line: the command, pass/fail, and the counts that matter.
+- Any path that does survive must be repo-relative.
+- **Never quote a secret-grep match.** Step 2 presents matching lines locally so a human can judge
+  them; the PR comment names the file and says a candidate matched. Publishing the line to a public
+  repository is the one failure this comment must not cause.
 
 ## What the format deliberately omits
 
@@ -81,18 +107,29 @@ Filling it in:
   rejected here. `AGENTS.md` records that framing an LLM reviewer with benign-sounding PR metadata
   measurably suppresses vulnerability detection (Mitropoulos et al., arXiv:2603.18740), this
   repository is public, and Codex reads the PR. Stating evidence costs nothing; stating a verdict is
-  exactly the input that study describes.
+  exactly the input that study describes. `Findings: none` is on the evidence side of that line — it
+  reports what this pipeline found, and the mandatory "Not covered" section next to it keeps the
+  reader's attention on what nobody checked.
 - **No prose summary of the change.** The PR body carries it, and a duplicate is where the point
   above concentrates.
-- **Findings are never inside `<details>`.** Only command output collapses.
-  `~/.claude/rules/code-review-triage.md` forbids a review surface where a finding hides behind a
-  fold.
+- **Findings are never inside `<details>`.** Only the check summary collapses.
+  `~/.claude/rules/code-review-triage.md` obliges a reader to expand every fold before triage is
+  complete, so putting a finding behind one works against the reader it depends on.
+
+### The trade-off this comment accepts
+
+"Not covered" and "Excluded" tell any reader — including an adversarial one, on a public repository —
+what this pipeline did not examine and which findings its adjudicator dismissed. That is the same
+oracle arXiv:2603.18740 describes, and publishing it is a deliberate choice, not an oversight: a
+human reviewer cannot reconstruct coverage gaps from the diff, while an attacker gains only what the
+already-public `SKILL.md` reviewer table implies. Revisit this if the reviewer roster ever stops
+being public.
 
 ## Posting
 
-One sticky comment, updated in place, rather than a new comment per push. The hidden
-`<!-- iroha-review-summary -->` marker is the identifier of record: match on it, never on comment
-author, which breaks under a custom token (anthropics/claude-code-action#960).
-`gh pr comment --edit-last --create-if-none` covers create and update in one command, but
-`--edit-last` targets the current user's *last* comment — once a triage reply sits after the summary,
-edit the summary by its comment id instead.
+`bash .claude/skills/iroha-review/post-summary.sh` — one command, and the only place the posting
+rules live. It refuses on a stale draft, matches the existing comment by the hidden
+`<!-- iroha-review-summary -->` marker so a later run updates in place, and creates one only when no
+marked comment exists. **It deletes the draft once the post succeeds** — the comment is the record
+from then on, and drafts must not accumulate in `.git/`. A refusal keeps the draft so it can be
+inspected or corrected.

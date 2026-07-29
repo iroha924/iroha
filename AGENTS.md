@@ -59,25 +59,18 @@ Before flagging something as a spec gap or missing consideration, look for the r
 Conventional Commits (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`, `ci:`, `perf:`, `build:`), single-line subject, imperative mood, no `Co-Authored-By` trailer, no `--force` push to `main`.
 
 The PR body follows `.github/pull_request_template.md`. Immediately after `gh pr create`, post the
-development self-review as a PR comment — if and only if a draft exists and the head SHA recorded in
-it is still `HEAD`. A stale draft would misdescribe the diff it is attached to, so refuse instead:
+development self-review as a PR comment:
 
 ```bash
-draft="$(git rev-parse --git-path iroha-review-draft.md)"
-if [ -f "$draft" ]; then
-  range="$(grep -m1 -oE '[0-9a-f]{40}\.\.[0-9a-f]{40}' "$draft")"
-  drafted="${range##*..}"
-  if [ "$drafted" = "$(git rev-parse HEAD)" ]; then
-    gh pr comment <PR> --edit-last --create-if-none --body-file "$draft"
-  else
-    echo "stale draft (head ${drafted:-unreadable} is not HEAD) — re-run the self-review; do not post"
-  fi
-fi
+bash .claude/skills/iroha-review/post-summary.sh
 ```
 
-The draft is written by the `iroha-review` skill and is optional — no draft means no comment, and
-never an empty placeholder. It is one sticky comment identified by its hidden
-`<!-- iroha-review-summary -->` marker (never by author), so a second post updates it in place;
-`--edit-last` only reaches your own *last* comment, so once a triage reply sits after the summary,
-edit the summary by its comment id. Format and severity levels:
-`.claude/skills/iroha-review/pr-comment-template.md`.
+Read that script rather than reimplementing it — it is the single source of the posting rules. It
+exits quietly when no draft exists (the self-review is optional; no draft means no comment, never an
+empty placeholder), refuses when the draft is not current with `HEAD` instead of attaching a summary
+that misdescribes the diff, and finds the existing comment by its hidden
+`<!-- iroha-review-summary -->` marker — not by author — so a later run updates it in place, and
+deletes the draft once the post succeeds so nothing accumulates in `.git/`. Do not substitute
+`gh pr comment --edit-last`, which targets your own last comment and would overwrite a
+`@codex review` or a triage reply. The draft is produced by the `iroha-review` skill; its format and
+the severity definitions are in `.claude/skills/iroha-review/pr-comment-template.md`.
