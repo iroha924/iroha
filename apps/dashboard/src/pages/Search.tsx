@@ -10,6 +10,7 @@ import {
   Loading,
   PageHeader,
 } from "@/components/brand.js";
+import { MarkdownInline } from "@/components/markdown.js";
 import { Badge } from "@/components/ui/badge.js";
 import { Button } from "@/components/ui/button.js";
 import { Input } from "@/components/ui/input.js";
@@ -120,7 +121,9 @@ export function Search() {
                   <span className="font-medium text-ink">{r.title}</span>
                 </div>
                 {r.summary !== null && (
-                  <p className="mt-1.5 line-clamp-2 text-sm text-ink-muted">{r.summary}</p>
+                  <p className="mt-1.5 line-clamp-2 text-sm text-ink-muted">
+                    <MarkdownInline source={r.summary} />
+                  </p>
                 )}
                 <div className="mt-1.5 text-xs tabular-nums text-ink-faint">
                   {t("knowledge.authority")} {r.authority}

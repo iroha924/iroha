@@ -203,15 +203,15 @@ describe("Digest", () => {
     expect(await screen.findByText(/leave no machine-observable trace/)).toBeDefined();
   });
 
-  it("disables the newer-issue control from the offset the server resolved", async () => {
+  it("disables the newer-period control from the offset the server resolved", async () => {
     mockApi({ "GET /api/v1/digest": digest() });
     renderWithProviders(<Digest />);
 
-    const newer = await screen.findByRole("button", { name: "Newer issue" });
+    const newer = await screen.findByRole("button", { name: "Next period" });
     expect(newer.hasAttribute("disabled")).toBe(true);
   });
 
-  it("enables the newer-issue control on a back issue the server actually served", async () => {
+  it("enables the newer-period control on an older period the server actually served", async () => {
     // The requested offset is not the authority: an out-of-range request is
     // clamped, so the control must follow `period.offset` from the response.
     mockApi({
@@ -227,7 +227,7 @@ describe("Digest", () => {
     });
     renderWithProviders(<Digest />);
 
-    const newer = await screen.findByRole("button", { name: "Newer issue" });
+    const newer = await screen.findByRole("button", { name: "Next period" });
     expect(newer.hasAttribute("disabled")).toBe(false);
   });
 });

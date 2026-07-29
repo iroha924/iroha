@@ -103,7 +103,11 @@ export function InfoTip({ label, explanation }: { label: ReactNode; explanation:
         >
           <CircleHelpIcon aria-hidden="true" className="size-3.5" />
         </TooltipTrigger>
-        <TooltipContent className="max-w-sm leading-relaxed">{explanation}</TooltipContent>
+        {/* `whitespace-pre-line` so an explanation that enumerates cases can put
+            each on its own line; run together they read as one wall of text. */}
+        <TooltipContent className="max-w-sm whitespace-pre-line leading-relaxed">
+          {explanation}
+        </TooltipContent>
       </Tooltip>
     </span>
   );

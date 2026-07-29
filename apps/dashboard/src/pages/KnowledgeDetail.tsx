@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "@/api/client.js";
 import { BackLink, ErrorState, InfoTip, Loading } from "@/components/brand.js";
-import { Markdown } from "@/components/markdown.js";
+import { Markdown, MarkdownInline } from "@/components/markdown.js";
 import { Badge } from "@/components/ui/badge.js";
 import { DialogTitle } from "@/components/ui/dialog.js";
 import { useI18n } from "@/i18n/index.js";
@@ -99,14 +99,9 @@ export function KnowledgeDetail({ asDialog = false }: { asDialog?: boolean }) {
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-ink-muted">
         <Badge variant={knowledgeTypeTone(d.type)}>{t(`ktype.${d.type}`)}</Badge>
         <Badge variant={knowledgeStatusTone(d.status)}>{t(`status.${d.status}`)}</Badge>
-        <InfoTip
-          label={
-            <span className="tabular-nums">
-              {t("knowledge.authority")} {d.authority}
-            </span>
-          }
-          explanation={t("knowledge.authorityHint")}
-        />
+        {/* No authority: it is a pure function of the status badge beside it
+            (approved 100 / imported 80 / superseded 70 / archived 60), so showing
+            it restated what the badge already said. */}
         {d.revision !== null && (
           <span className="tabular-nums">
             {t("knowledge.revision")} {d.revision}
@@ -115,7 +110,9 @@ export function KnowledgeDetail({ asDialog = false }: { asDialog?: boolean }) {
       </div>
 
       {d.summary !== null && d.summary.length > 0 && (
-        <p className="mt-4 text-[15px] leading-relaxed text-ink-muted">{d.summary}</p>
+        <p className="mt-4 text-[15px] leading-relaxed text-ink-muted">
+          <MarkdownInline source={d.summary} />
+        </p>
       )}
 
       {d.body !== null && (

@@ -52,9 +52,6 @@ const ja: Dict = {
   "review.rejectDone": "却下しました。",
   "knowledge.title": "ナレッジ",
   "knowledge.empty": "ナレッジはまだありません。",
-  "knowledge.authority": "権威度",
-  "knowledge.authorityHint":
-    "検索結果の並び順に効く 0〜100 の重みです。100 はスコアが 1.25 倍、80〜99 は 1.10 倍になります。",
   "knowledge.revision": "リビジョン",
   "knowledge.approvedBy": "承認者",
   "knowledge.createdBy": "作成者",
@@ -68,9 +65,9 @@ const ja: Dict = {
     "Git で追跡される正本の Markdown ファイルです。チームで共有される唯一の出どころで、ローカル DB はここから作り直せる索引にすぎません。",
   "knowledge.sourcePath": "取り込み元ファイル",
   "knowledge.sourcePathHint":
-    "取り込み元のファイルです。.iroha/ にはコピーされず、元のファイルが権威のままなので、そちらを変えれば次の sync で反映されます。",
+    "取り込み元のファイルです。.iroha/ にはコピーされず、常に元のファイルが正になります。内容を直すときはそちらを編集すれば、次の sync で反映されます。",
   "knowledge.statusHint":
-    "承認済み: レビューを通ったもの。取り込み: CLAUDE.md や .claude/rules から取り込まれ、レビューが要らないもの。置換済み: 新しい版に差し替えられたもの。アーカイブ: 廃止されたもの。",
+    "承認済み: レビューを通ったもの\n取り込み: CLAUDE.md や .claude/rules から取り込まれ、レビューが要らないもの\n置換済み: 新しい版に差し替えられたもの\nアーカイブ: 廃止されたもの",
   "search.title": "検索",
   "search.placeholder": "ナレッジを検索…",
   "search.run": "検索",
@@ -152,8 +149,8 @@ const ja: Dict = {
   "nav.secondaryLabel": "設定と診断",
   "digest.title": "iroha ダイジェスト",
   "digest.periodWeek": "{date} の週",
-  "digest.newer": "次の号",
-  "digest.older": "前の号",
+  "digest.newer": "次の期間",
+  "digest.older": "前の期間",
   "digest.unitWeek": "週",
   "digest.unitMonth": "月",
   "digest.unreviewed": "自動生成・未レビュー — 正なのは数値のみです",
@@ -164,6 +161,8 @@ const ja: Dict = {
   "digest.codebase": "今期のコードベース",
   "digest.codebaseScope": "canonical と Git から算出。同じ期間ならチーム全員が同じ数値になります。",
   "digest.denials": "Guardrail による拒否",
+  "digest.guardrailHint":
+    "機械的に判定できる形で書かれたルールです。scope が一致したとき、hook がその場でエージェントの操作を拒否します。\n文章で書かれた助言的なルールとは別の種類のもので、そちらは機械的に観測できないため計測されません。\nhook は完全な防御線ではないので、確実に止める役目は CI が持ちます。",
   "digest.denialsByRule": "ルール別",
   "digest.unattributed": "（ルール未特定）",
   "digest.checkpoints": "チェックポイント",
@@ -250,9 +249,6 @@ const en: Dict = {
   "review.rejectDone": "Rejected.",
   "knowledge.title": "Knowledge",
   "knowledge.empty": "No knowledge yet.",
-  "knowledge.authority": "Authority",
-  "knowledge.authorityHint":
-    "A 0–100 weight on how search ranks this. 100 multiplies its score by 1.25; 80–99 by 1.10.",
   "knowledge.revision": "Revision",
   "knowledge.approvedBy": "Approved by",
   "knowledge.createdBy": "Created by",
@@ -268,7 +264,7 @@ const en: Dict = {
   "knowledge.sourcePathHint":
     "The file this was imported from. It is not copied into .iroha/; the original stays authoritative, so editing it there is what the next sync picks up.",
   "knowledge.statusHint":
-    "Approved: passed review. Imported: taken from CLAUDE.md or .claude/rules, needing none. Superseded: replaced by a newer revision. Archived: deprecated.",
+    "Approved: passed review\nImported: taken from CLAUDE.md or .claude/rules, needing none\nSuperseded: replaced by a newer revision\nArchived: deprecated",
   "search.title": "Search",
   "search.placeholder": "Search knowledge…",
   "search.run": "Search",
@@ -350,8 +346,8 @@ const en: Dict = {
   "nav.secondaryLabel": "Settings and diagnostics",
   "digest.title": "The iroha Digest",
   "digest.periodWeek": "Week of {date}",
-  "digest.newer": "Newer issue",
-  "digest.older": "Older issue",
+  "digest.newer": "Next period",
+  "digest.older": "Previous period",
   "digest.unitWeek": "Weekly",
   "digest.unitMonth": "Monthly",
   "digest.unreviewed": "Auto-composed, unreviewed — only the numbers are authoritative",
@@ -364,6 +360,8 @@ const en: Dict = {
   "digest.codebaseScope":
     "Computed from canonical and Git, so every teammate sees the same numbers for the same period.",
   "digest.denials": "Guardrail denials",
+  "digest.guardrailHint":
+    "A rule written so it can be decided mechanically. When its scope matches, a hook denies the agent's action on the spot.\nAdvisory rules written as prose are a different type and are not measured, because nothing can observe them mechanically.\nA hook is not a complete security boundary, so hard enforcement is CI's job.",
   "digest.denialsByRule": "By rule",
   "digest.unattributed": "(rule not recorded)",
   "digest.checkpoints": "Checkpoints",

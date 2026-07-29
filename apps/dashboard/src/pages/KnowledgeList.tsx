@@ -181,9 +181,6 @@ export function KnowledgeList() {
                       {t(`status.${item.status}`)}
                     </Badge>
                     <span className="flex-1 truncate font-medium text-ink">{item.title}</span>
-                    <span className="shrink-0 text-xs tabular-nums text-ink-faint">
-                      {t("knowledge.authority")} {item.authority}
-                    </span>
                   </Link>
                 </li>
               ))}

@@ -1,9 +1,10 @@
 import type { DigestData, DigestKnowledgeRef, DigestList, DigestPeriod } from "@iroha/api";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { api } from "@/api/client.js";
-import { ErrorState, Loading, Mark, PageHeader } from "@/components/brand.js";
+import { ErrorState, InfoTip, Loading, Mark, PageHeader } from "@/components/brand.js";
+import { MarkdownInline } from "@/components/markdown.js";
 import { Badge } from "@/components/ui/badge.js";
 import { Button } from "@/components/ui/button.js";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card.js";
@@ -46,7 +47,7 @@ function Stat({
   priorValue,
   hero = false,
 }: {
-  label: string;
+  label: ReactNode;
   value: number;
   priorValue?: number;
   hero?: boolean;
@@ -110,7 +111,9 @@ function KnowledgeRefList({
           <li key={item.id}>
             <div className="text-sm text-ink">{item.title}</div>
             {item.summary !== null && (
-              <div className="mt-0.5 text-xs text-ink-muted">{item.summary}</div>
+              <div className="mt-0.5 text-xs text-ink-muted">
+                <MarkdownInline source={item.summary} />
+              </div>
             )}
           </li>
         ))}
@@ -234,7 +237,9 @@ export function Digest() {
             <CardContent>
               <Stat
                 hero
-                label={t("digest.denials")}
+                label={
+                  <InfoTip label={t("digest.denials")} explanation={t("digest.guardrailHint")} />
+                }
                 value={d.local.denials.value}
                 priorValue={d.local.denials.priorValue}
               />
