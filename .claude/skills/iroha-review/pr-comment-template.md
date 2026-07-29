@@ -44,10 +44,13 @@ security-diff-reviewer: skipped — diff outside `packages/git|forge*|adapter-*`
 
 ### Findings
 
-| # | Severity | Verdict | Site | Failure scenario | Outcome |
-|---|---|---|---|---|---|
-| 1 | HIGH | CONFIRMED | `packages/core/src/x.ts:42` | <concrete input/state → observable consequence> | fixed in `abc1234` |
-| 2 | MEDIUM | — | `packages/api/src/routes/y.ts:88` | <…> | open |
+2 HIGH · 1 MEDIUM — 2 fixed, 1 open
+
+1. **HIGH** · `packages/core/src/x.ts:42` · CONFIRMED · fixed in `abc1234`
+   <concrete input/state → observable consequence, one or two sentences>
+
+2. **MEDIUM** · `packages/api/src/routes/y.ts:88` · open
+   <…>
 
 Excluded: 1 — finding-validator returned invalid (<one-line reason>)
 Duplicates collapsed: 2 — two reviewers reported the same defect, counted once (corroborated)
@@ -71,19 +74,25 @@ pnpm lint:md — 0 issues in 39 files
 
 Filling it in:
 
-- **Verdict** and **Outcome** reuse `ReportFindings`' own enums — `CONFIRMED`/`PLAUSIBLE`, and
-  `fixed`/`skipped`/`no_change_needed` — written as `fixed in <short sha>`, `skipped (<reason>)`, or
-  `no change needed`. A finding nobody has acted on yet is `open`. MEDIUM/LOW carry no verdict (`—`),
-  since Step 4 does not validate them.
-- **A review that found nothing still gets a draft.** Replace the table with a single line
+- **Findings are a list, not a table.** A failure scenario is variable-length prose, and GitHub sizes
+  table columns by content: put ten of them in a six-column table and every cell wraps to a few words
+  per line, so the table runs for screens and nothing is readable. One line of metadata per finding
+  plus an indented sentence stays compact however long the prose is.
+- The metadata line is severity, then `file:line`, then verdict, then outcome, joined by `·`.
+  **Verdict** and **Outcome** reuse `ReportFindings`' own enums — `CONFIRMED` / `PLAUSIBLE`, and
+  `fixed` / `skipped` / `no_change_needed` — rendered as `fixed in <short sha>`, `skipped (<reason>)`,
+  or `no change needed`. A finding nobody has acted on yet is `open`. MEDIUM/LOW omit the verdict
+  entirely rather than carrying a placeholder, since Step 4 does not validate them.
+- Open with a one-line tally (`2 HIGH · 1 MEDIUM — 2 fixed, 1 open`) so a reader gets the shape
+  before the detail. It counts what was found; it does not rate the change.
+- **A review that found nothing still gets a draft.** Replace the list with a single line
   `Findings: none`; keep the section. "Not covered" is never empty — it is the part of the comment
   that a human reviewer cannot reconstruct from the diff.
 - Drop the `Excluded:` / `Duplicates collapsed:` / `Fix commits` lines when they do not apply.
 - Name the reviewers that actually ran with the effort each ran at, and say in one line why
   `security-diff-reviewer` was or was not among them.
-- A Step 2 failure is a finding like any other and belongs in the table, not in the `<details>`
-  fold. It has no `file:line`, so write the command in the Site column and what it printed in the
-  Failure scenario column.
+- A Step 2 failure is a finding like any other and belongs in the list, not in the `<details>` fold.
+  It has no `file:line`, so put the command where the site goes and what it printed in the sentence.
 
 ### Never paste raw command output
 
