@@ -94,6 +94,18 @@ Filling it in:
 - A Step 2 failure is a finding like any other and belongs in the list, not in the `<details>` fold.
   It has no `file:line`, so put the command where the site goes and what it printed in the sentence.
 
+### Never write an `@`-mention in the body
+
+The comment is posted by an account with write access, so every mention in it fires for real. Writing
+the Codex trigger phrase — an `@` followed by `codex` — anywhere in the body **starts a cloud chat**,
+because the documented rule is that mentioning it "with anything other than `review`" does exactly
+that, and a summary is by definition a body full of other text. Reproduced on PR #191: a finding whose
+prose quoted the trigger phrase caused a cloud-chat run that authored its own commit in a sandbox and
+reported back on the PR. A user or team mention is the same class of mistake, minus the code.
+
+Name the bot and its triggers in prose instead — "the Codex trigger phrase", "a `codex review`
+comment" — and never with a literal `@`. Grep the rendered draft for `@` before posting.
+
 ### Never paste raw command output
 
 Summarize the deterministic checks; do not paste transcripts. Verified by reproduction: `pnpm test`
@@ -142,3 +154,9 @@ rules live. It refuses on a stale draft, matches the existing comment by the hid
 marked comment exists. **It deletes the draft once the post succeeds** — the comment is the record
 from then on, and drafts must not accumulate in `.git/`. A refusal keeps the draft so it can be
 inspected or corrected.
+
+The search is scoped to comments the authenticated account owns. That is not "matching by author":
+the marker remains the identifier, and ownership is a guard. What made `--edit-last` wrong was picking
+your *most recent* comment regardless of its content; what makes marker-alone wrong is that on a
+public repository anyone can post a body containing the marker, and a maintainer's token can edit
+other people's comments — so the script would overwrite a stranger and never update the real summary.

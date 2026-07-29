@@ -6,8 +6,8 @@
 #
 # The comment is identified by its hidden marker, never by author — `gh pr comment --edit-last`
 # targets the current user's *last* comment, which in this repo's workflow is routinely a
-# `@codex review` or a triage reply (see .claude/skills/pr-review-status/SKILL.md), and editing that
-# would destroy the triage record.
+# Codex trigger comment or a triage reply (see .claude/skills/pr-review-status/SKILL.md), and editing
+# that would destroy the triage record.
 set -euo pipefail
 
 MARKER='<!-- iroha-review-summary -->'
@@ -38,10 +38,16 @@ if [ -z "$pr" ]; then
   exit 1
 fi
 
+# Scope the search to comments this account owns. The marker is the identifier, but on a public
+# repository anyone can post a body containing it, and a maintainer's token can edit other people's
+# comments — so marker alone would overwrite a stranger's comment and never update the real summary.
+me="$(gh api user --jq .login)"
+
 # --paginate with --jq applies the filter per page (--slurp cannot be combined with --jq), so this
 # emits one id per matching comment across all pages; the last one is the summary of record.
 id="$(gh api "repos/{owner}/{repo}/issues/${pr}/comments" --paginate \
-  --jq ".[] | select(.body | contains(\"${MARKER}\")) | .id" | tail -1)"
+  --jq ".[] | select(.user.login == \"${me}\") | select(.body | contains(\"${MARKER}\")) | .id" \
+  | tail -1)"
 
 if [ -n "$id" ]; then
   gh api --method PATCH "repos/{owner}/{repo}/issues/comments/${id}" \

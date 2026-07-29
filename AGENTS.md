@@ -69,8 +69,9 @@ Read that script rather than reimplementing it — it is the single source of th
 exits quietly when no draft exists (the self-review is optional; no draft means no comment, never an
 empty placeholder), refuses when the draft is not current with `HEAD` instead of attaching a summary
 that misdescribes the diff, and finds the existing comment by its hidden
-`<!-- iroha-review-summary -->` marker — not by author — so a later run updates it in place, and
-deletes the draft once the post succeeds so nothing accumulates in `.git/`. Do not substitute
-`gh pr comment --edit-last`, which targets your own last comment and would overwrite a
-`@codex review` or a triage reply. The draft is produced by the `iroha-review` skill; its format and
+`<!-- iroha-review-summary -->` marker, searching only the comments your own account owns, so a later
+run updates it in place; and it deletes the draft once the post succeeds so nothing accumulates in
+`.git/`. Do not substitute `gh pr comment --edit-last`, which targets your own last comment and would
+overwrite a Codex trigger comment or a triage reply. The body must contain no `@`-mention: the Codex
+trigger phrase inside a summary starts a cloud chat rather than a review. The draft is produced by the `iroha-review` skill; its format and
 the severity definitions are in `.claude/skills/iroha-review/pr-comment-template.md`.
