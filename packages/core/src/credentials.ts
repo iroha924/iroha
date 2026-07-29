@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { err, IrohaError, ok, type Result } from "@iroha/domain";
@@ -60,17 +60,30 @@ export interface CredentialsLocation {
 }
 
 /**
- * `$XDG_CONFIG_HOME/iroha/`, or `~/.config/iroha/`. The variable is honoured only
- * when absolute, as the XDG base-directory specification requires — a relative
- * value would otherwise resolve against whatever directory the agent host happened
- * to start in, so the same machine would have several credential files.
+ * `$XDG_CONFIG_HOME/iroha/`, or `~/.config/iroha/`.
+ *
+ * The variable is honoured only when it is absolute, as the XDG base-directory
+ * specification requires — a relative value would otherwise resolve against
+ * whatever directory the agent host happened to start in, so the same machine
+ * would end up with several credential files.
+ *
+ * And only when it contains no `..` segment. `join` folds `..` lexically, before
+ * the filesystem follows any symlink in the path, so `/home/u/link/..` would put
+ * the key under `/home/u/` rather than beside whatever `link` actually points at
+ * — possibly a tracked directory (`.claude/rules/path-and-symlink-safety.md`).
+ * Rejecting the value outright is an allowlist, which that rule prefers over
+ * validating a path after the fact.
  */
+function usableConfigHome(value: string | undefined): string | undefined {
+  if (value === undefined || value.length === 0 || !isAbsolute(value)) {
+    return undefined;
+  }
+  const segments = value.split(/[/\\]/);
+  return segments.includes("..") ? undefined : value;
+}
+
 export function credentialsLocation(): CredentialsLocation {
-  const configHome = process.env.XDG_CONFIG_HOME;
-  const base =
-    configHome !== undefined && configHome.length > 0 && isAbsolute(configHome)
-      ? configHome
-      : join(homedir(), ".config");
+  const base = usableConfigHome(process.env.XDG_CONFIG_HOME) ?? join(homedir(), ".config");
   const dir = join(base, CREDENTIALS_SUBDIR);
   return { dir, file: join(dir, CREDENTIALS_FILE) };
 }
@@ -94,11 +107,8 @@ async function readFileOrNull(path: string): Promise<Result<string | null, Iroha
   }
 }
 
-interface Credentials {
-  /** Every top-level key, including ones this version does not recognise. */
-  raw: Record<string, unknown>;
-  entries: Partial<Record<CredentialProvider, { apiKey: string }>>;
-}
+/** Every top-level key, including ones this version does not recognise. */
+type Credentials = Record<string, unknown>;
 
 /**
  * Reads the whole credentials file, or an empty one when it does not exist yet.
@@ -120,7 +130,7 @@ async function readCredentials(): Promise<Result<Credentials, IrohaError>> {
     return content;
   }
   if (content.value === null) {
-    return ok({ raw: {}, entries: {} });
+    return ok({});
   }
   let json: unknown;
   try {
@@ -131,25 +141,17 @@ async function readCredentials(): Promise<Result<Credentials, IrohaError>> {
   if (typeof json !== "object" || json === null || Array.isArray(json)) {
     return err(unreadable("The iroha credentials file is not a JSON object"));
   }
-  const raw = json as Record<string, unknown>;
-  const entries: Partial<Record<CredentialProvider, { apiKey: string }>> = {};
-  for (const provider of providerSchema.options) {
-    if (!(provider in raw)) {
-      continue;
-    }
-    const parsed = entrySchema.safeParse(raw[provider]);
-    if (!parsed.success) {
-      // This provider's own entry is malformed. Reporting it as absent would
-      // read exactly like "no key", which is the failure this change exists to
-      // remove.
-      return err(unreadable(`The stored ${provider} credential is malformed`));
-    }
-    entries[provider] = parsed.data;
-  }
-  return ok({ raw, entries });
+  return ok(json as Credentials);
 }
 
-/** The stored key for one provider, or `null` when none is set. */
+/**
+ * The stored key for one provider, or `null` when none is set.
+ *
+ * Each provider's entry is validated on its own. Failing the whole file on one
+ * malformed entry would make a valid GitHub token unreadable because the Voyage
+ * one was hand-edited badly — and would let the repair that fixes Voyage write a
+ * file with the GitHub token gone.
+ */
 export async function readApiKey(
   provider: CredentialProvider,
 ): Promise<Result<string | null, IrohaError>> {
@@ -157,7 +159,16 @@ export async function readApiKey(
   if (!all.ok) {
     return all;
   }
-  return ok(all.value.entries[provider]?.apiKey ?? null);
+  if (!(provider in all.value)) {
+    return ok(null);
+  }
+  const parsed = entrySchema.safeParse(all.value[provider]);
+  if (!parsed.success) {
+    // Reporting a malformed entry as absent would read exactly like "no key",
+    // which is the failure this change exists to remove.
+    return err(unreadable(`The stored ${provider} credential is malformed`));
+  }
+  return ok(parsed.data.apiKey);
 }
 
 /** Whether a key is stored, without reading its value into the caller's hands. */
@@ -166,6 +177,45 @@ export async function hasApiKey(
 ): Promise<Result<boolean, IrohaError>> {
   const key = await readApiKey(provider);
   return key.ok ? ok(key.value !== null) : key;
+}
+
+/**
+ * Makes sure the directory ignores itself in Git *before* a secret is written
+ * into it, and fails the write if it cannot.
+ *
+ * Swallowing this would defeat the point: on the path that matters — the XDG
+ * directory sitting inside a dotfiles worktree — a missing ignore file is exactly
+ * what lets the next `git add -A` commit the key, and the write would have
+ * reported success.
+ *
+ * `wx` creates without following an existing path, so a `.gitignore` a dotfiles
+ * manager symlinked to a shared source does not get its target overwritten with
+ * `*`. An existing regular file is accepted as the user's own; anything else
+ * (a symlink, a directory) is refused rather than trusted.
+ */
+async function ensureSelfIgnore(dir: string): Promise<Result<void, IrohaError>> {
+  const path = join(dir, ".gitignore");
+  try {
+    await writeFile(path, SELF_IGNORE, { encoding: "utf8", flag: "wx" });
+    return ok(undefined);
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code !== "EEXIST") {
+      return err(unreadable("Failed to write the iroha credentials .gitignore", cause));
+    }
+  }
+  try {
+    if (!(await lstat(path)).isFile()) {
+      return err(
+        new IrohaError(
+          "INVALID_INPUT",
+          "The .gitignore beside the iroha credentials file is not a regular file; iroha will not store a key it cannot keep out of Git",
+        ),
+      );
+    }
+  } catch (cause) {
+    return err(unreadable("Failed to inspect the iroha credentials .gitignore", cause));
+  }
+  return ok(undefined);
 }
 
 /**
@@ -231,11 +281,12 @@ async function writeApiKeyUnlocked(
   }
 
   const existing = await readCredentials();
-  // A file this version cannot read is still replaceable: refusing would leave
-  // the dashboard showing "Not set" with no way to repair it from the UI. What
-  // must not be lost is a *readable* key for another provider, and that is what
-  // merging `raw` below preserves.
-  const raw = existing.ok ? existing.value.raw : {};
+  // A file this version cannot read at all (not JSON, not an object) is still
+  // replaceable: refusing would leave the dashboard showing "Not set" with no way
+  // to repair it from the UI, and nothing recoverable is being discarded. A file
+  // that parses keeps every key it holds — including a provider whose own entry
+  // is malformed, which `readApiKey` reports per provider rather than wholesale.
+  const raw = existing.ok ? existing.value : {};
 
   const { dir, file } = credentialsLocation();
   const next = { ...raw, [provider]: { apiKey: trimmed } };
@@ -249,13 +300,16 @@ async function writeApiKeyUnlocked(
     // `mkdir`'s mode applies only when it creates the directory, so a directory
     // that already existed (`~/.config` is usually 0755) keeps its own mode.
     await chmod(dir, 0o700).catch(() => undefined);
-    // `wx` fails rather than following an existing path. A dotfiles manager that
-    // symlinked this `.gitignore` to a shared source would otherwise have that
-    // file's contents replaced with `*` because someone saved an API key.
-    await writeFile(join(dir, ".gitignore"), SELF_IGNORE, {
-      encoding: "utf8",
-      flag: "wx",
-    }).catch(() => undefined);
+  } catch (cause) {
+    return err(unreadable("Failed to create the iroha credentials directory", cause));
+  }
+
+  const ignored = await ensureSelfIgnore(dir);
+  if (!ignored.ok) {
+    return ignored;
+  }
+
+  try {
     await writeFile(tempPath, `${JSON.stringify(next, null, 2)}\n`, {
       encoding: "utf8",
       mode: 0o600,

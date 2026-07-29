@@ -128,11 +128,16 @@ export async function runEmbeddingSync(
       stopped: null,
     });
   }
-  // Reuse the shared resolver (config already known enabled here, so a null
-  // means no key is stored) rather than reading the credentials file inline —
-  // any future hardening of key resolution then reaches the worker too.
-  const provider = options.provider ?? (await resolveEmbeddingProvider(config));
-  if (provider === null) {
+  // Re-resolved per batch rather than once for the run. A sync over a large index
+  // issues thousands of requests over minutes; holding one snapshot would mean a
+  // key replaced partway through never takes effect, which is the staleness
+  // ADR-018 exists to remove — reintroduced inside a single process instead of
+  // across a restart. `compatibility.md` §11 requires the key to be read on each
+  // request; a batch is the granularity at which the queue is polled anyway, so
+  // this costs one small file read per 128 documents.
+  const resolveProvider = async (): Promise<EmbeddingProvider | null> =>
+    options.provider ?? (await resolveEmbeddingProvider(config));
+  if ((await resolveProvider()) === null) {
     return ok({
       processed: 0,
       failed: 0,
@@ -156,6 +161,14 @@ export async function runEmbeddingSync(
       return dueResult;
     }
     if (dueResult.value.length === 0) {
+      break;
+    }
+    const provider = await resolveProvider();
+    if (provider === null) {
+      // The key was removed mid-run. Stopping reports it as a credential problem
+      // rather than dead-lettering every remaining document against a provider
+      // that no longer exists.
+      credentials = true;
       break;
     }
 

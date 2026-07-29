@@ -1,4 +1,4 @@
-import { chmod, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readdir, readFile, stat, symlink, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { credentialsLocation, hasApiKey, readApiKey, writeApiKey } from "./credentials.js";
@@ -216,5 +216,68 @@ describe("credentials", () => {
 
     // ~/.config is usually 0755, and mkdir's mode applies only when it creates.
     expect((await stat(dir)).mode & 0o777).toBe(0o700);
+  });
+  it("keeps a valid entry when the other provider's entry is malformed", async () => {
+    const { dir, file } = credentialsLocation();
+    await mkdir(dir, { recursive: true, mode: 0o700 });
+    await writeFile(
+      file,
+      JSON.stringify({ voyage: { api_key: "wrong-field" }, github: { apiKey: "gh-valid" } }),
+      { encoding: "utf8", mode: 0o600 },
+    );
+
+    // One bad entry must not make the other unreadable...
+    const github = await readApiKey("github");
+    expect(github.ok && github.value).toBe("gh-valid");
+    const voyage = await readApiKey("voyage");
+    expect(voyage.ok).toBe(false);
+
+    // ...nor may repairing it delete the good one.
+    const repaired = await writeApiKey("voyage", "pa-repaired");
+    expect(repaired.ok, repaired.ok ? "" : repaired.error.message).toBe(true);
+    const after = await readApiKey("github");
+    expect(after.ok && after.value).toBe("gh-valid");
+  });
+
+  it("refuses to store a key when it cannot install the Git ignore", async () => {
+    const { dir } = credentialsLocation();
+    await mkdir(join(dir, ".gitignore"), { recursive: true, mode: 0o700 });
+
+    // A directory named `.gitignore` cannot be created as a file and does not
+    // ignore anything. Storing the key anyway is what lets a dotfiles worktree
+    // commit it on the next `git add -A`.
+    const written = await writeApiKey("voyage", "pa-example");
+
+    expect(written.ok).toBe(false);
+    const key = await readApiKey("voyage");
+    expect(key.ok && key.value).toBeNull();
+  });
+
+  it("does not follow a symlinked .gitignore", async () => {
+    const { dir } = credentialsLocation();
+    await mkdir(dir, { recursive: true, mode: 0o700 });
+    const shared = join(dir, "..", "shared-gitignore");
+    await writeFile(shared, "node_modules\n", "utf8");
+    await symlink(shared, join(dir, ".gitignore"));
+
+    const written = await writeApiKey("voyage", "pa-example");
+
+    // Overwriting the symlink's target would corrupt an unrelated file merely
+    // because someone saved an API key.
+    expect(await readFile(shared, "utf8")).toBe("node_modules\n");
+    expect(written.ok).toBe(false);
+  });
+
+  it("ignores an XDG_CONFIG_HOME that would fold a .. before a symlink", () => {
+    const withoutDots = credentialsLocation().dir;
+    process.env.XDG_CONFIG_HOME = `${process.env.XDG_CONFIG_HOME}/link/..`;
+
+    // `join` collapses `..` lexically, before the filesystem follows `link`, so
+    // honouring this would place the key somewhere the user never named
+    // (.claude/rules/path-and-symlink-safety.md).
+    expect(credentialsLocation().dir).not.toContain("link");
+    expect(credentialsLocation().dir).toBe(
+      withoutDots.replace(/\.config[/\\]iroha$/, ".config/iroha"),
+    );
   });
 });
