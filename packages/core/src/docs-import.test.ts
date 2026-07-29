@@ -324,6 +324,8 @@ describe("importRepositoryDocs", () => {
     if (!result.ok) return;
     expect(result.value.docsImported).toEqual([]);
     expect(result.value.entitiesWritten).toBe(0);
+    // The rules directory itself plus the root doc: the directory is rejected
+    // before it is traversed, so its contents are never enumerated at all.
     expect(result.value.docsSkipped).toBe(2);
 
     const imported = await listImported(db, repositoryId);
@@ -503,6 +505,56 @@ describe("importRepositoryDocs", () => {
     if (imported.ok) {
       expect(imported.value).toEqual([]);
     }
+  });
+
+  it("retires an already-indexed document when a later revision trips the secret scan", async () => {
+    const { repositoryRoot, repositoryId } = await setup();
+    if (!db) return;
+    const path = join(repositoryRoot, "CLAUDE.md");
+    await writeFile(path, "# Project\n\nThe clean rule.\n", "utf8");
+    await importDocs(db, repositoryRoot, repositoryId);
+
+    const keyBody =
+      "MIIEowIBAAKCAQEA1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyz+/==";
+    await writeFile(
+      path,
+      `# Project\n\n-----BEGIN RSA PRIVATE KEY-----\n${keyBody}\n-----END RSA PRIVATE KEY-----\n`,
+      "utf8",
+    );
+    const result = await importDocs(db, repositoryRoot, repositoryId);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.docsWithheld).toBe(1);
+    // Reporting it withheld while retrieval still served the previous revision
+    // would make the two disagree about what the repository currently says.
+    expect(result.value.entitiesTombstoned).toBe(1);
+
+    const imported = await listImported(db, repositoryId);
+    expect(imported.ok).toBe(true);
+    if (imported.ok) {
+      expect(imported.value).toEqual([]);
+    }
+  });
+
+  it("does not enumerate a rules directory that resolves outside the repository", async () => {
+    const { repositoryRoot, repositoryId } = await setup();
+    if (!db) return;
+    const outside = join(repositoryRoot, "..", "outside-tree");
+    await mkdir(join(outside, "deep"), { recursive: true });
+    // Three files, so the count distinguishes "walked the tree and rejected
+    // each file" from "never walked it": `readdir` on a link to a large tree
+    // enumerates all of it before any per-file check can reject anything.
+    await writeFile(join(outside, "a.md"), "OUTSIDE", "utf8");
+    await writeFile(join(outside, "b.md"), "OUTSIDE", "utf8");
+    await writeFile(join(outside, "deep", "c.md"), "OUTSIDE", "utf8");
+    await mkdir(join(repositoryRoot, ".claude"), { recursive: true });
+    await symlink(outside, join(repositoryRoot, ".claude", "rules"));
+
+    const result = await importDocs(db, repositoryRoot, repositoryId);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.docsSkipped).toBe(1);
+    expect(result.value.docsImported).toEqual([]);
   });
 
   it("does not tombstone a document it merely failed to read this run", async () => {

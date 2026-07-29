@@ -86,8 +86,17 @@ function candidateRootDocs(repositoryRoot: string): string[] {
 
 async function candidateRuleDocs(
   repositoryRoot: string,
-): Promise<{ paths: string[]; listed: boolean }> {
+): Promise<{ paths: string[]; listed: boolean; escaped: boolean }> {
   const rulesDir = join(repositoryRoot, RULES_SUBDIRECTORY);
+  // Containment-check the directory *before* traversing it. `readdir` follows a
+  // symlinked `.claude/rules` and walks the whole real target first, so with the
+  // check left to the per-file pass, a link to `/` would enumerate the entire
+  // filesystem before a single path could be rejected — on `init`, with no
+  // opt-in. Reject the traversal itself, not its results.
+  const contained = await toRepoRelativePath(repositoryRoot, rulesDir);
+  if (!contained.ok) {
+    return { paths: [], listed: true, escaped: true };
+  }
   let entries: Dirent[];
   try {
     entries = await readdir(rulesDir, { recursive: true, withFileTypes: true, encoding: "utf8" });
@@ -96,9 +105,14 @@ async function candidateRuleDocs(
     // there are no rule documents. Anything else means the directory may hold
     // documents we could not see, and reporting that as "none" would let the
     // caller tombstone every rule it imported last time.
-    return { paths: [], listed: (cause as NodeJS.ErrnoException).code === "ENOENT" };
+    return {
+      paths: [],
+      listed: (cause as NodeJS.ErrnoException).code === "ENOENT",
+      escaped: false,
+    };
   }
   return {
+    escaped: false,
     // A symlink dirent is neither `isFile()` nor followed by `readdir`, so
     // filtering on `isFile()` alone silently drops a rule file that is a link
     // to another path in the repository. Let the containment check below decide
@@ -137,7 +151,14 @@ async function resolveInsideRepository(
       skipped += 1;
       continue;
     }
-    docs.push({ relativePath: relative.value, absolutePath });
+    // Carry the *resolved* path forward, not the one just validated. Reading
+    // through the original would re-traverse the symlink chain, so a link
+    // repointed between the check and the read would be followed to its new
+    // target while `source_ref` still named an in-repository path.
+    docs.push({
+      relativePath: relative.value,
+      absolutePath: join(repositoryRoot, ...relative.value.split("/")),
+    });
   }
   return { docs, skipped };
 }
@@ -232,10 +253,14 @@ export async function importRepositoryDocs(
   random: RandomSource,
 ): Promise<Result<ImportRepositoryDocsResult, IrohaError>> {
   const rules = await candidateRuleDocs(repositoryRoot);
-  const { docs, skipped } = await resolveInsideRepository(repositoryRoot, [
+  const resolvedDocs = await resolveInsideRepository(repositoryRoot, [
     ...candidateRootDocs(repositoryRoot),
     ...rules.paths,
   ]);
+  const docs = resolvedDocs.docs;
+  // A `.claude/rules` that resolves outside the repository is itself one
+  // rejected document, not zero: it never reaches the per-file pass.
+  const skipped = resolvedDocs.skipped + (rules.escaped ? 1 : 0);
   const now = clock.now().toISOString();
   const docsImported: string[] = [];
   // Existence, not readability: a document we saw but could not read or index
@@ -268,6 +293,11 @@ export async function importRepositoryDocs(
     }
     if (!scan.value.clean) {
       docsWithheld += 1;
+      // Dropped from the present set so the reconcile retires whatever earlier
+      // revision is already indexed. Leaving it would keep serving the last
+      // clean text as current instructions for as long as the secret stays in
+      // the file — reported as withheld while retrieval says otherwise.
+      presentPaths.delete(doc.relativePath);
       continue;
     }
 
