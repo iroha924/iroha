@@ -68,58 +68,67 @@ interface Seeded {
   entityId: string;
 }
 
-/** Bootstraps a repo, writes one approved Decision, and syncs it so exactly one embedding job is pending. */
-async function seedRepoWithPendingJob(): Promise<Seeded> {
+/**
+ * Bootstraps a repo, writes `count` approved Decisions, and syncs so that many
+ * embedding jobs are pending. More than one matters for the failure paths: a run
+ * that is meant to stop after the first request can only be told apart from one
+ * that keeps going when there is a second job for it to skip.
+ */
+async function seedRepoWithPendingJob(count = 1): Promise<Seeded> {
   const repoDir = await createTempGitRepo();
   const boot = await runInit(repoDir, MIGRATIONS_DIR);
   if (!boot.ok) {
     throw new Error(`init failed: ${boot.error.message}`);
   }
-  const entityId = makeTypedId("dec", CLOCK, new CryptoRandomSource());
-  const written = await writeCanonicalDocument(
-    {
-      frontmatter: {
-        schema_version: 1,
-        id: entityId,
-        type: "decision",
-        title: "Use libSQL as the local index",
-        status: "approved",
-        revision: 1,
-        created_at: "2026-01-01T00:00:00.000Z",
-        updated_at: "2026-01-01T00:00:00.000Z",
-        created_by: { provider: "git", display_name: "Example Developer" },
-        approved_by: { provider: "git", display_name: "Example Reviewer" },
-        approved_at: "2026-01-01T00:00:00.000Z",
-        labels: [],
-        scope: { repository: boot.value.init.repositoryId, paths: [], symbols: [] },
-        sources: [{ type: "url", ref: "https://example.com" }],
-        relations: [],
-        decision: { kind: "architecture" },
+  let entityId = "";
+  for (let i = 0; i < count; i++) {
+    entityId = makeTypedId("dec", CLOCK, new CryptoRandomSource());
+    const title = `Use libSQL as the local index ${i}`;
+    const written = await writeCanonicalDocument(
+      {
+        frontmatter: {
+          schema_version: 1,
+          id: entityId,
+          type: "decision",
+          title,
+          status: "approved",
+          revision: 1,
+          created_at: "2026-01-01T00:00:00.000Z",
+          updated_at: "2026-01-01T00:00:00.000Z",
+          created_by: { provider: "git", display_name: "Example Developer" },
+          approved_by: { provider: "git", display_name: "Example Reviewer" },
+          approved_at: "2026-01-01T00:00:00.000Z",
+          labels: [],
+          scope: { repository: boot.value.init.repositoryId, paths: [], symbols: [] },
+          sources: [{ type: "url", ref: "https://example.com" }],
+          relations: [],
+          decision: { kind: "architecture" },
+        },
+        body: [
+          `# ${title}`,
+          "## Context",
+          "",
+          "Context.",
+          "## Decision",
+          "",
+          "Decision.",
+          "## Rationale",
+          "",
+          "Rationale.",
+          "## Consequences",
+          "",
+          "Consequences.",
+          "## Alternatives considered",
+          "",
+          "None.",
+        ].join("\n\n"),
       },
-      body: [
-        "# Use libSQL as the local index",
-        "## Context",
-        "",
-        "Context.",
-        "## Decision",
-        "",
-        "Decision.",
-        "## Rationale",
-        "",
-        "Rationale.",
-        "## Consequences",
-        "",
-        "Consequences.",
-        "## Alternatives considered",
-        "",
-        "None.",
-      ].join("\n\n"),
-    },
-    boot.value.init.irohaCanonicalDir,
-    new CryptoRandomSource(),
-  );
-  if (!written.ok) {
-    throw new Error(`write failed: ${written.error.message}`);
+      boot.value.init.irohaCanonicalDir,
+      new CryptoRandomSource(),
+    );
+    if (!written.ok) {
+      throw new Error(`write failed: ${written.error.message}`);
+    }
   }
   const synced = await runInit(repoDir, MIGRATIONS_DIR);
   if (!synced.ok) {
@@ -148,8 +157,8 @@ describe("runEmbeddingSync", () => {
     }
   });
 
-  async function openSeeded(): Promise<{ db: Database; seeded: Seeded }> {
-    const seeded = await seedRepoWithPendingJob();
+  async function openSeeded(count = 1): Promise<{ db: Database; seeded: Seeded }> {
+    const seeded = await seedRepoWithPendingJob(count);
     repoDir = seeded.repoDir;
     const opened = await openDatabase(seeded.dbPath);
     if (!opened.ok) {
@@ -158,6 +167,75 @@ describe("runEmbeddingSync", () => {
     db = opened.value;
     return { db: opened.value, seeded };
   }
+
+  /** What `createVoyageProvider` returns for a 401/403 (see `isCredentialFailure`). */
+  function credentialError(): IrohaError {
+    return new IrohaError("EMBEDDING_UNAVAILABLE", "Voyage embeddings request failed (HTTP 401)", {
+      retryable: false,
+      details: { credentials: true },
+    });
+  }
+
+  it(
+    "stops the run on a rejected key instead of failing every document separately",
+    async () => {
+      const { db: database, seeded } = await openSeeded(2);
+      const fake = fakeProvider({ error: credentialError() });
+
+      const result = await runEmbeddingSync(
+        database,
+        seeded.repositoryId,
+        embeddingConfig(),
+        CLOCK,
+        new CryptoRandomSource(),
+        { provider: fake.provider },
+      );
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      // One request, not one per document: the key answers them all the same
+      // way, so the second call could only waste a request and produce a second
+      // dead-lettered job whose shared cause appears nowhere in the counts.
+      expect(fake.calls()).toBe(1);
+      expect(result.value.dead).toBe(1);
+      expect(result.value.stopped).toBe("credentials");
+      // Named so a reader knows which key to fix; the value is never carried.
+      expect(result.value.apiKeyEnv).toBe("VOYAGE_API_KEY");
+    },
+    SEED_TIMEOUT_MS,
+  );
+
+  it(
+    "keeps going after a failure that really is specific to one document",
+    async () => {
+      const { db: database, seeded } = await openSeeded(2);
+      // A 400 is this request's problem, so the next document is worth trying —
+      // which is exactly what makes the credential case above different.
+      const fake = fakeProvider({
+        error: new IrohaError(
+          "EMBEDDING_UNAVAILABLE",
+          "Voyage embeddings request failed (HTTP 400)",
+          { retryable: false },
+        ),
+      });
+
+      const result = await runEmbeddingSync(
+        database,
+        seeded.repositoryId,
+        embeddingConfig(),
+        CLOCK,
+        new CryptoRandomSource(),
+        { provider: fake.provider },
+      );
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(fake.calls()).toBe(2);
+      expect(result.value.dead).toBe(2);
+      expect(result.value.stopped).toBeNull();
+    },
+    SEED_TIMEOUT_MS,
+  );
 
   it(
     "embeds a pending job and marks it completed",

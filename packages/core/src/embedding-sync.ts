@@ -9,7 +9,7 @@ import {
   type Result,
   type TypedId,
 } from "@iroha/domain";
-import { createVoyageProvider, type EmbeddingProvider } from "@iroha/search";
+import { createVoyageProvider, type EmbeddingProvider, isCredentialFailure } from "@iroha/search";
 import {
   type Database,
   getEmbeddingMetadataBySearchDocumentId,
@@ -40,6 +40,17 @@ export interface RunEmbeddingSyncResult {
   dead: number;
   /** Non-null when no work was attempted because embedding is off or unconfigured. */
   skipped: "disabled" | "missing_key" | null;
+  /**
+   * Why the run stopped early, when it did. A count alone cannot be acted on:
+   * "14 dead-lettered" reads the same whether fourteen documents are malformed
+   * or one API key is rejected, and only the second is fixable in a minute.
+   */
+  stopped: "credentials" | "outage" | null;
+  /**
+   * The config's `api_key_env` name, so a caller can tell the reader *which*
+   * key to fix. The name only — never the value.
+   */
+  apiKeyEnv: string;
 }
 
 export interface RunEmbeddingSyncOptions {
@@ -81,8 +92,17 @@ function backoffAt(clock: Clock, attempts: number): string {
  * A retryable provider failure (network, 429/5xx) will almost certainly hit
  * every remaining job this run too, so the first one backs its job off and
  * stops the run rather than burning the whole queue's retry budget on one
- * outage. A non-retryable failure (4xx, malformed body) is specific to one
- * document, so that job is dead-lettered and the run continues.
+ * outage.
+ *
+ * A rejected credential (401/403) stops the run for the stronger version of the
+ * same reason: it is not likely to hit every remaining job, it is certain to.
+ * Continuing would send one doomed request per document and dead-letter each of
+ * them separately, turning one account problem into N failures whose shared
+ * cause appears nowhere in the counts.
+ *
+ * Any other non-retryable failure (a malformed body, an over-long input) really
+ * is specific to one document, so that job is dead-lettered and the run
+ * continues.
  */
 export async function runEmbeddingSync(
   db: Database,
@@ -93,19 +113,37 @@ export async function runEmbeddingSync(
   options: RunEmbeddingSyncOptions = {},
 ): Promise<Result<RunEmbeddingSyncResult, IrohaError>> {
   if (!config.enabled) {
-    return ok({ processed: 0, failed: 0, dead: 0, skipped: "disabled" });
+    return ok({
+      processed: 0,
+      failed: 0,
+      dead: 0,
+      skipped: "disabled",
+      stopped: null,
+      apiKeyEnv: config.api_key_env,
+    });
   }
   // Reuse the shared resolver (config already known enabled here, so a null
   // means the API key env var is unset) rather than re-reading the env inline —
   // any future hardening of key resolution then reaches the worker too.
   const provider = options.provider ?? resolveEmbeddingProvider(config);
   if (provider === null) {
-    return ok({ processed: 0, failed: 0, dead: 0, skipped: "missing_key" });
+    return ok({
+      processed: 0,
+      failed: 0,
+      dead: 0,
+      skipped: "missing_key",
+      stopped: null,
+      apiKeyEnv: config.api_key_env,
+    });
   }
 
   let processed = 0;
   let failed = 0;
   let dead = 0;
+  // Hoisted out of the loop: both stop the whole run, and the reason has to
+  // survive it to reach the caller.
+  let outage = false;
+  let credentials = false;
 
   while (processed + failed + dead < MAX_JOBS_PER_RUN) {
     const dueResult = await listDueEmbeddingJobs(db, clock.now().toISOString(), JOB_BATCH);
@@ -116,7 +154,6 @@ export async function runEmbeddingSync(
       break;
     }
 
-    let outage = false;
     for (const job of dueResult.value) {
       const docResult = await getSearchDocumentById(db, job.searchDocumentId);
       if (!docResult.ok) {
@@ -218,12 +255,23 @@ export async function runEmbeddingSync(
         outage = true;
         break;
       }
+      if (isCredentialFailure(embedded.error)) {
+        credentials = true;
+        break;
+      }
     }
 
-    if (outage) {
+    if (outage || credentials) {
       break;
     }
   }
 
-  return ok({ processed, failed, dead, skipped: null });
+  return ok({
+    processed,
+    failed,
+    dead,
+    skipped: null,
+    stopped: credentials ? "credentials" : outage ? "outage" : null,
+    apiKeyEnv: config.api_key_env,
+  });
 }

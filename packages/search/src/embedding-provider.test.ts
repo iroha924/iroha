@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createVoyageProvider } from "./embedding-provider.js";
+import { createVoyageProvider, isCredentialFailure } from "./embedding-provider.js";
 
 const SECRET = "sk-super-secret-key";
 
@@ -125,5 +125,26 @@ describe("createVoyageProvider", () => {
       expect(result.error.code).toBe("INVALID_INPUT");
     }
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [401, true],
+    [403, true],
+    [400, false],
+    [429, false],
+    [500, false],
+  ])("HTTP %i is a credential failure: %s", async (status, credentials) => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ error: "denied" }, status),
+    ) as unknown as typeof fetch;
+    const provider = createVoyageProvider({ apiKey: SECRET, dimension: 4, fetchImpl });
+    const result = await provider.embed(["q"], "query");
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    // 401/403 are the account's problem, not this document's, so the caller
+    // stops instead of repeating the request once per document. A 429 or 5xx
+    // is transient and already handled by `retryable`; a 400 is this request's.
+    expect(isCredentialFailure(result.error)).toBe(credentials);
   });
 });
