@@ -125,9 +125,6 @@ export function Search() {
                     <MarkdownInline source={r.summary} />
                   </p>
                 )}
-                <div className="mt-1.5 text-xs tabular-nums text-ink-faint">
-                  {t("knowledge.authority")} {r.authority}
-                </div>
               </Link>
             </li>
           ))}
