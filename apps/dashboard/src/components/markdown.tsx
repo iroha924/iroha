@@ -123,24 +123,28 @@ export function Markdown({ source }: { source: string }) {
  * places that show one (the detail lead, a search row) size it as one line,
  * so a heading or list there would break the row rather than inform it.
  */
-const INLINE_COMPONENTS: Components = {
-  ...components,
-  p: ({ children }) => <>{children}</>,
-  // Dropped, not unwrapped — see `disallowedElements` below.
-  table: () => null,
-};
+/**
+ * What a summary may render. An allowlist rather than a list of things to strip:
+ * a denylist has to enumerate every block element Markdown can produce, and
+ * missing one puts a `<blockquote>`, `<hr>`, or a table's `<tbody>` inside the
+ * `<p>` these summaries are rendered in — markup no browser accepts.
+ *
+ * `a` is absent deliberately. A search row wraps its summary in a router `<Link>`,
+ * so an anchor here would nest one interactive element inside another and let the
+ * outer handler swallow the inner link's navigation. The link text survives;
+ * only the anchor goes.
+ */
+const INLINE_ELEMENTS = ["strong", "em", "del", "code"];
 
 export function MarkdownInline({ source }: { source: string }) {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
-      components={INLINE_COMPONENTS}
-      // A summary is one line by construction; anything block-level in it is a
-      // truncation artefact, not authored structure. A table is *dropped* rather
-      // than unwrapped with the rest: unwrapping keeps its children, so the
-      // `<thead>`/`<tbody>` would land straight under a `<div>` — markup no
-      // browser accepts and React warns about.
-      disallowedElements={["h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "pre"]}
+      components={components}
+      // Everything else is unwrapped to its text, recursively — a summary is one
+      // line by construction, so any structure in it is a truncation artefact
+      // rather than something the author meant to keep.
+      allowedElements={INLINE_ELEMENTS}
       unwrapDisallowed
     >
       {source}

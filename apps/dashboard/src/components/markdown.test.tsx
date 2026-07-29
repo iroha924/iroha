@@ -71,13 +71,31 @@ describe("MarkdownInline", () => {
     expect(container.querySelector("code")?.textContent).toBe("code");
   });
 
-  it("drops a table whole rather than leaving its rows without one", () => {
-    // `unwrapDisallowed` keeps a disallowed element's children, which for a table
-    // puts <thead>/<tbody> directly under a <div> — markup no browser accepts.
-    const { container } = render(<MarkdownInline source={"| a | b |\n| --- | --- |\n| 1 | 2 |"} />);
+  it("emits no block element, whatever the summary contains", () => {
+    // One case per block construct Markdown can produce. A denylist had to name
+    // each of these; missing one put it inside the <p> a summary renders in.
+    for (const source of [
+      "| a | b |\n| --- | --- |\n| 1 | 2 |",
+      "> quoted finding",
+      "---",
+      "# heading",
+      "- item one\n- item two",
+      "```\ncode block\n```",
+    ]) {
+      const { container } = render(<MarkdownInline source={source} />);
+      const blocks = container.querySelectorAll(
+        "p, div, table, thead, tbody, tr, td, th, blockquote, hr, h1, h2, h3, h4, h5, h6, ul, ol, li, pre",
+      );
+      expect(blocks.length, `block element rendered for: ${source}`).toBe(0);
+    }
+  });
 
-    expect(container.querySelector("thead")).toBeNull();
-    expect(container.querySelector("tbody")).toBeNull();
-    expect(container.querySelector("tr")).toBeNull();
+  it("renders a link's text without an anchor, so a row's outer Link stays the only one", () => {
+    // A search row wraps the summary in a router <Link>; an anchor here would
+    // nest one interactive element inside another.
+    const { container } = render(<MarkdownInline source={"see [the docs](https://example.com)"} />);
+
+    expect(container.querySelector("a")).toBeNull();
+    expect(container.textContent).toBe("see the docs");
   });
 });

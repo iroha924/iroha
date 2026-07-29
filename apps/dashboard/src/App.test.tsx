@@ -63,4 +63,13 @@ describe("App", () => {
     expect(screen.queryByText(/ranking/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/leaderboard/i)).not.toBeInTheDocument();
   });
+
+  it("redirects an unknown path to the front page instead of rendering it blank", async () => {
+    // `/overview` moved to `/` in this change; a bookmark of it — or any typo —
+    // matched no route and left `main` empty, which reads as a broken app.
+    mockApi({ "GET /api/v1/bootstrap": BOOTSTRAP, "GET /api/v1/overview": OVERVIEW });
+    renderWithProviders(<App />, ["/overview"]);
+
+    expect(await screen.findByText("Guardrail enforceability")).toBeInTheDocument();
+  });
 });

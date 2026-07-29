@@ -26,12 +26,15 @@ import { withDashboardRepository } from "./with-repository.js";
  */
 export type RulesetAdequacy = Record<GuardEnforceability, number>;
 
-/** A group of denied paths sharing their leading segments. */
+/**
+ * A group of denied paths sharing their leading segments. Carries the key and the
+ * count, never the member paths: the page shows only those two, and the
+ * underlying aggregate is uncapped, so returning every distinct path would ship
+ * an unbounded array nobody reads on a five-second poll.
+ */
 export interface DenialCluster {
   /** The shared leading path segments — the cluster's identity. */
   key: string;
-  /** The repo paths it covers, most-denied first. */
-  paths: string[];
   count: number;
 }
 
@@ -89,24 +92,15 @@ const MAX_CLUSTERS = 5;
  * ordering is presentational; a cluster's identity is its `key`.
  */
 function denialClusters(targets: readonly { path: string; count: number }[]): DenialCluster[] {
-  const grouped = new Map<string, { paths: { path: string; count: number }[]; count: number }>();
+  const grouped = new Map<string, number>();
   for (const target of targets) {
     const key = target.path.split("/").slice(0, CLUSTER_SEGMENTS).join("/");
-    const entry = grouped.get(key) ?? { paths: [], count: 0 };
-    entry.paths.push(target);
-    entry.count += target.count;
-    grouped.set(key, entry);
+    grouped.set(key, (grouped.get(key) ?? 0) + target.count);
   }
   return [...grouped.entries()]
-    .filter(([, entry]) => entry.count >= MIN_CLUSTER_COUNT)
-    .sort(([keyA, a], [keyB, b]) => b.count - a.count || keyA.localeCompare(keyB))
-    .map(([key, entry]) => ({
-      key,
-      paths: entry.paths
-        .sort((a, b) => b.count - a.count || a.path.localeCompare(b.path))
-        .map((target) => target.path),
-      count: entry.count,
-    }));
+    .filter(([, count]) => count >= MIN_CLUSTER_COUNT)
+    .sort(([keyA, a], [keyB, b]) => b - a || keyA.localeCompare(keyB))
+    .map(([key, count]) => ({ key, count }));
 }
 
 /**

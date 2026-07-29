@@ -34,7 +34,13 @@ function truncateAtSentence(text: string): string {
     return head.slice(0, lastEnd).trimEnd();
   }
   const lastSpace = head.lastIndexOf(" ");
-  return `${(lastSpace > 0 ? head.slice(0, lastSpace) : head).trimEnd()}…`;
+  if (lastSpace > 0) {
+    return `${head.slice(0, lastSpace).trimEnd()}…`;
+  }
+  // No boundary anywhere — CJK prose with no terminator has neither a space nor a
+  // period. The ellipsis has to come out of the budget rather than be added to
+  // it, or the one branch with nothing to cut at is the one that overruns.
+  return `${head.slice(0, MAX_SUMMARY - 1).trimEnd()}…`;
 }
 
 /**

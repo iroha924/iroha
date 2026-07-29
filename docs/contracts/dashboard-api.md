@@ -229,7 +229,6 @@ Repair operations are allowlisted. The browser cannot run arbitrary shell comman
 
 ```text
 /
-/overview
 /review
 /review/:candidateId
 /knowledge
@@ -239,6 +238,10 @@ Repair operations are allowlisted. The browser cannot run arbitrary shell comman
 /settings
 /doctor
 ```
+
+Any other path redirects to `/`. A route the SPA does not know renders an empty main
+area otherwise, which reads as a broken page rather than a wrong address — including for a
+bookmark of a route that has since moved.
 
 ### Overview (`/`)
 

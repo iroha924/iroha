@@ -212,9 +212,14 @@ export function KnowledgeDetail({ asDialog = false }: { asDialog?: boolean }) {
             <li key={`${r.direction}-${r.relationType}-${r.entityId}`}>
               <span className="text-ink-faint">{r.direction === "outgoing" ? "→" : "←"}</span>{" "}
               <span className="font-medium text-ink">{r.relationType}</span>{" "}
+              {/* `replace` inside the dialog: the entry being left is another
+                  detail at the same depth, so pushing would make closing walk
+                  back through every hop as a dialog instead of returning to the
+                  list. From the full page it is a normal push. */}
               <Link
                 to={`/knowledge/${r.entityId}`}
                 state={linkState}
+                replace={asDialog}
                 className="text-matcha hover:underline"
               >
                 {r.entityId}

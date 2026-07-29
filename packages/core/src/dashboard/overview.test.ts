@@ -126,13 +126,7 @@ describe("getOverview", () => {
     expect(overview.value.denials.windowDays).toBe(30);
     // The denial older than the window is excluded from the total, not just the clusters.
     expect(overview.value.denials.total).toBe(3);
-    expect(overview.value.denials.clusters.items).toEqual([
-      {
-        key: "packages/git",
-        paths: ["packages/git/paths.ts", "packages/git/run.ts"],
-        count: 2,
-      },
-    ]);
+    expect(overview.value.denials.clusters.items).toEqual([{ key: "packages/git", count: 2 }]);
     expect(overview.value.denials.clusters.total).toBe(1);
     expect(overview.value.denials.clusters.truncated).toBe(false);
   });

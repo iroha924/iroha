@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { ApiClientError, api } from "@/api/client.js";
 import { Mark } from "@/components/brand.js";
 import { Card, CardContent } from "@/components/ui/card.js";
@@ -143,6 +143,10 @@ export function App() {
             <Route path="/search" element={<Search />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/doctor" element={<Doctor />} />
+            {/* An unknown path would otherwise render an empty main area, which
+                reads as a broken page rather than a wrong address — including a
+                bookmark of `/overview`, which moved here. */}
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
         {/* Only when a background exists: reaching the same URL directly renders the

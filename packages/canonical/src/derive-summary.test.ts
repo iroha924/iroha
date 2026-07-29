@@ -49,6 +49,18 @@ describe("deriveSummary", () => {
     expect(summary).toBe(`${"あ".repeat(200)}。${"い".repeat(200)}。`);
   });
 
+  it("keeps the ellipsis inside the limit when there is no boundary to cut at", () => {
+    // CJK prose with no terminator has neither a space nor a period, so this is
+    // the one branch with nothing to cut at — and the one that would overrun by
+    // appending to a full-length slice.
+    const summary = deriveSummary("あ".repeat(501));
+
+    expect(summary).toBeDefined();
+    if (summary === undefined) return;
+    expect(summary.length).toBeLessThanOrEqual(500);
+    expect(summary.endsWith("…")).toBe(true);
+  });
+
   it("returns undefined for a document with no prose", () => {
     expect(deriveSummary("# Title\n\n## Section\n")).toBeUndefined();
     expect(deriveSummary("")).toBeUndefined();

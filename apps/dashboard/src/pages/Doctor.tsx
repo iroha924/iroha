@@ -55,7 +55,11 @@ function ProblemsDialog({ events, failed }: { events: DiagnosticsEvent[]; failed
           ? t("doctor.events.unavailable")
           : t("doctor.events.open").replace("{count}", String(events.length))}
       </DialogTrigger>
-      <DialogContent className="sm:max-w-3xl">
+      {/* A full page of diagnostics is 30 rows, taller than any viewport. The
+          shared primitive centres without bounding, and modal scroll-locking stops
+          the page behind from scrolling — so without this the last rows are
+          unreachable. */}
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>{t("doctor.events.title")}</DialogTitle>
         </DialogHeader>
