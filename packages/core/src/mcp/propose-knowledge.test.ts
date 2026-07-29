@@ -20,11 +20,33 @@ const PROPOSAL: KnowledgeProposal = {
   type: "rule",
   title: "Validate every external boundary",
   summary: "All external input is validated with Zod",
-  body: "Every boundary crossing must be validated with a Zod schema and return a Result.",
+  body: [
+    "# Validate every external boundary",
+    "",
+    "## Rule",
+    "Every boundary crossing must be validated with a Zod schema and return a Result.",
+    "",
+    "## Scope",
+    "Every package that reads external input.",
+    "",
+    "## Rationale",
+    "An unvalidated value reaches the domain unchanged.",
+    "",
+    "## Examples",
+    "`safeParse` at each adapter boundary.",
+    "",
+    "## Exceptions",
+    "None.",
+  ].join("\n"),
   labels: ["typescript"],
   scope: { paths: [], symbols: [] },
   sources: [{ type: "commit", ref: "abc1234" }],
 };
+
+/** A rule proposal whose H1 tracks the title; the body template requires them to match. */
+function ruleProposal(title: string): KnowledgeProposal {
+  return { ...PROPOSAL, title, body: PROPOSAL.body.replace(/^# .*/, `# ${title}`) };
+}
 
 // Same known-detected private-key shape the canonical secret-scan test uses.
 const PRIVATE_KEY_BODY =
@@ -40,6 +62,60 @@ describe("mcpProposeKnowledge", () => {
       repo = undefined;
     }
   });
+
+  // The gate that keeps the review queue drainable: a body that cannot become a
+  // canonical document is rejected while the agent can still rewrite it, rather
+  // than at approval, where nothing can act on the failure.
+  it.each([
+    {
+      case: "a body with no H1",
+      body: "## Rule\nx\n\n## Scope\nx\n\n## Rationale\nx\n\n## Examples\nx\n\n## Exceptions\nx",
+      expected: "no H1 heading",
+    },
+    {
+      case: "an H1 that does not match the title",
+      body: PROPOSAL.body.replace(/^# .*/, "# Some other heading"),
+      expected: "must equal the title",
+    },
+    {
+      case: "a body missing a required section",
+      body: PROPOSAL.body.replace("## Exceptions\nNone.", ""),
+      // The distinctive phrase: the no-H1 message also lists every section name.
+      expected: "missing required section(s): Exceptions",
+    },
+  ])(
+    "rejects $case before writing a candidate",
+    async ({ body, expected }) => {
+      repo = await setupMcpRepo(random);
+      const seedDb = await openDatabase(repo.dbPath);
+      if (!seedDb.ok) return;
+      const seeded = await seedSessionWithToken(seedDb.value, repo, clock, random);
+      await closeDatabase(seedDb.value);
+
+      const result = await mcpProposeKnowledge({
+        cwd: repo.repoDir,
+        clock,
+        random,
+        sessionToken: seeded.token,
+        idempotencyKey: "idem-propose-00000011",
+        proposal: { ...PROPOSAL, body },
+      });
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.code).toBe("INVALID_INPUT");
+      // The message must name what is wrong; it is all the agent gets back.
+      expect(result.error.message).toContain(expected);
+
+      // Nothing reached the queue.
+      const db = await openDatabase(repo.dbPath);
+      if (!db.ok) return;
+      const candidates = await listCandidatesByStatus(db.value, repo.repositoryId, "pending");
+      expect(candidates.ok && candidates.value.length).toBe(0);
+      await closeDatabase(db.value);
+    },
+    15000,
+  );
 
   it("creates one pending candidate", async () => {
     repo = await setupMcpRepo(random);
@@ -66,6 +142,44 @@ describe("mcpProposeKnowledge", () => {
     const candidates = await listCandidatesByStatus(db.value, repo.repositoryId, "pending");
     expect(candidates.ok && candidates.value.length).toBe(1);
     await closeDatabase(db.value);
+  }, 15000);
+
+  // A key that already committed must short-circuit before the body gate runs:
+  // otherwise upgrading past the release that added the gate turns a settled
+  // write into INVALID_INPUT on retry (contracts/mcp.md §6.6 step 9).
+  it("returns the stored result for a committed key even if the retry body is invalid", async () => {
+    repo = await setupMcpRepo(random);
+    const seedDb = await openDatabase(repo.dbPath);
+    if (!seedDb.ok) return;
+    const seeded = await seedSessionWithToken(seedDb.value, repo, clock, random);
+    await closeDatabase(seedDb.value);
+
+    const key = "idem-propose-00000012";
+    const first = await mcpProposeKnowledge({
+      cwd: repo.repoDir,
+      clock,
+      random,
+      sessionToken: seeded.token,
+      idempotencyKey: key,
+      proposal: PROPOSAL,
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+
+    // The shape a 0.3.5 client stored before the gate existed.
+    const retry = await mcpProposeKnowledge({
+      cwd: repo.repoDir,
+      clock,
+      random,
+      sessionToken: seeded.token,
+      idempotencyKey: key,
+      proposal: { ...PROPOSAL, body: "plain prose with no headings at all" },
+    });
+
+    expect(retry.ok).toBe(true);
+    if (!retry.ok) return;
+    expect(retry.value.deduplicated).toBe(true);
+    expect(retry.value.candidateId).toBe(first.value.candidateId);
   }, 15000);
 
   it("is idempotent on retry with the same key", async () => {
@@ -152,7 +266,7 @@ describe("mcpProposeKnowledge", () => {
       random,
       sessionToken: seeded.token,
       idempotencyKey: "idem-propose-super-0002",
-      proposal: { ...PROPOSAL, title: "Validate every boundary, v2" },
+      proposal: ruleProposal("Validate every boundary, v2"),
       supersedesCandidateId: prior.value.candidateId,
     });
     expect(replacement.ok).toBe(true);
@@ -223,7 +337,7 @@ describe("mcpProposeKnowledge", () => {
       random,
       sessionToken: seeded.token,
       idempotencyKey: "idem-propose-super-0005",
-      proposal: { ...PROPOSAL, title: "Replacement one" },
+      proposal: ruleProposal("Replacement one"),
       supersedesCandidateId: prior.value.candidateId,
     });
     expect(first.ok).toBe(true);
@@ -235,7 +349,7 @@ describe("mcpProposeKnowledge", () => {
       random,
       sessionToken: seeded.token,
       idempotencyKey: "idem-propose-super-0006",
-      proposal: { ...PROPOSAL, title: "Replacement two" },
+      proposal: ruleProposal("Replacement two"),
       supersedesCandidateId: prior.value.candidateId,
     });
     expect(second.ok).toBe(false);
@@ -284,7 +398,7 @@ describe("mcpProposeKnowledge", () => {
       random,
       sessionToken: seeded.token,
       idempotencyKey: "idem-propose-super-0008",
-      proposal: { ...PROPOSAL, title: "Replacement of the approved rule" },
+      proposal: ruleProposal("Replacement of the approved rule"),
       supersedesCandidateId: prior.value.candidateId,
     });
     expect(result.ok).toBe(false);
@@ -365,7 +479,7 @@ describe("mcpProposeKnowledge", () => {
       random,
       sessionToken: seeded.token,
       idempotencyKey: "idem-propose-dup-00002",
-      proposal: { ...PROPOSAL, title: "  VALIDATE   every external boundary " },
+      proposal: ruleProposal("  VALIDATE   every external boundary "),
     });
     expect(second.ok).toBe(true);
     if (!second.ok) return;
@@ -390,7 +504,24 @@ describe("mcpProposeKnowledge", () => {
       type: "rule",
       title: "Block a dangerous command",
       summary: "a guardrail rule",
-      body: "This guardrail denies a command.",
+      body: [
+        "# Block a dangerous command",
+        "",
+        "## Rule",
+        "This guardrail denies a command.",
+        "",
+        "## Scope",
+        "bash invocations.",
+        "",
+        "## Rationale",
+        "The command is destructive.",
+        "",
+        "## Examples",
+        "See the guard spec.",
+        "",
+        "## Exceptions",
+        "None.",
+      ].join("\n"),
       labels: [],
       scope: { paths: [], symbols: [] },
       sources: [{ type: "commit", ref: "abc1234" }],

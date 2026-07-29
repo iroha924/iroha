@@ -55,7 +55,7 @@ function RecentEvents() {
           {q.data.events.map((e) => (
             <TableRow key={e.id}>
               <TableCell>
-                <Badge variant={outcomeTone(e.outcome)}>{e.outcome}</Badge>
+                <Badge variant={outcomeTone(e.outcome)}>{t(`evoutcome.${e.outcome}`)}</Badge>
               </TableCell>
               <TableCell className="font-mono text-xs text-ink">
                 {e.eventType}
@@ -125,7 +125,7 @@ export function Doctor() {
             {q.data.checks.map((c) => (
               <li key={c.name} className="flex items-start gap-3 py-3.5 first:pt-0 last:pb-0">
                 <Badge variant={tone(c.status)} className="mt-0.5">
-                  {c.status}
+                  {t(`dcheck.${c.status}`)}
                 </Badge>
                 <div className="min-w-0">
                   <div className="font-medium text-ink">{c.name}</div>

@@ -305,6 +305,7 @@ async function handleSessionStart(
       token: token.value,
       sessionId,
       runId,
+      knowledgeLanguage: ctx.repo.config.default_language,
       ...(approvedKnowledge.length === 0 ? {} : { approvedKnowledge }),
       ...(recentCheckpoint === undefined ? {} : { recentCheckpoint }),
     }),

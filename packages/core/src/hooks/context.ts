@@ -1,5 +1,16 @@
+import type { RepositoryConfig } from "@iroha/config";
+
 /** Hook context is capped well below Codex's ~2,500-token limit (contracts/hooks.md §9, §12). */
 const MAX_CONTEXT_CHARS = 8000;
+
+/**
+ * Keyed by the config enum so adding a locale fails to compile here rather than
+ * silently falling back to one of these.
+ */
+const KNOWLEDGE_LANGUAGE_NAMES: Record<RepositoryConfig["default_language"], string> = {
+  ja: "Japanese",
+  en: "English",
+};
 
 export interface RecentCheckpoint {
   id: string;
@@ -19,6 +30,12 @@ export interface SessionContextInput {
   token: string;
   sessionId: string;
   runId: string;
+  /**
+   * The repository's `default_language`. Candidate content follows it rather
+   * than the session's own language (#164), and the agent only learns which one
+   * from this block.
+   */
+  knowledgeLanguage: RepositoryConfig["default_language"];
   approvedKnowledge?: ApprovedKnowledgeItem[];
   recentCheckpoint?: RecentCheckpoint;
 }
@@ -58,12 +75,18 @@ export function formatSessionContext(input: SessionContextInput): string {
     }
   }
 
-  lines.push(
+  // The footer is reserved out of the budget and appended after truncation, not
+  // pushed onto `lines`. Ten approved rules with 1,000-character summaries reach
+  // the cap on their own, and trimming from the end took the closing tag and the
+  // content-language line §9 requires on every SessionStart.
+  const footer = [
     "",
     "Use the iroha MCP search tool for full sources. Create a checkpoint after meaningful work.",
+    `Write checkpoint and proposal content in ${KNOWLEDGE_LANGUAGE_NAMES[input.knowledgeLanguage]} (config.default_language), whatever language this session is in.`,
     "[/iroha]",
-  );
+  ].join("\n");
 
-  const text = lines.join("\n");
-  return text.length > MAX_CONTEXT_CHARS ? text.slice(0, MAX_CONTEXT_CHARS) : text;
+  const body = lines.join("\n");
+  const budget = MAX_CONTEXT_CHARS - footer.length;
+  return (body.length > budget ? body.slice(0, budget) : body) + footer;
 }

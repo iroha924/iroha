@@ -327,6 +327,10 @@ Purpose: create or update one pending candidate outside a Checkpoint.
 
 Annotations: local-write, idempotent, non-canonical.
 
+`proposal.body` must already satisfy the canonical body template for `proposal.type` (`canonical.md` §7): a first H1 equal to `title`, plus that type's required H2 sections. A body that does not is rejected with `INVALID_INPUT`, and the message names the missing sections. The same check runs again at approval; running it here as well is what keeps a candidate from entering the queue in a state no reviewer can approve and no agent is still present to fix. `create_checkpoint` applies the identical check to each entry of `proposals`, prefixing the message with `proposals[<index>]`.
+
+The H1 is compared as rendered text with both sides trimmed, so inline Markdown in a title (for example `` `code` ``) must be backslash-escaped in the heading to match.
+
 Input:
 
 ```ts

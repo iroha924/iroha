@@ -9,11 +9,17 @@ iroha's **distributables and artifacts default to English**. Japanese is "an add
 - Source-code comments, docstrings, identifiers.
 - **Everything under `.claude/**`** — rules (`.claude/rules/`), skills (`.claude/skills/*/SKILL.md`, incl. the frontmatter `description`), agents (`.claude/agents/`), hooks, and commands. This repo is public and its `.claude/` files are read by English-context reviewers (Codex reads `.claude/rules/*.md` in CI per `AGENTS.md`).
 - `README`, `.github/` templates, and any contract docs that ship with the product.
-- Canonical templates (headings etc. written into `.iroha/`).
+- Canonical **section headings** written into `.iroha/` (`Observation`, `Evidence`, …). They are contract constants in `packages/canonical/src/body-template.ts`, not prose. The prose between them is governed below, not here.
 - **The dashboard UI's default locale** (`apps/dashboard`'s i18n fallback is `en`).
 - The `default_language` in the `config.yaml` that `iroha init` writes (default `en`).
 
 When you create or edit any of the above — especially a new `.claude/**` file — write it in English from the start. Do not draft it in Japanese and translate later.
+
+## Canonical knowledge content follows the repository's `default_language`
+
+A canonical document's `title`, `summary`, and `body` are not a distributable. They are one repository's memory, read by whoever works in that repository, so they follow that repository's `config.default_language` rather than the English default above (#164). Write a Checkpoint or a Proposal in the language the config names, whatever language the surrounding session is in.
+
+This repository sets `ja` and does not commit its own `.iroha/` (see the root `.gitignore`), so nothing written there reaches a user and the English-artifact default has nothing to bite on.
 
 ## Japanese is allowed here
 

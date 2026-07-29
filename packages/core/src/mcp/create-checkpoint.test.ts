@@ -26,7 +26,24 @@ const SAMPLE_PROPOSAL: CheckpointInput["proposals"][number] = {
   type: "decision",
   title: "Use libSQL",
   summary: "libSQL was chosen as the local index",
-  body: "We will use libSQL because it is an embeddable, rebuildable local index.",
+  body: [
+    "# Use libSQL",
+    "",
+    "## Context",
+    "The local index must be rebuildable from canonical files.",
+    "",
+    "## Decision",
+    "We will use libSQL because it is an embeddable, rebuildable local index.",
+    "",
+    "## Rationale",
+    "It runs in-process with no daemon.",
+    "",
+    "## Consequences",
+    "The index stays disposable.",
+    "",
+    "## Alternatives considered",
+    "A hosted database.",
+  ].join("\n"),
   labels: [],
   scope: { paths: [], symbols: [] },
   sources: [{ type: "commit", ref: "abc1234" }],
@@ -63,6 +80,68 @@ describe("mcpCreateCheckpoint", () => {
       repo = undefined;
     }
   });
+
+  // Redaction replaces the whole field, so the template check sees a placeholder
+  // and would blame a missing H1 — false, and unfixable by editing headings.
+  it("blames the redaction, not the headings, when a secret is in a conforming body", async () => {
+    repo = await setupMcpRepo(random);
+    const seedDb = await openDatabase(repo.dbPath);
+    expect(seedDb.ok).toBe(true);
+    if (!seedDb.ok) return;
+    const seeded = await seedSessionWithToken(seedDb.value, repo, clock, random);
+    await closeDatabase(seedDb.value);
+
+    const result = await mcpCreateCheckpoint({
+      cwd: repo.repoDir,
+      clock,
+      random,
+      input: baseInput(seeded.token, "idem-key-000000000013", {
+        proposals: [
+          {
+            ...SAMPLE_PROPOSAL,
+            body: SAMPLE_PROPOSAL.body.replace("A hosted database.", SECRET_BLOCK),
+          },
+        ],
+      }),
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.message).toContain("secret was detected");
+    expect(result.error.message).not.toContain("H1");
+  }, 15000);
+
+  it("rejects a proposal whose body is not a canonical body, naming its index", async () => {
+    repo = await setupMcpRepo(random);
+    const seedDb = await openDatabase(repo.dbPath);
+    expect(seedDb.ok).toBe(true);
+    if (!seedDb.ok) return;
+    const seeded = await seedSessionWithToken(seedDb.value, repo, clock, random);
+    await closeDatabase(seedDb.value);
+
+    const result = await mcpCreateCheckpoint({
+      cwd: repo.repoDir,
+      clock,
+      random,
+      input: baseInput(seeded.token, "idem-key-000000000012", {
+        // The second one is the bad one, so a hardcoded "proposals[0]" fails.
+        proposals: [SAMPLE_PROPOSAL, { ...SAMPLE_PROPOSAL, body: "no headings at all" }],
+      }),
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe("INVALID_INPUT");
+    expect(result.error.message).toContain("proposals[1]");
+
+    // The whole checkpoint is rejected — no partial write of the good proposal.
+    const db = await openDatabase(repo.dbPath);
+    expect(db.ok).toBe(true);
+    if (!db.ok) return;
+    const candidates = await listCandidatesByStatus(db.value, repo.repositoryId, "pending");
+    expect(candidates.ok && candidates.value.length).toBe(0);
+    await closeDatabase(db.value);
+  }, 15000);
 
   it("saves the checkpoint, creates candidates, and marks the turn saved", async () => {
     repo = await setupMcpRepo(random);

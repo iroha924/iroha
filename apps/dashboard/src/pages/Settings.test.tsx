@@ -30,7 +30,10 @@ function settings(retentionDays: number | null) {
   });
 }
 
-/** The select's rendered value; Base UI shows the raw value, not the item label. */
+/**
+ * The select trigger's rendered text, which `Select`'s `items` maps to a label.
+ * The trailing strip drops the chevron glyph the trigger renders after it.
+ */
 function retentionValue(): string {
   return document.getElementById("cfg-retention")?.textContent?.replace(/\W+$/, "") ?? "";
 }
@@ -41,7 +44,8 @@ describe("Settings — local event retention", () => {
     renderWithProviders(<Settings />);
 
     expect(await screen.findByText("Keep local session history")).toBeDefined();
-    expect(retentionValue()).toBe("forever");
+    // The label, not the stored value: "forever" reaching the trigger is the bug.
+    expect(retentionValue()).toBe("Forever");
   });
 
   it("shows a configured window", async () => {
@@ -49,7 +53,7 @@ describe("Settings — local event retention", () => {
     renderWithProviders(<Settings />);
 
     await screen.findByText("Keep local session history");
-    expect(retentionValue()).toBe("90");
+    expect(retentionValue()).toBe("90 days");
   });
 
   it("saves the window to the local endpoint, not the shared config", async () => {

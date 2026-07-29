@@ -1,6 +1,6 @@
 import { FixedClock, FixedRandomSource, makeTypedId } from "@iroha/domain";
 import { describe, expect, it } from "vitest";
-import { validateBodyTemplate } from "./body-template.js";
+import { validateBodyForType, validateBodyTemplate } from "./body-template.js";
 import { parseCanonicalDocument } from "./parse-canonical-document.js";
 
 const clock = new FixedClock(new Date("2026-01-01T00:00:00.000Z"));
@@ -72,6 +72,50 @@ function parseOrThrow(content: string) {
   }
   return result.value;
 }
+
+describe("validateBodyForType", () => {
+  const ruleBody = (h1: string) =>
+    [
+      h1,
+      "",
+      "## Rule",
+      "x",
+      "",
+      "## Scope",
+      "x",
+      "",
+      "## Rationale",
+      "x",
+      "",
+      "## Examples",
+      "x",
+      "",
+      "## Exceptions",
+      "x",
+    ].join("\n");
+
+  // `title` has no trim in its schema, and a Markdown heading cannot carry
+  // leading or trailing whitespace, so comparing untrimmed makes a padded title
+  // impossible to satisfy rather than merely unmet.
+  it("matches a padded title against the heading it can actually be written as", () => {
+    const result = validateBodyForType("rule", "  Padded title ", ruleBody("# Padded title"));
+    expect(result.ok).toBe(true);
+  });
+
+  it("still rejects a heading that differs by more than whitespace", () => {
+    const result = validateBodyForType("rule", "Padded title", ruleBody("# Padded  title"));
+    expect(result.ok).toBe(false);
+  });
+
+  it("names every required section when the H1 is missing", () => {
+    const result = validateBodyForType("insight", "Some insight", "no headings here");
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    for (const section of ["Observation", "Evidence", "Implication", "Recommended action"]) {
+      expect(result.error.message).toContain(section);
+    }
+  });
+});
 
 describe("validateBodyTemplate", () => {
   it("accepts a body with a matching H1 and all required H2 sections", () => {

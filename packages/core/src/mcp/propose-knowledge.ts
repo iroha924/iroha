@@ -17,6 +17,7 @@ import {
   updateCandidateStatus,
 } from "@iroha/storage";
 import { runIdempotentWrite } from "./idempotency.js";
+import { validateProposalBody } from "./proposal-body.js";
 import { type FieldRedaction, redactProposal } from "./redact.js";
 import { verifySessionToken } from "./verify-session-token.js";
 import { withMcpRepository } from "./with-repository.js";
@@ -205,6 +206,18 @@ export async function mcpProposeKnowledge(
         // idempotency record's `result_entity_id` (which FKs `entities`).
         toStored: (data) => ({ responseJson: JSON.stringify(data) }),
         work: async (tx) => {
+          // Inside `work`, so a retry of a key that already committed still
+          // short-circuits to its stored result (contracts/mcp.md §6.6 step 9).
+          const body = validateProposalBody(
+            redacted.value.proposal,
+            redacted.value.redactions,
+            "proposal",
+            "",
+          );
+          if (!body.ok) {
+            return err(body.error);
+          }
+
           // Detect duplicates against the pre-insert snapshot, excluding the
           // candidate we are about to supersede.
           const existing = await listCandidatesByType(tx, repositoryId, input.proposal.type);

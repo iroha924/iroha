@@ -7,6 +7,7 @@ describe("formatSessionContext", () => {
       token: "ist_abc",
       sessionId: "ses_01ARZ3NDEKTSV4RRFFQ69G5FAV",
       runId: "run_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+      knowledgeLanguage: "en",
     });
     expect(text.startsWith("[iroha]")).toBe(true);
     expect(text).toContain("session_token: ist_abc");
@@ -22,6 +23,7 @@ describe("formatSessionContext", () => {
       token: "ist_abc",
       sessionId: "ses_x",
       runId: "run_x",
+      knowledgeLanguage: "en",
       recentCheckpoint: { id: "chk_1", summary: "wired the hook", unresolved: "cover Codex" },
     });
     expect(text).toContain("Recent checkpoint:");
@@ -34,6 +36,7 @@ describe("formatSessionContext", () => {
       token: "ist_abc",
       sessionId: "ses_x",
       runId: "run_x",
+      knowledgeLanguage: "en",
       approvedKnowledge: [
         {
           id: "rul_01ARZ3NDEKTSV4RRFFQ69G5FAV",
@@ -54,8 +57,59 @@ describe("formatSessionContext", () => {
       token: "ist_abc",
       sessionId: "ses_x",
       runId: "run_x",
+      knowledgeLanguage: "en",
       recentCheckpoint: { id: "chk_1", summary: "x".repeat(20000) },
     });
     expect(text.length).toBeLessThanOrEqual(8000);
   });
+
+  // Truncation used to cut from the end, so the block that overflowed lost the
+  // closing tag and the content-language line hooks.md §9 requires every time.
+  it.each([
+    {
+      case: "one oversized checkpoint",
+      input: { recentCheckpoint: { id: "chk_1", summary: "x".repeat(20000) } },
+    },
+    {
+      case: "ten approved rules at the summary cap",
+      input: {
+        approvedKnowledge: Array.from({ length: 10 }, (_, i) => ({
+          id: `rul_01ARZ3NDEKTSV4RRFFQ69G5FA${i}`,
+          title: "T".repeat(150),
+          summary: "S".repeat(1000),
+          provenance: "why: path src/**",
+        })),
+      },
+    },
+  ])("keeps the footer when the block overflows: $case", ({ input }) => {
+    const text = formatSessionContext({
+      token: "ist_abc",
+      sessionId: "ses_x",
+      runId: "run_x",
+      knowledgeLanguage: "ja",
+      ...input,
+    });
+    expect(text.length).toBeLessThanOrEqual(8000);
+    expect(text).toContain("Write checkpoint and proposal content in Japanese");
+    expect(text.endsWith("[/iroha]")).toBe(true);
+  });
+
+  // Both locales in one case: asserting only `ja` would also pass on a hardcoded
+  // "Japanese", which is the mistake this rule exists to prevent (#164).
+  it.each([
+    { knowledgeLanguage: "ja" as const, named: "Japanese", other: "English" },
+    { knowledgeLanguage: "en" as const, named: "English", other: "Japanese" },
+  ])(
+    "names $named as the content language when default_language is $knowledgeLanguage",
+    ({ knowledgeLanguage, named, other }) => {
+      const text = formatSessionContext({
+        token: "ist_abc",
+        sessionId: "ses_x",
+        runId: "run_x",
+        knowledgeLanguage,
+      });
+      expect(text).toContain(`Write checkpoint and proposal content in ${named}`);
+      expect(text).not.toContain(other);
+    },
+  );
 });
