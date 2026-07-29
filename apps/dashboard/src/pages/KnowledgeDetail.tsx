@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "@/api/client.js";
 import { BackLink, ErrorState, InfoTip, Loading } from "@/components/brand.js";
@@ -80,8 +81,20 @@ export function KnowledgeDetail({ asDialog = false }: { asDialog?: boolean }) {
   const linkState = useModalLinkState();
   const q = useQuery({ queryKey: ["knowledge", id], queryFn: () => api.knowledgeDetail(id) });
 
-  if (q.isPending) return <Loading />;
-  if (q.isError || q.data === undefined) return <ErrorState />;
+  // A dialog is named by its title, so one has to exist in *every* state: without
+  // this the modal is unnamed for as long as the query is cold, and stays unnamed
+  // if it fails. The loaded branch below replaces this with the document's title.
+  const state = (children: ReactNode) =>
+    asDialog ? (
+      <>
+        <DialogTitle className={TITLE_CLASS}>{t("knowledge.title")}</DialogTitle>
+        {children}
+      </>
+    ) : (
+      children
+    );
+  if (q.isPending) return state(<Loading />);
+  if (q.isError || q.data === undefined) return state(<ErrorState />);
   const d = q.data;
   const p = provenanceFrom(d.frontmatter);
   const approver = p.approvedBy?.displayName ?? p.approvedBy?.provider ?? null;

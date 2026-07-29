@@ -15,6 +15,19 @@ const SENTENCE_END = /[.!?。！？](?=\s|$)|[。！？]/gu;
 const MAX_SUMMARY = 500;
 
 /**
+ * Drop a trailing lone high surrogate. `slice` counts UTF-16 code units, so a cut
+ * at an arbitrary offset can land between the halves of a non-BMP character —
+ * 251 emoji exceed the limit in 502 units — and the stored summary would then
+ * hold invalid Unicode that renders as a replacement glyph. A code point is the
+ * bar here rather than a grapheme cluster: the text is already being cut short,
+ * so an emoji losing a modifier is cosmetic, while half a code point is not text.
+ */
+function withoutSplitCodePoint(text: string): string {
+  const last = text.charCodeAt(text.length - 1);
+  return last >= 0xd800 && last <= 0xdbff ? text.slice(0, -1) : text;
+}
+
+/**
  * Cut at the last sentence end that fits, falling back to the last word break.
  * Truncating at a fixed offset lands mid-word as readily as mid-sentence, and a
  * summary is read as a statement — one that stops halfway reads as a defect in
@@ -40,7 +53,7 @@ function truncateAtSentence(text: string): string {
   // No boundary anywhere — CJK prose with no terminator has neither a space nor a
   // period. The ellipsis has to come out of the budget rather than be added to
   // it, or the one branch with nothing to cut at is the one that overruns.
-  return `${head.slice(0, MAX_SUMMARY - 1).trimEnd()}…`;
+  return `${withoutSplitCodePoint(head.slice(0, MAX_SUMMARY - 1)).trimEnd()}…`;
 }
 
 /**

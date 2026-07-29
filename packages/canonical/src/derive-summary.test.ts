@@ -61,6 +61,19 @@ describe("deriveSummary", () => {
     expect(summary.endsWith("…")).toBe(true);
   });
 
+  it("never cuts a non-BMP character in half", () => {
+    // 251 emoji are 502 UTF-16 units, so a code-unit slice lands between the
+    // halves of one — persisting invalid Unicode that renders as a replacement
+    // glyph.
+    const summary = deriveSummary("😀".repeat(251));
+
+    expect(summary).toBeDefined();
+    if (summary === undefined) return;
+    expect(summary.length).toBeLessThanOrEqual(500);
+    // A lone surrogate would survive `Array.from`, which iterates code points.
+    expect([...summary].every((c) => c === "😀" || c === "…")).toBe(true);
+  });
+
   it("returns undefined for a document with no prose", () => {
     expect(deriveSummary("# Title\n\n## Section\n")).toBeUndefined();
     expect(deriveSummary("")).toBeUndefined();

@@ -66,7 +66,18 @@ function isMissingDeniedRuleColumn(cause: unknown): boolean {
  * to the path it was raised on — the two aggregates the Overview page reports.
  *
  * Run against a plain read executor, never a transaction: a page read must not
- * hold the write lock, the same reason the hook path writes no diagnostics row.
+ * hold the write lock, the same reason the hook path writes no diagnostics row
+ * (`hooks.md` §10 measured a hook write waiting 7932 ms against a 0.5 s budget,
+ * after which the platform kills the hook and the Guardrail deny is lost).
+ *
+ * The cost of that is real and accepted: the two aggregates are separate reads,
+ * so a denial committed between them lands in one and not the other, and a
+ * single response can briefly show clusters summing past the rule totals. It
+ * corrects itself on the next five-second poll. Trading a lost Guardrail deny —
+ * a decision that never runs — for a self-healing display skew on a page nobody
+ * reads to the digit is not a trade this repository will make. Do not "fix" this
+ * by wrapping the two in a read transaction.
+ *
  * Both lists are ordered deterministically with an id tie-breaker after the
  * ranking column, so two runs over unchanged data render the same page.
  */
