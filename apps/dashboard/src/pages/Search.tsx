@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge.js";
 import { Button } from "@/components/ui/button.js";
 import { Input } from "@/components/ui/input.js";
 import { useI18n } from "@/i18n/index.js";
+import { useModalLinkState } from "@/lib/modal-route.js";
 import { knowledgeTypeTone } from "@/lib/status.js";
 import { cn } from "@/lib/utils";
 
@@ -35,6 +36,7 @@ const KNOWLEDGE_TYPES = [
 /** Natural-language search over approved knowledge (contracts/dashboard-api.md §6; FTS/hybrid via the API). */
 export function Search() {
   const { t } = useI18n();
+  const linkState = useModalLinkState();
   const [input, setInput] = useState("");
   const [submitted, setSubmitted] = useState("");
   const [types, setTypes] = useState<string[]>([]);
@@ -110,6 +112,7 @@ export function Search() {
             <li key={r.id}>
               <Link
                 to={`/knowledge/${r.id}`}
+                state={linkState}
                 className="block px-5 py-4 transition-colors hover:bg-paper-inset"
               >
                 <div className="flex items-center gap-2.5">

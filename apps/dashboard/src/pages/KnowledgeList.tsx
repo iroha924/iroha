@@ -14,6 +14,7 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination.js";
 import { useI18n } from "@/i18n/index.js";
+import { useModalLinkState } from "@/lib/modal-route.js";
 import { pageWindow, parsePage } from "@/lib/pagination.js";
 import { KNOWLEDGE_TYPES, knowledgeStatusTone, knowledgeTypeTone } from "@/lib/status.js";
 
@@ -58,6 +59,7 @@ function readFilter(params: URLSearchParams, key: string, allowed: readonly stri
  */
 export function KnowledgeList() {
   const { t } = useI18n();
+  const linkState = useModalLinkState();
   const [params, setParams] = useSearchParams();
 
   const statuses = readFilter(params, "status", KNOWLEDGE_STATUSES) as KnowledgeStatusFilter[];
@@ -164,6 +166,7 @@ export function KnowledgeList() {
                 <li key={item.id}>
                   <Link
                     to={`/knowledge/${item.id}`}
+                    state={linkState}
                     className="flex items-center gap-3 px-5 py-4 transition-colors hover:bg-paper-inset"
                   >
                     <Badge variant={knowledgeTypeTone(item.type)}>{t(`ktype.${item.type}`)}</Badge>

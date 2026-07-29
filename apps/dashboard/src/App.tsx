@@ -1,11 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { NavLink, Route, Routes } from "react-router-dom";
+import { NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { ApiClientError, api } from "@/api/client.js";
 import { Mark } from "@/components/brand.js";
 import { Card, CardContent } from "@/components/ui/card.js";
+import { Dialog, DialogContent } from "@/components/ui/dialog.js";
 import { Toaster } from "@/components/ui/toast.js";
 import { type Locale, useI18n } from "@/i18n/index.js";
+import { useBackgroundLocation } from "@/lib/modal-route.js";
 import { cn } from "@/lib/utils";
 import { Digest } from "@/pages/Digest.js";
 import { Doctor } from "@/pages/Doctor.js";
@@ -74,6 +76,9 @@ function NavItem({ to, label }: { to: string; label: string }) {
 
 export function App() {
   const { t, setLocale } = useI18n();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const background = useBackgroundLocation();
   const bootstrap = useQuery({ queryKey: ["bootstrap"], queryFn: api.bootstrap });
 
   useEffect(() => {
@@ -125,7 +130,9 @@ export function App() {
         </div>
       </header>
       <main className="mx-auto max-w-[1120px] px-6 py-10">
-        <Routes>
+        {/* Routed against the background when one is set, so the list a dialog was
+            opened from stays mounted underneath instead of unmounting under it. */}
+        <Routes location={background ?? location}>
           {/* The Digest is the front page; Overview keeps the non-period view of
               standing state (pending pressure, totals, recent sessions). */}
           <Route path="/" element={<Digest />} />
@@ -140,6 +147,29 @@ export function App() {
           <Route path="/doctor" element={<Doctor />} />
         </Routes>
       </main>
+      {/* Only when a background exists: reaching the same URL directly renders the
+          full page above, which is what keeps a knowledge link shareable. */}
+      {background !== undefined && (
+        <Routes>
+          <Route
+            path="/knowledge/:id"
+            element={
+              <Dialog
+                open
+                onOpenChange={(open) => {
+                  // Back, not a push to the list: the dialog is one history entry
+                  // deep, so this returns to whatever page opened it.
+                  if (!open) void navigate(-1);
+                }}
+              >
+                <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
+                  <KnowledgeDetail asDialog />
+                </DialogContent>
+              </Dialog>
+            }
+          />
+        </Routes>
+      )}
       {/* Outside <main> because it outlives the route that raised it: approving a
           candidate navigates back to the queue, and the confirmation has to survive
           that unmount. */}
