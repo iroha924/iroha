@@ -465,6 +465,92 @@ describe("importRepositoryDocs", () => {
     }
   });
 
+  it("keeps a rule that is a symlink to another path inside the repository", async () => {
+    const { repositoryRoot, repositoryId } = await setup();
+    if (!db) return;
+    await mkdir(join(repositoryRoot, ".claude", "rules"), { recursive: true });
+    await mkdir(join(repositoryRoot, "shared"), { recursive: true });
+    await writeFile(join(repositoryRoot, "shared", "linked.md"), "# Linked rule", "utf8");
+    // `Dirent.isFile()` is false for a symlink, so filtering on it alone drops
+    // a perfectly valid in-repository rule before containment is ever checked.
+    await symlink(
+      join(repositoryRoot, "shared", "linked.md"),
+      join(repositoryRoot, ".claude", "rules", "linked.md"),
+    );
+
+    const result = await importDocs(db, repositoryRoot, repositoryId);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.docsImported).toEqual(["shared/linked.md"]);
+  });
+
+  it("withholds a document whose text trips the secret scan", async () => {
+    const { repositoryRoot, repositoryId } = await setup();
+    if (!db) return;
+    const keyBody =
+      "MIIEowIBAAKCAQEA1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyz+/==";
+    const key = `-----BEGIN RSA PRIVATE KEY-----\n${keyBody}\n-----END RSA PRIVATE KEY-----`;
+    await writeFile(join(repositoryRoot, "CLAUDE.md"), `# Project\n\n${key}\n`, "utf8");
+
+    const result = await importDocs(db, repositoryRoot, repositoryId);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.docsWithheld).toBe(1);
+    expect(result.value.docsImported).toEqual([]);
+
+    const imported = await listImported(db, repositoryId);
+    expect(imported.ok).toBe(true);
+    if (imported.ok) {
+      expect(imported.value).toEqual([]);
+    }
+  });
+
+  it("does not tombstone a document it merely failed to read this run", async () => {
+    const { repositoryRoot, repositoryId } = await setup();
+    if (!db) return;
+    await mkdir(join(repositoryRoot, ".claude", "rules"), { recursive: true });
+    const rule = join(repositoryRoot, ".claude", "rules", "flaky.md");
+    await writeFile(rule, "# Flaky rule", "utf8");
+    await importDocs(db, repositoryRoot, repositoryId);
+
+    // The file is still there; only this run cannot read it. Treating that as a
+    // deletion would pull a live rule out of retrieval.
+    await chmod(rule, 0o000);
+    const result = await importDocs(db, repositoryRoot, repositoryId);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.entitiesTombstoned).toBe(0);
+    await chmod(rule, 0o644);
+
+    const stillImported = await listImported(db, repositoryId);
+    expect(stillImported.ok).toBe(true);
+    if (stillImported.ok) {
+      expect(stillImported.value.map((e) => e.sourceRef)).toEqual([".claude/rules/flaky.md"]);
+    }
+  });
+
+  it("queues an embedding job so vector-only search can reach imported rules", async () => {
+    const { repositoryRoot, repositoryId } = await setup();
+    if (!db) return;
+    await writeFile(join(repositoryRoot, "CLAUDE.md"), "# Project\n\nRun the tests.\n", "utf8");
+
+    await importDocs(db, repositoryRoot, repositoryId);
+    const imported = await listImported(db, repositoryId);
+    expect(imported.ok).toBe(true);
+    if (!imported.ok) return;
+    const entityId = imported.value[0]?.id ?? "";
+    const searchDocument = await getSearchDocumentByEntityId(db, entityId);
+    expect(searchDocument.ok).toBe(true);
+    if (!searchDocument.ok || searchDocument.value === null) return;
+
+    const jobs = await db.execute({
+      sql: "SELECT provider, model FROM embedding_jobs WHERE search_document_id = ?",
+      args: [searchDocument.value.id],
+    });
+    expect(jobs.rows.length).toBe(1);
+    expect(jobs.rows[0]?.provider).toBe("voyage");
+  });
+
   it("gives an imported entity a summary so search results are not blank", async () => {
     const { repositoryRoot, repositoryId } = await setup();
     if (!db) return;

@@ -57,8 +57,8 @@ function authorityForStatus(status: "approved" | "superseded" | "archived"): num
 }
 const SYNC_PROVIDER = "canonical";
 /** OQ-005 fixes the embedding provider/model; `embedding_jobs` is keyed on `(sdoc, provider, model)`. */
-const EMBEDDING_PROVIDER = "voyage";
-const EMBEDDING_MODEL = "voyage-4-large";
+export const EMBEDDING_PROVIDER = "voyage";
+export const EMBEDDING_MODEL = "voyage-4-large";
 
 function entityTypeForFrontmatterType(
   type: CanonicalDocument["frontmatter"]["type"],

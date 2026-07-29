@@ -185,21 +185,28 @@ export function pathMatches(scopePath: string, requested: string): boolean {
  * and its `paths:` frontmatter could not earn the scope multiplier a canonical
  * rule gets from the same information.
  */
-function facetsFromKnowledgeItem(item: KnowledgeItemRow | null): EntityFacets {
+function facetsFromKnowledgeItem(item: KnowledgeItemRow | null, entity: EntityRow): EntityFacets {
   if (item === null) {
     return EMPTY_FACETS;
   }
+  // The file the text came from is the only provenance an imported document
+  // has, and it is the thing a consumer needs to go read the authoritative
+  // copy. Without it the caller is left parsing the human-oriented title.
+  const sources: SourceRef[] =
+    entity.sourceKind === "import" && entity.sourceRef !== null
+      ? [{ type: "document", ref: entity.sourceRef, path: entity.sourceRef }]
+      : [];
   try {
     const scope = JSON.parse(item.scopeJson) as Record<string, unknown>;
     return {
       scopePaths: toStringArray(scope.paths),
       scopeSymbols: toStringArray(scope.symbols),
       labels: [],
-      sources: [],
+      sources,
       body: item.body,
     };
   } catch {
-    return { ...EMPTY_FACETS, body: item.body };
+    return { ...EMPTY_FACETS, sources, body: item.body };
   }
 }
 
@@ -213,9 +220,10 @@ function facetsFromKnowledgeItem(item: KnowledgeItemRow | null): EntityFacets {
 function facetsFromDoc(
   doc: CanonicalDocumentRow | null,
   knowledgeItem: KnowledgeItemRow | null,
+  entity: EntityRow,
 ): EntityFacets {
   if (doc === null) {
-    return facetsFromKnowledgeItem(knowledgeItem);
+    return facetsFromKnowledgeItem(knowledgeItem, entity);
   }
   try {
     const fm = JSON.parse(doc.frontmatterJson) as Record<string, unknown>;
@@ -480,6 +488,7 @@ export async function rankCandidates(
     const facets = facetsFromDoc(
       docsByEntityId.get(candidate.entityId) ?? null,
       knowledgeByEntityId.get(candidate.entityId) ?? null,
+      entity,
     );
     if (
       params.filters.labels !== undefined &&

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { Dirent } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { scanForSecrets } from "@iroha/canonical";
 import {
   type Clock,
   type IrohaError,
@@ -15,7 +16,9 @@ import {
 import { toRepoRelativePath } from "@iroha/git";
 import {
   type Database,
+  enqueueEmbeddingJob,
   getEntityById,
+  getSearchDocumentByEntityId,
   listEntitiesBySourceKind,
   updateEntityStatus,
   upsertEntity,
@@ -24,6 +27,7 @@ import {
   withTransaction,
 } from "@iroha/storage";
 import { parse as parseYaml } from "yaml";
+import { EMBEDDING_MODEL, EMBEDDING_PROVIDER } from "./sync-canonical.js";
 
 /**
  * contracts/canonical.md §14: the documents `iroha init`/`iroha sync` import.
@@ -65,23 +69,45 @@ async function isReadableFile(path: string): Promise<boolean> {
   }
 }
 
+export interface ImportRepositoryDocsResult {
+  docsImported: string[];
+  entitiesWritten: number;
+  /** Discovered documents that resolve outside the repository, so were not read. */
+  docsSkipped: number;
+  /** Documents left out of the index because their text tripped the secret scan. */
+  docsWithheld: number;
+  /** Previously imported documents whose source file is gone. */
+  entitiesTombstoned: number;
+}
+
 function candidateRootDocs(repositoryRoot: string): string[] {
   return ROOT_DOC_FILENAMES.map((filename) => join(repositoryRoot, filename));
 }
 
-async function candidateRuleDocs(repositoryRoot: string): Promise<string[]> {
+async function candidateRuleDocs(
+  repositoryRoot: string,
+): Promise<{ paths: string[]; listed: boolean }> {
   const rulesDir = join(repositoryRoot, RULES_SUBDIRECTORY);
   let entries: Dirent[];
   try {
     entries = await readdir(rulesDir, { recursive: true, withFileTypes: true, encoding: "utf8" });
-  } catch {
-    // No `.claude/rules`, or it is a file rather than a directory, or it is
-    // unreadable. None of those is an error worth failing an `iroha sync` over.
-    return [];
+  } catch (cause) {
+    // An absent `.claude/rules` is the ordinary case and a complete answer:
+    // there are no rule documents. Anything else means the directory may hold
+    // documents we could not see, and reporting that as "none" would let the
+    // caller tombstone every rule it imported last time.
+    return { paths: [], listed: (cause as NodeJS.ErrnoException).code === "ENOENT" };
   }
-  return entries
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
-    .map((entry) => join(entry.parentPath, entry.name));
+  return {
+    // A symlink dirent is neither `isFile()` nor followed by `readdir`, so
+    // filtering on `isFile()` alone silently drops a rule file that is a link
+    // to another path in the repository. Let the containment check below decide
+    // — it resolves the link and rejects only what actually leaves the tree.
+    paths: entries
+      .filter((entry) => (entry.isFile() || entry.isSymbolicLink()) && entry.name.endsWith(".md"))
+      .map((entry) => join(entry.parentPath, entry.name)),
+    listed: true,
+  };
 }
 
 /**
@@ -185,15 +211,6 @@ function deriveSummary(body: string): string | undefined {
   return undefined;
 }
 
-export interface ImportRepositoryDocsResult {
-  docsImported: string[];
-  entitiesWritten: number;
-  /** Discovered documents that resolve outside the repository, so were not read. */
-  docsSkipped: number;
-  /** Previously imported documents whose source file is gone. */
-  entitiesTombstoned: number;
-}
-
 /**
  * Imports the repository's own instruction documents into the local index
  * (contracts/canonical.md §14 / ADR-017). They land as `source_kind = 'import'`
@@ -214,13 +231,19 @@ export async function importRepositoryDocs(
   clock: Clock,
   random: RandomSource,
 ): Promise<Result<ImportRepositoryDocsResult, IrohaError>> {
+  const rules = await candidateRuleDocs(repositoryRoot);
   const { docs, skipped } = await resolveInsideRepository(repositoryRoot, [
     ...candidateRootDocs(repositoryRoot),
-    ...(await candidateRuleDocs(repositoryRoot)),
+    ...rules.paths,
   ]);
   const now = clock.now().toISOString();
   const docsImported: string[] = [];
+  // Existence, not readability: a document we saw but could not read or index
+  // is still present, and treating it as absent would have the reconcile below
+  // retire a rule that a transient EACCES merely hid for one run.
+  const presentPaths = new Set(docs.map((doc) => doc.relativePath));
   let entitiesWritten = 0;
+  let docsWithheld = 0;
 
   for (const doc of docs) {
     let content: string;
@@ -232,6 +255,22 @@ export async function importRepositoryDocs(
       // `iroha sync` whose canonical work has already committed.
       continue;
     }
+
+    // The local database is an at-rest store, so a credential written into a
+    // repository's prose must not be copied into it — the same reason
+    // `create_checkpoint` redacts before writing. Withheld rather than
+    // redacted: a wholesale-redacted rule is useless, and the agent harness
+    // reads the file directly anyway, so declining to hold a copy costs the
+    // reader nothing.
+    const scan = await scanForSecrets(content);
+    if (!scan.ok) {
+      return scan;
+    }
+    if (!scan.value.clean) {
+      docsWithheld += 1;
+      continue;
+    }
+
     const contentHash = `sha256:${createHash("sha256").update(content).digest("hex")}`;
     docsImported.push(doc.relativePath);
 
@@ -290,11 +329,7 @@ export async function importRepositoryDocs(
         return knowledgeResult;
       }
 
-      // Lexical index only — no embedding job is enqueued. Embedding these would
-      // pay a provider per token to vectorize text the agent harness already
-      // auto-loads into the same session; FTS is enough to find them, and
-      // lexical-only entries are an already-supported state.
-      return upsertSearchDocument(tx, {
+      const searchResult = await upsertSearchDocument(tx, {
         id: makeTypedId("sdoc", clock, random),
         entityId,
         documentKind: "rule",
@@ -305,6 +340,31 @@ export async function importRepositoryDocs(
         contentHash,
         indexedAt: now,
       });
+      if (!searchResult.ok) {
+        return searchResult;
+      }
+
+      // Queued on the same terms as canonical knowledge. Leaving it lexical-only
+      // would make `mode: "vector"` — which disables the FTS arm entirely —
+      // silently unable to return a repository rule at all, and the semantic arm
+      // is exactly what a repository whose harness does not auto-load
+      // `.claude/rules/*.md` has to rely on. Enqueue only: no provider is called
+      // here, and an unconfigured provider leaves the job pending.
+      const stored = await getSearchDocumentByEntityId(tx, entityId);
+      if (!stored.ok) {
+        return stored;
+      }
+      if (stored.value === null) {
+        return ok(undefined);
+      }
+      return enqueueEmbeddingJob(tx, {
+        id: makeTypedId("job", clock, random),
+        searchDocumentId: stored.value.id,
+        provider: EMBEDDING_PROVIDER,
+        model: EMBEDDING_MODEL,
+        createdAt: now,
+        updatedAt: now,
+      });
     });
     if (!written.ok) {
       return written;
@@ -313,7 +373,12 @@ export async function importRepositoryDocs(
     entitiesWritten += 1;
   }
 
-  const tombstoned = await tombstoneDisappearedDocs(db, repositoryId, docsImported, now);
+  // Only reconcile against a complete picture. A `.claude/rules` we could not
+  // list tells us nothing about which rules still exist, and acting on it would
+  // retire every one of them over a directory that was briefly unreadable.
+  const tombstoned = rules.listed
+    ? await tombstoneDisappearedDocs(db, repositoryId, presentPaths, now)
+    : ok(0);
   if (!tombstoned.ok) {
     return tombstoned;
   }
@@ -322,6 +387,7 @@ export async function importRepositoryDocs(
     docsImported,
     entitiesWritten,
     docsSkipped: skipped,
+    docsWithheld,
     entitiesTombstoned: tombstoned.value,
   });
 }
@@ -340,14 +406,13 @@ export async function importRepositoryDocs(
 async function tombstoneDisappearedDocs(
   db: Database,
   repositoryId: TypedId<"repo">,
-  presentPaths: readonly string[],
+  present: ReadonlySet<string>,
   now: string,
 ): Promise<Result<number, IrohaError>> {
   const existing = await listEntitiesBySourceKind(db, repositoryId, "import");
   if (!existing.ok) {
     return existing;
   }
-  const present = new Set(presentPaths);
   let tombstoned = 0;
   for (const entity of existing.value) {
     if (entity.status !== IMPORTED_STATUS || (entity.sourceRef ?? "") === "") {
