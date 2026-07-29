@@ -38,15 +38,29 @@ if [ -z "$pr" ]; then
   exit 1
 fi
 
+# Matching the draft against local HEAD is not enough: with an unpushed commit, or a remote branch
+# that advanced independently, the draft can be current locally while the PR points somewhere else —
+# and the comment would then describe a diff that is not on the PR at all.
+pr_head="$(gh pr view "$pr" --json headRefOid --jq .headRefOid)"
+if [ "$pr_head" != "$current" ]; then
+  echo "Refusing to post: PR #${pr} is at ${pr_head}, but the draft describes ${current}."
+  echo "Push the branch (or re-review the pushed commit) before posting."
+  exit 1
+fi
+
 # Scope the search to comments this account owns. The marker is the identifier, but on a public
 # repository anyone can post a body containing it, and a maintainer's token can edit other people's
 # comments — so marker alone would overwrite a stranger's comment and never update the real summary.
 me="$(gh api user --jq .login)"
 
+# `startswith`, not `contains`: the marker is line 1 of a rendered summary, so a triage reply that
+# merely *quotes* it mid-body must not match — otherwise the PATCH below would overwrite that reply
+# and leave the real summary stale.
+#
 # --paginate with --jq applies the filter per page (--slurp cannot be combined with --jq), so this
 # emits one id per matching comment across all pages; the last one is the summary of record.
 id="$(gh api "repos/{owner}/{repo}/issues/${pr}/comments" --paginate \
-  --jq ".[] | select(.user.login == \"${me}\") | select(.body | contains(\"${MARKER}\")) | .id" \
+  --jq ".[] | select(.user.login == \"${me}\") | select(.body | startswith(\"${MARKER}\")) | .id" \
   | tail -1)"
 
 if [ -n "$id" ]; then
