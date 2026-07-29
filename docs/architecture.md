@@ -298,6 +298,21 @@ ADR-016のperiod Digestはここから削除された。session数・checkpoint�
 
 合成されたadherence scoreは引き続き提示しない（advisory ruleの多数はmachine-observableな痕跡を持たないため）。
 
+### Provider credential（ADR-018）
+
+embedding provider の API key は**環境変数から読まない**。`~/.iroha/credentials.json`（file 0600 / dir 0700）に置き、**呼び出しのたびに読む**。`.iroha/config.yaml` の `api_key_env` は削除する。
+
+**理由は環境変数が陳腐化するからである。** プロセスは起動時の環境を凍結し、以後 `~/.zshrc` を更新しても反映されない。iroha の credential 消費者の中心は **Claude Code / Codex が spawn する MCP server** であり、これは常に長命な親プロセスの子である。実際にこのリポジトリで、key を差し替えた後も MCP server が古い key を持ち続け、query embedding が全て 401 で失敗し、検索が語彙のみに degrade したまま**誰も気づかない**状態が発生した。`iroha doctor` は環境変数の**存在**しか確認できないため `(key set)` と報告し続けた。同じ現象は MCP 一般の問題として報告されている（anthropics/claude-code #1254 / #10955、いわゆる "split-brain"）。既知の対処は client の再起動だけで、**プロセスの外から環境変数を差し替える手段は存在しない**。オンデマンドで読めるファイルにすることが唯一の構造的解決である。
+
+代償は 2 つあり、いずれも受け入れる:
+
+- **平文の secret がディスクに載る。** 従来も `~/.zshrc` に平文で置かれていたので露出量そのものは増えないが、iroha が secret を**書く側**になるのは初めてである。file 0600 / dir 0700 とし、値は API response にも log にも error にも決して載せない（存在有無だけを返す）。OS keychain は platform 分岐のコストが大きく、v0.1 の範囲では採らない。
+- **iroha 初の repository 外 state になる。** これまで state は全て repository 配下（`.iroha/` と `.git/iroha/`）に閉じていた。しかし API key は **account の credential であって repository の設定ではない**。`.iroha/config.yaml` は git-tracked かつ team-shared で値を書けない以上、machine-scoped な置き場が意味論的に正しい。`.git/` 配下を避けるのは、`.git` の複製や archive に key が随伴しないためである。
+
+登録経路は dashboard の設定画面と `iroha credentials <provider>` の 2 つ。CLI は**引数で受け取らず標準入力から読む**（shell 履歴に残さないため）。dashboard だけに絞らないのは、SSH 先や dashboard を起動できない環境で復旧できなくなるためである。
+
+既存 `.iroha/config.yaml` の `api_key_env` は、schema が `strictObject` であるため放置すると parse に失敗する。**読み込み時に除去し、次の `init`/`sync` の書き戻しで消す**。ユーザーに手作業を要求せず、git diff には 1 行の削除として現れる。
+
 ## 14. Privacy and security
 
 保存禁止またはcanonical公開禁止:
@@ -365,5 +380,6 @@ end-to-endの受け入れは `apps/vertical-slice` と `apps/e2e` のテスト�
 | ADR-015 | scoped npm `@irohalabs/iroha` | Accepted |
 | ADR-016 | Digestのprose composerは開発者自身のagent session。irohaは外部LLMを呼ばない | Superseded（front pageをOverviewに統合しDigestを削除。irohaが外部LLMを呼ばない原則自体はinvariantとして存続） |
 | ADR-017 | 既存repository doc（`CLAUDE.md`/`AGENTS.md`/`.claude/rules`）はapprovalを経ず`source_kind='import'` entityとして取り込む | Accepted |
+| ADR-018 | provider credentialは環境変数をやめ`~/.iroha/credentials.json`（machine-scoped、0600）からオンデマンドで読む | Accepted |
 
 Public licenseの選択だけは初回release前のdecision gateであり、local implementationを止めない。

@@ -181,6 +181,14 @@ async function post(app: Hono, path: string, cookie: string, body: unknown): Pro
   });
 }
 
+async function put(app: Hono, path: string, cookie: string, body: unknown): Promise<Response> {
+  return app.request(path, {
+    method: "PUT",
+    headers: { ...CSRF, Cookie: `iroha_session=${cookie}` },
+    body: JSON.stringify(body),
+  });
+}
+
 describe("dashboard API", () => {
   let dir: string | undefined;
 
@@ -189,6 +197,67 @@ describe("dashboard API", () => {
       await rm(dir, { recursive: true, force: true }).catch(() => undefined);
       dir = undefined;
     }
+  });
+
+  it("stores a provider API key and never sends it back", async () => {
+    const repo = await setupApiRepo();
+    dir = repo.dir;
+    const { app } = makeApp(repo.dir);
+    const cookie = await exchange(app);
+    // `~/.iroha/credentials.json` is machine-scoped, so the test moves the home
+    // directory rather than writing into the developer's real one.
+    const home = await mkdtemp(join(tmpdir(), "iroha-api-home-"));
+    const previousHome = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+
+    try {
+      const before = await get(app, "/api/v1/settings", cookie);
+      expect(
+        ((await before.json()) as { data: { local: { embeddingKeyPresent: boolean } } }).data.local
+          .embeddingKeyPresent,
+      ).toBe(false);
+
+      const secret = "pa-do-not-echo-this-back-0123456789";
+      const res = await put(app, "/api/v1/settings/credentials", cookie, {
+        provider: "voyage",
+        api_key: secret,
+      });
+
+      expect(res.status).toBe(200);
+      // The response is the one place a write-only endpoint could leak what it
+      // just stored, and the whole point of this endpoint is that nothing reads
+      // the key back.
+      expect(await res.text()).not.toContain(secret);
+
+      const after = await get(app, "/api/v1/settings", cookie);
+      const body = (await after.text()) as string;
+      expect(JSON.parse(body).data.local.embeddingKeyPresent).toBe(true);
+      expect(body).not.toContain(secret);
+
+      const stored = JSON.parse(await readFile(join(home, ".iroha", "credentials.json"), "utf8"));
+      expect(stored.voyage.apiKey).toBe(secret);
+    } finally {
+      for (const [key, value] of Object.entries(previousHome)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      await rm(home, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects an unknown credential provider at the boundary", async () => {
+    const repo = await setupApiRepo();
+    dir = repo.dir;
+    const { app } = makeApp(repo.dir);
+    const cookie = await exchange(app);
+
+    const res = await put(app, "/api/v1/settings/credentials", cookie, {
+      provider: "openai",
+      api_key: "sk-x",
+    });
+
+    expect(res.status).toBe(400);
   });
 
   it("exchanges the launch token once and rejects a replay", async () => {

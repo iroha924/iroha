@@ -4,6 +4,7 @@
 export const packageName = "@iroha/cli";
 
 import { cli, define } from "gunshi";
+import { credentialsCommand } from "./commands/credentials.js";
 import { dashboardCommand } from "./commands/dashboard.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { initCommand } from "./commands/init.js";
@@ -12,7 +13,7 @@ import { syncCommand } from "./commands/sync.js";
 import { muted, title } from "./render.js";
 import { renderUsage, renderValidationErrors, validationErrorsRendered } from "./usage.js";
 
-export const CLI_VERSION = "0.5.0";
+export const CLI_VERSION = "0.6.0";
 
 const mainCommand = define({
   name: "iroha",
@@ -34,6 +35,7 @@ export async function runCli(argv: readonly string[]): Promise<void> {
         doctor: doctorCommand,
         search: searchCommand,
         dashboard: dashboardCommand,
+        credentials: credentialsCommand,
       },
       // The title belongs to `renderUsage`, which draws it under the brand mark;
       // leaving the default header on would print a second, plainer one above it.
@@ -61,4 +63,11 @@ export async function runCli(argv: readonly string[]): Promise<void> {
  * `iroha` binary as `iroha __hook <platform>`.
  */
 export { runHookMain } from "@iroha/core";
-export { dashboardCommand, doctorCommand, initCommand, searchCommand, syncCommand };
+export {
+  credentialsCommand,
+  dashboardCommand,
+  doctorCommand,
+  initCommand,
+  searchCommand,
+  syncCommand,
+};

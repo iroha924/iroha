@@ -19,6 +19,7 @@ import {
   updateEmbeddingJobStatus,
   upsertEmbedding,
 } from "@iroha/storage";
+import { readApiKey } from "./credentials.js";
 
 type EmbeddingConfig = RepositoryConfig["search"]["embedding"];
 
@@ -46,11 +47,6 @@ export interface RunEmbeddingSyncResult {
    * or one API key is rejected, and only the second is fixable in a minute.
    */
   stopped: "credentials" | "outage" | null;
-  /**
-   * The config's `api_key_env` name, so a caller can tell the reader *which*
-   * key to fix. The name only — never the value.
-   */
-  apiKeyEnv: string;
 }
 
 export interface RunEmbeddingSyncOptions {
@@ -59,20 +55,31 @@ export interface RunEmbeddingSyncOptions {
 }
 
 /**
- * Builds a Voyage provider from config + env, or returns `null` when embedding
- * is disabled or its API key env var is unset. Shared by the sync worker and
- * the query-embedding path (`mcpSearch`) so both resolve the key identically —
- * and neither ever puts the value anywhere but the provider's request header.
+ * Builds a Voyage provider from config + the stored credential, or returns
+ * `null` when embedding is disabled or no key is stored. Shared by the sync
+ * worker and the query-embedding path (`mcpSearch`) so both resolve the key
+ * identically — and neither ever puts the value anywhere but the provider's
+ * request header.
+ *
+ * An unreadable credentials file resolves to `null` like an absent one: search
+ * degrades to lexical rather than failing (CLAUDE.md), and `iroha doctor` is
+ * where the file's actual state is reported.
  */
-export function resolveEmbeddingProvider(config: EmbeddingConfig): EmbeddingProvider | null {
+export async function resolveEmbeddingProvider(
+  config: EmbeddingConfig,
+): Promise<EmbeddingProvider | null> {
   if (!config.enabled) {
     return null;
   }
-  const apiKey = process.env[config.api_key_env];
-  if (apiKey === undefined || apiKey.length === 0) {
+  const apiKey = await readApiKey("voyage");
+  if (!apiKey.ok || apiKey.value === null) {
     return null;
   }
-  return createVoyageProvider({ apiKey, model: config.model, dimension: config.dimension });
+  return createVoyageProvider({
+    apiKey: apiKey.value,
+    model: config.model,
+    dimension: config.dimension,
+  });
 }
 
 /** Exponential backoff (deterministic — single local writer, no jitter needed). */
@@ -119,13 +126,12 @@ export async function runEmbeddingSync(
       dead: 0,
       skipped: "disabled",
       stopped: null,
-      apiKeyEnv: config.api_key_env,
     });
   }
   // Reuse the shared resolver (config already known enabled here, so a null
-  // means the API key env var is unset) rather than re-reading the env inline —
+  // means no key is stored) rather than reading the credentials file inline —
   // any future hardening of key resolution then reaches the worker too.
-  const provider = options.provider ?? resolveEmbeddingProvider(config);
+  const provider = options.provider ?? (await resolveEmbeddingProvider(config));
   if (provider === null) {
     return ok({
       processed: 0,
@@ -133,7 +139,6 @@ export async function runEmbeddingSync(
       dead: 0,
       skipped: "missing_key",
       stopped: null,
-      apiKeyEnv: config.api_key_env,
     });
   }
 
@@ -278,6 +283,5 @@ export async function runEmbeddingSync(
     dead,
     skipped: null,
     stopped: credentials ? "credentials" : outage ? "outage" : null,
-    apiKeyEnv: config.api_key_env,
   });
 }

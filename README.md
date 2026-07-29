@@ -104,36 +104,40 @@ Its front page is the **Overview**, and every number on it is one you can act on
 
 ## Configuration
 
-The two features that reach the network are **off by default**, and turning one on takes two steps: put the key in your environment, then flip the flag in `.iroha/config.yaml`.
+The two features that reach the network are **off by default**, and turning one on takes two steps: register the key, then flip the flag in `.iroha/config.yaml`.
 
-**1. Set the key in your shell** (e.g. in `~/.zshrc` or `~/.bashrc`):
+**1. Register the key.** In the dashboard, open **Settings** and paste it into the Voyage or GitHub field. Or from a terminal, pipe it in:
 
 ```bash
-export VOYAGE_API_KEY="your-voyage-key"   # for semantic search
-export GITHUB_TOKEN="your-github-token"   # for GitHub sync
+pbpaste | iroha credentials voyage    # macOS; on Linux use xclip -o, or < key.txt
+pbpaste | iroha credentials github
 ```
+
+The key is stored in `~/.iroha/credentials.json` (mode `0600`, in a `0700` directory) — outside every repository, so it is never committed, and read fresh on each request, so replacing it takes effect without restarting your agent. The CLI reads it from **stdin, never an argument**, which keeps it out of your shell history and out of the process list. iroha reads no environment variables for credentials: nothing goes in `~/.zshrc`.
 
 **2. Turn the feature on in `.iroha/config.yaml`** — `iroha init` already created this file, so you're just flipping a flag:
 
 ```yaml
 search:
   embedding:
-    enabled: true    # semantic search — reads VOYAGE_API_KEY
+    enabled: true    # semantic search — uses the stored Voyage key
 forge:
-  enabled: true      # GitHub sync — reads GITHUB_TOKEN
+  enabled: true      # GitHub sync — uses the stored GitHub token
 ```
 
-`config.yaml` only ever records the **name** of an environment variable, never the secret value itself — the value is read from your environment at runtime and is never stored, logged, or committed.
+`config.yaml` is committed and holds no secret of any kind. Nothing reads a stored key back out: the dashboard and `iroha doctor` report only whether one is present.
 
-| Environment variable | Turns on | Without it |
+| Key | Turns on | Without it |
 |---|---|---|
-| `VOYAGE_API_KEY` | Semantic (vector) search via Voyage | Search stays full-text + graph only |
-| `GITHUB_TOKEN` | GitHub sync (pull requests, reviews) | GitHub sync is simply off |
+| Voyage API key | Semantic (vector) search via Voyage | Search stays full-text + graph only |
+| GitHub token | GitHub sync (pull requests, reviews) | GitHub sync is simply off |
 
 **Where the keys come from — and what they cost:**
 
-- **`VOYAGE_API_KEY`** — sign up at [voyageai.com](https://www.voyageai.com/) and create a key. The cost is next to nothing: iroha uses `voyage-4-large` at **$0.12 per million tokens**, and every account gets its **first 200 million tokens free** ([Voyage pricing](https://docs.voyageai.com/docs/pricing)). A whole team's knowledge base is a few million tokens at most, so in practice you never leave the free tier — and even past it, embedding ~10,000 notes of ~500 tokens each (5M tokens) costs about **$0.60**.
-- **`GITHUB_TOKEN`** — create a [personal access token](https://github.com/settings/tokens) with read access to the repo: a classic token with the `repo` scope, or a fine-grained token granting **Contents: Read** and **Pull requests: Read**. Then point `GITHUB_TOKEN` at it.
+- **Voyage API key** — sign up at [voyageai.com](https://www.voyageai.com/) and create a key. The cost is next to nothing: iroha uses `voyage-4-large` at **$0.12 per million tokens**, and every account gets its **first 200 million tokens free** ([Voyage pricing](https://docs.voyageai.com/docs/pricing)). A whole team's knowledge base is a few million tokens at most, so in practice you never leave the free tier — and even past it, embedding ~10,000 notes of ~500 tokens each (5M tokens) costs about **$0.60**.
+- **GitHub token** — create a [personal access token](https://github.com/settings/tokens) with read access to the repo: a classic token with the `repo` scope, or a fine-grained token granting **Contents: Read** and **Pull requests: Read**.
+
+If semantic search is quietly not working, run `iroha doctor`: it reports whether a key is stored and how many documents the embedding worker gave up on.
 
 Two other settings worth knowing:
 

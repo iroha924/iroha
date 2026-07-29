@@ -104,7 +104,7 @@ export async function mcpGetContext(
       let truncated = false;
       const query = input.query?.trim();
       if (query !== undefined && query.length > 0) {
-        const provider = resolveEmbeddingProvider(ctx.repo.config.search.embedding);
+        const provider = await resolveEmbeddingProvider(ctx.repo.config.search.embedding);
         const embedded = provider === null ? null : await provider.embed([query], "query");
         const queryVector =
           embedded !== null && embedded.ok && embedded.value[0] !== undefined

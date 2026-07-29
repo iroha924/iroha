@@ -23,6 +23,7 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 import { runInit } from "./commands.js";
 import { runEmbeddingSync } from "./embedding-sync.js";
+import { useTempHome } from "./test-helpers/credentials-home.js";
 import { createTempGitRepo, removeTempDir } from "./test-helpers/tmp-repo.js";
 
 const MIGRATIONS_DIR = fileURLToPath(new URL("../../../migrations", import.meta.url));
@@ -39,7 +40,6 @@ function embeddingConfig(overrides: Partial<EmbeddingConfig> = {}): EmbeddingCon
     provider: "voyage",
     model: "voyage-4-large",
     dimension: 1024,
-    api_key_env: "VOYAGE_API_KEY",
     ...overrides,
   };
 }
@@ -200,8 +200,6 @@ describe("runEmbeddingSync", () => {
       // dead-lettered job whose shared cause appears nowhere in the counts.
       expect(fake.calls()).toBe(1);
       expect(result.value.stopped).toBe("credentials");
-      // Named so a reader knows which key to fix; the value is never carried.
-      expect(result.value.apiKeyEnv).toBe("VOYAGE_API_KEY");
 
       // Nothing is dead-lettered. `listDueEmbeddingJobs` selects only
       // `pending`/`failed` and no path revives a dead job, so dead-lettering the
@@ -399,20 +397,27 @@ describe("runEmbeddingSync", () => {
   );
 
   it(
-    "skips when enabled but the API key env var is unset",
+    "skips when enabled but no API key is stored",
     async () => {
       const { db: database, seeded } = await openSeeded();
+      // An empty home means an absent credentials file, which is what a user who
+      // enabled embedding but never registered a key actually has.
+      const { restore } = await useTempHome();
 
-      const result = await runEmbeddingSync(
-        database,
-        seeded.repositoryId,
-        embeddingConfig({ api_key_env: "IROHA_TEST_DEFINITELY_UNSET_KEY" }),
-        CLOCK,
-        new CryptoRandomSource(),
-        // No provider injected: forces the config+env resolution path.
-      );
+      try {
+        const result = await runEmbeddingSync(
+          database,
+          seeded.repositoryId,
+          embeddingConfig({}),
+          CLOCK,
+          new CryptoRandomSource(),
+          // No provider injected: forces the config+credentials resolution path.
+        );
 
-      expect(result.ok && result.value.skipped).toBe("missing_key");
+        expect(result.ok && result.value.skipped).toBe("missing_key");
+      } finally {
+        await restore();
+      }
     },
     SEED_TIMEOUT_MS,
   );

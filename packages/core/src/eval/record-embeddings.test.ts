@@ -2,14 +2,16 @@ import { writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { createVoyageProvider } from "@iroha/search";
 import { describe, expect, it } from "vitest";
+import { readApiKey } from "../credentials.js";
 import { DOCS, docEmbeddingText, QUERIES } from "./fixture.js";
 
 /**
  * One-time recorder for the evaluation gate's vectors. It is the ONLY code that
  * calls the live Voyage API, and it is skipped unless `IROHA_RECORD_EMBEDDINGS=1`
  * so ordinary `pnpm test` runs stay fully offline (CLAUDE.md: no external calls
- * in tests/CI). Run it once with a real key to regenerate the committed
- * `embeddings.recorded.json`, which the deterministic gate then replays:
+ * in tests/CI). Register a real key with `iroha credentials voyage`, then
+ * run it once to regenerate the committed `embeddings.recorded.json`, which the
+ * deterministic gate then replays:
  *
  *   IROHA_RECORD_EMBEDDINGS=1 pnpm --filter @iroha/core exec vitest run record-embeddings
  */
@@ -19,9 +21,10 @@ describe("record embeddings", () => {
   it.runIf(RECORD)(
     "records corpus and query embeddings to embeddings.recorded.json",
     async () => {
-      const apiKey = process.env.VOYAGE_API_KEY;
-      expect(apiKey, "VOYAGE_API_KEY must be set to record").toBeTruthy();
-      if (apiKey === undefined) {
+      const stored = await readApiKey("voyage");
+      const apiKey = stored.ok ? stored.value : null;
+      expect(apiKey, "run `iroha credentials voyage` before recording").toBeTruthy();
+      if (apiKey === null) {
         return;
       }
       const provider = createVoyageProvider({

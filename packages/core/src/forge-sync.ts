@@ -38,6 +38,7 @@ import {
   withTransaction,
 } from "@iroha/storage";
 import { z } from "zod";
+import { readApiKey } from "./credentials.js";
 import { recordEvent } from "./event-log.js";
 import { detectReviewLearnings } from "./forge-review-learning.js";
 
@@ -51,23 +52,20 @@ const FORGE_AUTHORITY = 80;
 const RELATION_CONFIDENCE = 1;
 
 /**
- * Build a GitHub provider from config + env, or `null` when forge is disabled,
- * the provider is not GitHub, or the token env var is unset. Mirrors
+ * Build a GitHub provider from config + the stored credential, or `null` when
+ * forge is disabled, the provider is not GitHub, or no token is stored. Mirrors
  * `resolveEmbeddingProvider`: the token value lives only in the provider's auth
  * layer and is never stored in config, the DB, or logs.
  */
-export function resolveForgeProvider(
-  config: ForgeConfig,
-  env: NodeJS.ProcessEnv,
-): ForgeProvider | null {
+export async function resolveForgeProvider(config: ForgeConfig): Promise<ForgeProvider | null> {
   if (!config.enabled || config.provider !== "github") {
     return null;
   }
-  const token = env[config.api_token_env];
-  if (token === undefined || token.length === 0) {
+  const token = await readApiKey("github");
+  if (!token.ok || token.value === null) {
     return null;
   }
-  return createGitHubProvider({ token });
+  return createGitHubProvider({ token: token.value });
 }
 
 const GITHUB_REMOTE_PATTERNS = [

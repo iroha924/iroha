@@ -28,13 +28,15 @@ import {
   listCandidatesByStatus,
   listReviewCommentsByPullRequest,
 } from "@iroha/storage";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { writeApiKey } from "./credentials.js";
 import {
   type ForgeSyncOutcome,
   parseGitHubRef,
   resolveForgeProvider,
   runForgeSync,
 } from "./forge-sync.js";
+import { useTempHome } from "./test-helpers/credentials-home.js";
 import { openMigratedTestDb, removeTempDir } from "./test-helpers/tmp-db.js";
 
 const CLOCK = new FixedClock(new Date("2026-01-01T00:00:00.000Z"));
@@ -201,21 +203,31 @@ describe("resolveForgeProvider", () => {
   const config = {
     provider: "github" as const,
     enabled: true,
-    api_token_env: "GITHUB_TOKEN",
     review_learning_threshold: 3,
   };
 
-  it("builds a provider when enabled and the token env var is set", () => {
-    expect(resolveForgeProvider(config, { GITHUB_TOKEN: "t" })).not.toBeNull();
+  let restoreHome: (() => Promise<void>) | undefined;
+
+  beforeEach(async () => {
+    restoreHome = (await useTempHome()).restore;
   });
 
-  it("returns null when disabled, tokenless, or non-github", () => {
-    expect(resolveForgeProvider({ ...config, enabled: false }, { GITHUB_TOKEN: "t" })).toBeNull();
-    expect(resolveForgeProvider(config, {})).toBeNull();
-    expect(resolveForgeProvider(config, { GITHUB_TOKEN: "" })).toBeNull();
-    expect(
-      resolveForgeProvider({ ...config, provider: "gitlab" }, { GITHUB_TOKEN: "t" }),
-    ).toBeNull();
+  afterEach(async () => {
+    await restoreHome?.();
+    restoreHome = undefined;
+  });
+
+  it("builds a provider when enabled and a token is stored", async () => {
+    await writeApiKey("github", "t");
+    expect(await resolveForgeProvider(config)).not.toBeNull();
+  });
+
+  it("returns null when disabled, tokenless, or non-github", async () => {
+    expect(await resolveForgeProvider(config)).toBeNull();
+
+    await writeApiKey("github", "t");
+    expect(await resolveForgeProvider({ ...config, enabled: false })).toBeNull();
+    expect(await resolveForgeProvider({ ...config, provider: "gitlab" })).toBeNull();
   });
 });
 

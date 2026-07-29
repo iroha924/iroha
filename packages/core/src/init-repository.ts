@@ -67,13 +67,11 @@ function buildDefaultConfig(repositoryId: TypedId<"repo">): RepositoryConfig {
         provider: "voyage",
         model: "voyage-4-large",
         dimension: 1024,
-        api_key_env: "VOYAGE_API_KEY",
       },
     },
     forge: {
       provider: "github",
       enabled: false,
-      api_token_env: "GITHUB_TOKEN",
       review_learning_threshold: 3,
     },
     privacy: {

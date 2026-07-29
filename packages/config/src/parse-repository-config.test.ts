@@ -63,10 +63,24 @@ describe("parseRepositoryConfig", () => {
     expect(result.ok).toBe(false);
   });
 
-  it("rejects an api_key_env value that is not an environment variable name", () => {
-    const yaml = validYaml().replace("VOYAGE_API_KEY", "sk-not-an-env-var-name");
+  it("drops the secret-location keys an older version wrote, rather than failing on them", () => {
+    // 0.6.0 moved credentials to ~/.iroha/credentials.json (ADR-018). The schema
+    // is a strictObject, so a config written before that would otherwise fail to
+    // parse and take every command down with it — on a file the user never
+    // touched. Dropping them here lets the next init/sync rewrite the file
+    // without them.
+    // validYaml() already carries the embedding key; add the forge one beside it.
+    const yaml = validYaml().replace(
+      "forge:\n  provider: github",
+      "forge:\n  provider: github\n  api_token_env: GITHUB_TOKEN",
+    );
+
     const result = parseRepositoryConfig(yaml);
-    expect(result.ok).toBe(false);
+
+    expect(result.ok, "a config from an earlier version must still parse").toBe(true);
+    if (!result.ok) return;
+    expect(Object.keys(result.value.search.embedding)).not.toContain("api_key_env");
+    expect(Object.keys(result.value.forge)).not.toContain("api_token_env");
   });
 
   it("rejects an unsupported default_language", () => {

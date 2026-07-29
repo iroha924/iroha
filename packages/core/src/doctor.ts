@@ -17,9 +17,11 @@ import {
   closeDatabase,
   getSyncCursor,
   listApprovedRulesForRepository,
+  listOpenDirtyMarkers,
   openDatabase,
   probeCapabilities,
 } from "@iroha/storage";
+import { hasApiKey } from "./credentials.js";
 import { classifyGuardSpec } from "./hooks/guardrail.js";
 import { resolveInitializedRepository } from "./resolve-repository.js";
 import { readRetentionStatus } from "./retention.js";
@@ -269,13 +271,15 @@ async function checkGuardrails(cwd: string): Promise<DoctorCheckResult> {
 
 /**
  * compatibility.md §9 point 9: "report Embedding and Forge providers
- * without printing secret values." `.iroha/config.yaml` never holds a
- * secret itself (only an environment-variable *name* — canonical-
- * schema.md §9), so the only additional care this needs is to report
- * *whether* the named variable is set, never its value. The forge provider is
- * reported separately by `checkForge`, which also reads the sync cursor.
+ * without printing secret values." Credentials live outside the repository
+ * (ADR-018) and this only ever asks whether one is stored, never for its value.
+ * The forge provider is reported separately by `checkForge`, which also reads
+ * the sync cursor.
  */
-async function checkProviders(irohaCanonicalDir: string): Promise<DoctorCheckResult[]> {
+async function checkProviders(
+  cwd: string,
+  irohaCanonicalDir: string,
+): Promise<DoctorCheckResult[]> {
   let content: string;
   try {
     content = await readFile(join(irohaCanonicalDir, "config.yaml"), "utf8");
@@ -299,25 +303,76 @@ async function checkProviders(irohaCanonicalDir: string): Promise<DoctorCheckRes
     return [{ name: "config", status: "error", message: parsed.error.message }];
   }
   const { search } = parsed.value;
-  const embeddingKeySet = process.env[search.embedding.api_key_env] !== undefined;
+  const stored = await hasApiKey("voyage");
+  // An unreadable credentials file is not "no key": it is a file the user
+  // believes holds one. Reporting it as absent would send them to re-enter a
+  // key that is already there.
+  const embeddingKeySet = stored.ok && stored.value;
+  if (!stored.ok) {
+    return [
+      {
+        name: "embedding-provider",
+        status: "error",
+        message: stored.error.message,
+      },
+    ];
+  }
+  if (!search.embedding.enabled) {
+    return [{ name: "embedding-provider", status: "ok", message: "disabled" }];
+  }
+
+  // Documents the sync gave up on. Without this the report reads "key set" while
+  // search silently answers from lexical alone, which is exactly the state a
+  // rejected key leaves behind — and nothing else in the CLI names it.
+  const stranded = await countStrandedEmbeddings(cwd);
+  const detail = [
+    `key ${embeddingKeySet ? "set" : "not set"}`,
+    ...(stranded > 0 ? [`${stranded} documents not embedded`] : []),
+  ].join(", ");
   return [
     {
       name: "embedding-provider",
-      status: search.embedding.enabled && !embeddingKeySet ? "warning" : "ok",
-      message: search.embedding.enabled
-        ? `${search.embedding.provider}/${search.embedding.model} (key ${embeddingKeySet ? "set" : "not set"})`
-        : "disabled",
+      status: !embeddingKeySet || stranded > 0 ? "warning" : "ok",
+      message: `${search.embedding.provider}/${search.embedding.model} (${detail})`,
     },
   ];
 }
 
 /**
- * Reports the forge provider. When forge is enabled this checks the token env
- * var is set (`warning` if not — a silent no-op sync would otherwise read as
+ * How many documents the embedding worker dead-lettered, counted from the open
+ * `embedding_retry` dirty markers it writes. Any failure counts as zero: this
+ * detail decorates another check's message, and losing the whole embedding line
+ * to a database problem `storage-capabilities` already reports would trade a
+ * useful report for a redundant error.
+ */
+async function countStrandedEmbeddings(cwd: string): Promise<number> {
+  const resolved = await resolveInitializedRepository(cwd);
+  if (!resolved.ok) {
+    return 0;
+  }
+  const opened = await openDatabase(resolved.value.dbPath);
+  if (!opened.ok) {
+    return 0;
+  }
+  try {
+    const markers = await listOpenDirtyMarkers(
+      opened.value,
+      resolved.value.repositoryId,
+      "embedding_retry",
+    );
+    return markers.ok ? markers.value.length : 0;
+  } finally {
+    await closeDatabase(opened.value);
+  }
+}
+
+/**
+ * Reports the forge provider. When forge is enabled this checks a token is
+ * stored (`warning` if not — a silent no-op sync would otherwise read as
  * healthy) and reads the `github` sync cursor to surface the last sync's error
- * code. The token *value* is never read or printed — only whether the named
- * variable is set (compatibility.md §9). Any internal failure is a report
- * entry, never a throw.
+ * code. The token *value* is never read or printed — only whether one is
+ * present (compatibility.md §9). Any internal failure is a report entry, never
+ * a throw.
  */
 async function checkForge(cwd: string): Promise<DoctorCheckResult> {
   const resolved = await resolveInitializedRepository(cwd);
@@ -328,12 +383,15 @@ async function checkForge(cwd: string): Promise<DoctorCheckResult> {
   if (!forge.enabled) {
     return { name: "forge-provider", status: "ok", message: "disabled" };
   }
-  const tokenSet = process.env[forge.api_token_env] !== undefined;
-  if (!tokenSet) {
+  const stored = await hasApiKey("github");
+  if (!stored.ok) {
+    return { name: "forge-provider", status: "error", message: stored.error.message };
+  }
+  if (!stored.value) {
     return {
       name: "forge-provider",
       status: "warning",
-      message: `${forge.provider} enabled but ${forge.api_token_env} is not set`,
+      message: `${forge.provider} enabled but no token is stored (run \`iroha credentials github\`)`,
     };
   }
   const opened = await openDatabase(resolved.value.dbPath);
@@ -675,7 +733,7 @@ export async function runDoctor(cwd: string): Promise<Result<DoctorReport, Iroha
 
   checks.push(await checkStorageCapabilities(irohaStateDir, random));
   checks.push(await checkGuardrails(cwd));
-  checks.push(...(await checkProviders(irohaCanonicalDir)));
+  checks.push(...(await checkProviders(cwd, irohaCanonicalDir)));
   checks.push(await checkForge(cwd));
   checks.push(await checkRetention(cwd));
 

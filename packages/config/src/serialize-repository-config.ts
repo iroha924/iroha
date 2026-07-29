@@ -24,13 +24,11 @@ export function serializeRepositoryConfig(config: RepositoryConfig): string {
         provider: config.search.embedding.provider,
         model: config.search.embedding.model,
         dimension: config.search.embedding.dimension,
-        api_key_env: config.search.embedding.api_key_env,
       },
     },
     forge: {
       provider: config.forge.provider,
       enabled: config.forge.enabled,
-      api_token_env: config.forge.api_token_env,
       review_learning_threshold: config.forge.review_learning_threshold,
     },
     privacy: {

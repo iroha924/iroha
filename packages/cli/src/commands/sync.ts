@@ -103,12 +103,12 @@ function formatSync(data: RunSyncResult): string {
     );
     // Counts alone are not actionable: a rejected key and a batch of malformed
     // documents produce the same line, and only one of them is fixable in a
-    // minute. The env var is named, never its value.
+    // minute. What to do about it is named; the key itself never is.
     if (embedding.stopped === "credentials") {
       lines.push(
         note(
           "error",
-          `The embedding provider rejected the API key in $${embedding.apiKeyEnv}. Remaining documents were left for the next sync.`,
+          "The embedding provider rejected the stored API key. Run `iroha credentials voyage` to replace it; remaining documents were left for the next sync.",
         ),
       );
     } else if (embedding.stopped === "outage") {

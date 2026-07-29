@@ -237,8 +237,8 @@ The two manifests are not generated from each other at runtime. They are produce
 - Default model: `voyage-4-large`.
 - Dimension: 1024.
 - Document input uses `input_type=document`; query input uses `input_type=query`.
-- API key variable: `VOYAGE_API_KEY`.
-- The key name may be stored in config; the key value must never be written to `.iroha/`, local DB, logs, or diagnostics.
+- The API key is stored in `~/.iroha/credentials.json` (ADR-018), read on each request, and registered from the dashboard's Settings page or `iroha credentials voyage` (stdin only). No environment variable is read.
+- Neither the key nor its location may be written to `.iroha/`, the local DB, logs, or diagnostics. Presence may be reported; the value may not.
 - Google and local providers are P1 adapters, not part of the 0.1 release gate.
 
 Rationale: `voyage-4-large` is a current general-purpose multilingual retrieval model and the lexical index separately preserves code identifiers. `voyage-code-3` may be evaluated later as a second index, but v1 does not mix incompatible embedding spaces.
