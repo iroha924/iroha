@@ -11,7 +11,6 @@ import {
   listApprovalsByCandidate,
   listApprovedRulesForRepository,
   listCandidatesByStatus,
-  updateCandidatePayload,
   updateCandidateStatus,
   upsertKnowledgeItem,
 } from "./knowledge.js";
@@ -338,11 +337,12 @@ describe("knowledge repositories", () => {
       revisionToken: "rev-1",
       createdAt: NOW,
     });
-    // Someone else already edited the candidate, bumping its revision token.
-    await updateCandidatePayload(db, id, {
-      expectedRevisionToken: "rev-1",
-      newRevisionToken: "rev-2",
-      payloadJson: '{"title":"edited"}',
+    // The row is still pending, but the token in hand is not the one it carries:
+    // another reader already refreshed it. Seeded directly rather than through a
+    // second write, so the assertions below describe one state, not a sequence.
+    await db.execute({
+      sql: "UPDATE candidates SET revision_token = ? WHERE id = ?",
+      args: ["rev-2", id],
     });
 
     const result = await updateCandidateStatus(db, id, {
@@ -361,50 +361,6 @@ describe("knowledge repositories", () => {
     expect(read.ok).toBe(true);
     if (read.ok) {
       expect(read.value?.status).toBe("pending");
-      expect(read.value?.revisionToken).toBe("rev-2");
-    }
-  });
-
-  it("fails with CONFLICT when editing the payload of a candidate that already left pending", async () => {
-    const opened = await openMigratedTestDb();
-    tempDir = opened.dir;
-    db = opened.db;
-    const repositoryId = await seedRepository(db, "f2");
-    const id = candId("f2");
-    await insertCandidate(db, {
-      id,
-      repositoryId,
-      candidateType: "decision",
-      payloadJson: "{}",
-      revisionToken: "rev-1",
-      createdAt: NOW,
-    });
-    const approved = await updateCandidateStatus(db, id, {
-      from: "pending",
-      to: "approved",
-      expectedRevisionToken: "rev-1",
-      newRevisionToken: "rev-2",
-      reviewedAt: LATER,
-    });
-    expect(approved.ok).toBe(true);
-
-    // contracts/dashboard-api.md describes PATCH /candidates/:id as editing a draft;
-    // once approved, the payload must be fixed even with a fresh, correct
-    // revision token.
-    const result = await updateCandidatePayload(db, id, {
-      expectedRevisionToken: "rev-2",
-      newRevisionToken: "rev-3",
-      payloadJson: '{"title":"edited after approval"}',
-    });
-
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error.code).toBe("CONFLICT");
-    }
-    const read = await getCandidateById(db, id);
-    expect(read.ok).toBe(true);
-    if (read.ok) {
-      expect(read.value?.payloadJson).toBe("{}");
       expect(read.value?.revisionToken).toBe("rev-2");
     }
   });

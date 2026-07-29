@@ -4,13 +4,11 @@ import type {
   CandidateDetailData,
   CandidateQueuePage,
   CandidateStatusChangeData,
-  CheckpointDetailData,
   DiagnosticsEventsData,
   DigestData,
   DigestPeriodUnit,
   DoctorRepairData,
   DoctorReport,
-  EditCandidateData,
   GraphData,
   GraphPathData,
   KnowledgeDetailData,
@@ -19,8 +17,6 @@ import type {
   OverviewData,
   RepositoryConfig,
   RepositoryPeopleData,
-  RunDetailData,
-  SessionDetailData,
   SessionListPage,
   SettingsData,
   SyncCanonicalResult,
@@ -53,7 +49,7 @@ export type CandidateStatusFilter = "pending" | "approved" | "rejected" | "super
 /** Knowledge entity statuses the API's `status` filter accepts (mirrors the canonical status enum). */
 export type KnowledgeStatusFilter = "approved" | "superseded" | "archived";
 /** Agent platforms the API's Session `platform` filter accepts. */
-export type SessionPlatformFilter = "claude_code" | "codex";
+type SessionPlatformFilter = "claude_code" | "codex";
 
 export interface CandidateListParams {
   cursor?: string;
@@ -70,6 +66,8 @@ export interface KnowledgeListParams {
   cursor?: string;
   statuses?: KnowledgeStatusFilter[];
   types?: string[];
+  limit?: number;
+  offset?: number;
 }
 export interface SessionListParams {
   cursor?: string;
@@ -165,8 +163,6 @@ export const api = {
     ),
   people: () => request<RepositoryPeopleData>("GET", "/v1/people"),
   candidate: (id: string) => request<CandidateDetailData>("GET", `/v1/candidates/${id}`),
-  editCandidate: (id: string, revisionToken: string, draft: unknown) =>
-    request<EditCandidateData>("PATCH", `/v1/candidates/${id}`, { revisionToken, draft }),
   approve: (id: string, revisionToken: string, actor: ReviewActor, comment?: string) =>
     request<ApproveCandidateData>("POST", `/v1/candidates/${id}/approve`, {
       revisionToken,
@@ -184,7 +180,13 @@ export const api = {
   knowledge: (params: KnowledgeListParams = {}) =>
     request<KnowledgeListPage>(
       "GET",
-      `/v1/knowledge${queryString({ cursor: params.cursor, status: params.statuses, type: params.types })}`,
+      `/v1/knowledge${queryString({
+        cursor: params.cursor,
+        status: params.statuses,
+        type: params.types,
+        limit: params.limit === undefined ? undefined : String(params.limit),
+        offset: params.offset === undefined ? undefined : String(params.offset),
+      })}`,
     ),
   knowledgeDetail: (id: string) => request<KnowledgeDetailData>("GET", `/v1/knowledge/${id}`),
 
@@ -201,10 +203,6 @@ export const api = {
         to: params.to,
       })}`,
     ),
-  sessionDetail: (id: string) => request<SessionDetailData>("GET", `/v1/sessions/${id}`),
-  runDetail: (sessionId: string, runId: string) =>
-    request<RunDetailData>("GET", `/v1/sessions/${sessionId}/runs/${runId}`),
-  checkpoint: (id: string) => request<CheckpointDetailData>("GET", `/v1/checkpoints/${id}`),
 
   settings: () => request<SettingsData>("GET", "/v1/settings"),
   updateSharedConfig: (config: RepositoryConfig) =>

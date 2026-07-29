@@ -4,6 +4,7 @@ import { closeDatabase, type Database } from "../connection.js";
 import { openMigratedTestDb, removeTempDir } from "../test-helpers/tmp-db.js";
 import type { EntityType } from "./identity.js";
 import {
+  countKnowledgeEntities,
   getActorById,
   getActorByProviderExternalId,
   getCanonicalDocumentByEntityId,
@@ -411,6 +412,38 @@ describe("identity repositories", () => {
         "rul_0000000000000000000000002",
       ]);
     }
+
+    // offset addresses a row position, for the Knowledge page's numbered pages.
+    const skipped = await listKnowledgeEntities(database, repositoryId, { limit: 10, offset: 1 });
+    expect(skipped.ok).toBe(true);
+    if (skipped.ok) {
+      expect(skipped.value.map((e) => e.id)).toEqual(["rul_0000000000000000000000002"]);
+    }
+
+    // A cursor wins over an offset, so a keyset read is never silently skewed.
+    const cursored = await listKnowledgeEntities(database, repositoryId, {
+      limit: 10,
+      offset: 1,
+      beforeUpdatedAt: "2026-01-05T00:00:00.000Z",
+      beforeId: "dec_0000000000000000000000001",
+    });
+    expect(cursored.ok).toBe(true);
+    if (cursored.ok) {
+      expect(cursored.value.map((e) => e.id)).toEqual(["rul_0000000000000000000000002"]);
+    }
+
+    // The count matches the list under the same filters — including the archived
+    // row the default status filter excludes, and never the session.
+    const total = await countKnowledgeEntities(database, repositoryId, {});
+    expect(total.ok && total.value).toBe(2);
+    const archivedTotal = await countKnowledgeEntities(database, repositoryId, {
+      statuses: ["archived"],
+    });
+    expect(archivedTotal.ok && archivedTotal.value).toBe(1);
+    const decisionTotal = await countKnowledgeEntities(database, repositoryId, {
+      entityTypes: ["decision"],
+    });
+    expect(decisionTotal.ok && decisionTotal.value).toBe(1);
 
     // entityTypes narrows to the requested knowledge type.
     const onlyDecisions = await listKnowledgeEntities(database, repositoryId, {

@@ -510,43 +510,6 @@ export async function updateCandidateStatus(
   }
 }
 
-export interface UpdateCandidatePayloadInput {
-  expectedRevisionToken: string;
-  newRevisionToken: string;
-  payloadJson: string;
-}
-
-/**
- * Dashboard candidate edit (design.md §10's `approvals.action = 'edit'`),
- * guarded the same way. contracts/dashboard-api.md describes `PATCH /candidates/:id`
- * as editing a *draft*; once a candidate leaves `pending` (approved,
- * rejected, or superseded), its payload is fixed and any further change
- * must go through a new transition, not a silent payload rewrite — so this
- * only succeeds while `status = 'pending'`, matching that contract.
- */
-export async function updateCandidatePayload(
-  db: Executor,
-  id: TypedId<"cand">,
-  input: UpdateCandidatePayloadInput,
-): Promise<Result<void, IrohaError>> {
-  try {
-    const result = await db.execute({
-      sql: "UPDATE candidates SET payload_json = ?, revision_token = ? WHERE id = ? AND status = 'pending' AND revision_token = ?",
-      args: [input.payloadJson, input.newRevisionToken, id, input.expectedRevisionToken],
-    });
-    if (result.rowsAffected === 0) {
-      return err(
-        new IrohaError("CONFLICT", "Candidate was modified concurrently or no longer exists", {
-          details: { id },
-        }),
-      );
-    }
-    return ok(undefined);
-  } catch (cause) {
-    return err(mapLibsqlError(cause, "Failed to update candidate payload"));
-  }
-}
-
 // --- approvals ---------------------------------------------------
 
 export type ApprovalAction = "approve" | "reject" | "supersede" | "edit";

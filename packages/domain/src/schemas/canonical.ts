@@ -91,7 +91,12 @@ export const relationSchema = z.strictObject({
 const commonFrontmatterShape = {
   schema_version: z.literal(1),
   id: entityIdSchema,
-  title: z.string().min(1).max(160),
+  /** Same no-surrounding-whitespace rule as the checkpoint input; §7 compares the H1 exactly. */
+  title: z
+    .string()
+    .min(1)
+    .max(160)
+    .regex(/^\S(.*\S)?$/, "must not start or end with whitespace"),
   status: z.enum(["approved", "superseded", "archived"]),
   revision: z.number().int().min(1),
   created_at: timestampSchema,

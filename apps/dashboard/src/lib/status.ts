@@ -1,23 +1,18 @@
 // Maps domain status strings to the brand Badge tones (see badge.tsx variants).
 // Shared so the run / candidate / knowledge lists stay visually consistent.
 
-export type StatusTone = "approve" | "pending" | "reject" | "neutral";
-
-/** Run/session lifecycle status → tone. */
-export function runStatusTone(status: string | null): StatusTone {
-  if (status === "active") return "approve";
-  if (status === "interrupted") return "pending";
-  if (status === "abandoned") return "reject";
-  return "neutral";
-}
-
-/** Candidate review status → tone. */
-export function candidateStatusTone(status: string): StatusTone {
-  if (status === "approved") return "approve";
-  if (status === "pending") return "pending";
-  if (status === "rejected") return "reject";
-  return "neutral";
-}
+export type StatusTone =
+  | "approve"
+  | "pending"
+  | "reject"
+  | "neutral"
+  | "ai"
+  | "suou"
+  | "tokusa"
+  | "fuji"
+  | "asagi"
+  | "kurikawa"
+  | "nibi";
 
 /** Approved-knowledge status → tone. */
 export function knowledgeStatusTone(status: string): StatusTone {
@@ -26,17 +21,31 @@ export function knowledgeStatusTone(status: string): StatusTone {
   return "neutral";
 }
 
-/** Checkpoint outcome → tone. */
-export function checkpointOutcomeTone(outcome: string): StatusTone {
-  if (outcome === "completed") return "approve";
-  if (outcome === "blocked") return "reject";
-  if (outcome === "partial") return "pending";
-  return "neutral";
-}
+/**
+ * The seven canonical knowledge types, each with one tone and the matching CSS
+ * colour. Both the Review/Knowledge badges and the Overview composition chart
+ * read from here, so a type cannot end up two colours in two views — which is
+ * exactly what happened while the chart kept its own `--chart-*` series.
+ *
+ * Order is the canonical type order and is stable: the chart's bars are read
+ * against it. None of these are matcha, persimmon or amber — those carry
+ * approve / reject / pending, and a type badge must not look like a verdict.
+ */
+export const KNOWLEDGE_TYPES = [
+  { key: "decision", tone: "ai", color: "var(--color-ai)" },
+  { key: "rule", tone: "tokusa", color: "var(--color-tokusa)" },
+  { key: "concept", tone: "kurikawa", color: "var(--color-kurikawa)" },
+  { key: "insight", tone: "fuji", color: "var(--color-fuji)" },
+  { key: "incident", tone: "suou", color: "var(--color-suou)" },
+  { key: "pattern", tone: "asagi", color: "var(--color-asagi)" },
+  { key: "review_learning", tone: "nibi", color: "var(--color-nibi)" },
+] as const satisfies ReadonlyArray<{ key: string; tone: StatusTone; color: string }>;
 
-/** Checkpoint validation result → tone. */
-export function validationResultTone(result: string): StatusTone {
-  if (result === "passed") return "approve";
-  if (result === "failed") return "reject";
-  return "neutral";
+/**
+ * Knowledge type → badge tone, keyed on the type alone. A given type is the same
+ * colour on every page and in every state; status has its own badge and its own
+ * tones. `session_summary` falls to neutral because nothing produces one today.
+ */
+export function knowledgeTypeTone(type: string): StatusTone {
+  return KNOWLEDGE_TYPES.find((t) => t.key === type)?.tone ?? "neutral";
 }

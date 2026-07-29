@@ -117,6 +117,38 @@ describe("mcpProposeKnowledge", () => {
     15000,
   );
 
+  // propose_knowledge has nothing but the proposal to save, so a redacted field
+  // is a rejection rather than an omission.
+  it("rejects a proposal whose body was replaced by the secret scan", async () => {
+    repo = await setupMcpRepo(random);
+    const seedDb = await openDatabase(repo.dbPath);
+    if (!seedDb.ok) return;
+    const seeded = await seedSessionWithToken(seedDb.value, repo, clock, random);
+    await closeDatabase(seedDb.value);
+
+    const result = await mcpProposeKnowledge({
+      cwd: repo.repoDir,
+      clock,
+      random,
+      sessionToken: seeded.token,
+      idempotencyKey: "idem-propose-00000013",
+      proposal: { ...PROPOSAL, body: PROPOSAL.body.replace("None.", SECRET_BLOCK) },
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe("INVALID_INPUT");
+    expect(result.error.message).toContain("secret was detected");
+    // The reason must not be the headings: they were fine before redaction.
+    expect(result.error.message).not.toContain("H1");
+
+    const db = await openDatabase(repo.dbPath);
+    if (!db.ok) return;
+    const candidates = await listCandidatesByStatus(db.value, repo.repositoryId, "pending");
+    expect(candidates.ok && candidates.value.length).toBe(0);
+    await closeDatabase(db.value);
+  }, 15000);
+
   it("creates one pending candidate", async () => {
     repo = await setupMcpRepo(random);
     const seedDb = await openDatabase(repo.dbPath);
@@ -479,7 +511,7 @@ describe("mcpProposeKnowledge", () => {
       random,
       sessionToken: seeded.token,
       idempotencyKey: "idem-propose-dup-00002",
-      proposal: ruleProposal("  VALIDATE   every external boundary "),
+      proposal: ruleProposal("VALIDATE   every external boundary"),
     });
     expect(second.ok).toBe(true);
     if (!second.ok) return;

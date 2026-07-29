@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Route, Routes } from "react-router-dom";
 import { describe, expect, it } from "vitest";
@@ -46,6 +46,27 @@ function renderDetail() {
 }
 
 describe("ReviewDetail", () => {
+  it("renders the candidate read-only, with no draft editor", async () => {
+    mockApi({
+      "GET /api/v1/candidates/cand_x": ok(candidate()),
+      "GET /api/v1/people": ok({ self: null, names: [] }),
+    });
+    renderDetail();
+
+    // Exactly one: the title is the body's own H1 (§7), not a second element
+    // repeating it above the body.
+    const headings = await screen.findAllByRole("heading", { name: "Use libSQL" });
+    expect(headings).toHaveLength(1);
+    expect(screen.queryByLabelText("Markdown body")).toBeNull();
+    expect(screen.queryByLabelText("Title")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+  });
+
+  // The fold itself is not asserted here: it triggers on rendered overflow, and
+  // jsdom performs no layout, so `scrollHeight`/`clientHeight` are both 0.
+  // Stubbing them on `HTMLElement.prototype` breaks Testing Library's own
+  // queries, so the behaviour is covered in the e2e, which runs a real browser.
+
   it("enables approval only after a reviewer name is entered, then approves via keyboard", async () => {
     const fetchMock = mockApi({
       "GET /api/v1/candidates/cand_x": ok(candidate()),

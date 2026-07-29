@@ -45,6 +45,27 @@
   --color-warn-tint: #f0e7d6;
 
   --color-clay: #bc9870;
+  --color-clay-tint: #f1e7d9;
+
+  /* Knowledge-type tones. Seven traditional colours, deliberately *not* matcha,
+     persimmon or amber: those three carry approve / reject / pending, and reusing
+     them would make a badge look like a verdict the row has not been given. Each
+     pair is >= 4.5:1 on its own tint (WCAG 2.2 AA for normal text) — measured,
+     since 12px badge text is where a pretty tint quietly fails. */
+  --color-ai: #35506b;
+  --color-ai-tint: #e3e8ee;
+  --color-suou: #7d3f46;
+  --color-suou-tint: #f1e0e2;
+  --color-tokusa: #3c5a46;
+  --color-tokusa-tint: #e2ebe4;
+  --color-fuji: #5f4f68;
+  --color-fuji-tint: #eae5ec;
+  --color-asagi: #3f5c5a;
+  --color-asagi-tint: #e1eae9;
+  --color-kurikawa: #6b4a34;
+  --color-kurikawa-tint: #efe4da;
+  --color-nibi: #4a4a45;
+  --color-nibi-tint: #e8e6e0;
 
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;

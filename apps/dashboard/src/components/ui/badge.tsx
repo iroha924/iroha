@@ -22,6 +22,16 @@ const badgeVariants = cva(
         pending: "bg-warn-tint text-warn",
         reject: "bg-persimmon-tint text-persimmon-hover",
         neutral: "bg-paper-inset text-ink-muted",
+        // Knowledge-type tints, one per canonical type, drawn from the same brand
+        // family as the chart series so the Review queue and the Overview
+        // composition read as the same palette (`lib/status.ts`).
+        ai: "bg-ai-tint text-ai",
+        suou: "bg-suou-tint text-suou",
+        tokusa: "bg-tokusa-tint text-tokusa",
+        fuji: "bg-fuji-tint text-fuji",
+        asagi: "bg-asagi-tint text-asagi",
+        kurikawa: "bg-kurikawa-tint text-kurikawa",
+        nibi: "bg-nibi-tint text-nibi",
       },
     },
     defaultVariants: {

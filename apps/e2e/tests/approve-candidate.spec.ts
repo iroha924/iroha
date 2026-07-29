@@ -43,7 +43,11 @@ It is embeddable and rebuildable.
 
 ## Alternatives considered
 
-- Native SQLite`;
+- Native SQLite
+
+## Notes
+
+${Array.from({ length: 60 }, (_, i) => `- Padding line ${i} so the rendered body overflows the fold.`).join("\n")}`;
 const DECISION_DRAFT = {
   type: "decision",
   title: DECISION_TITLE,
@@ -183,11 +187,19 @@ test("approve a fixture candidate, write canonical, and read it as approved know
   // exchanges it for the session cookie, then strips it from history.
   await page.goto(launchUrl);
 
-  // Review queue → open the pending fixture candidate.
-  await page.getByRole("link", { name: "Review", exact: true }).click();
+  // Knowledge candidates → open the pending fixture candidate.
+  await page.getByRole("link", { name: "Candidates", exact: true }).click();
   await expect(page).toHaveURL(/\/review$/);
   await page.getByRole("link", { name: DECISION_TITLE }).click();
   await expect(page).toHaveURL(/\/review\/[^/]+$/);
+
+  // The body is rendered and folded. jsdom cannot measure layout, so this is the
+  // only place the fold is exercised against a real one: the toggle appears
+  // because the rendered block overflows, not because of a line count.
+  const expand = page.getByRole("button", { name: "Show the whole body" });
+  await expect(expand).toBeVisible();
+  await expand.click();
+  await expect(page.getByRole("button", { name: "Collapse" })).toBeVisible();
 
   // The reviewer field arrives prefilled from the repository's Git identity, so
   // approval is already unblocked. Clearing it re-asserts the gate: the name is

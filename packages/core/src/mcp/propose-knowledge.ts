@@ -17,7 +17,7 @@ import {
   updateCandidateStatus,
 } from "@iroha/storage";
 import { runIdempotentWrite } from "./idempotency.js";
-import { validateProposalBody } from "./proposal-body.js";
+import { proposalWasRedacted, validateProposalBody } from "./proposal-body.js";
 import { type FieldRedaction, redactProposal } from "./redact.js";
 import { verifySessionToken } from "./verify-session-token.js";
 import { withMcpRepository } from "./with-repository.js";
@@ -208,12 +208,19 @@ export async function mcpProposeKnowledge(
         work: async (tx) => {
           // Inside `work`, so a retry of a key that already committed still
           // short-circuits to its stored result (contracts/mcp.md §6.6 step 9).
-          const body = validateProposalBody(
-            redacted.value.proposal,
-            redacted.value.redactions,
-            "proposal",
-            "",
-          );
+          //
+          // A redacted field leaves a placeholder that can never satisfy §7, and
+          // this tool has nothing else to save, so it says so rather than
+          // enqueuing a candidate no one can ever approve.
+          if (proposalWasRedacted(redacted.value.redactions, "proposal")) {
+            return err(
+              new IrohaErrorClass(
+                "INVALID_INPUT",
+                "a secret was detected and the field was replaced, so the proposal can no longer form a canonical document; resubmit it without the secret",
+              ),
+            );
+          }
+          const body = validateProposalBody(redacted.value.proposal, "proposal", "");
           if (!body.ok) {
             return err(body.error);
           }

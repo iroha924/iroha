@@ -81,9 +81,10 @@ describe("mcpCreateCheckpoint", () => {
     }
   });
 
-  // Redaction replaces the whole field, so the template check sees a placeholder
-  // and would blame a missing H1 — false, and unfixable by editing headings.
-  it("blames the redaction, not the headings, when a secret is in a conforming body", async () => {
+  // Same verdict as `propose_knowledge`: a replaced field cannot form a canonical
+  // document, and §6.6 step 5 defines no partial success, so the call is rejected
+  // and the agent — which still holds the content — resubmits without the secret.
+  it("rejects the whole call when a secret is in a proposal body", async () => {
     repo = await setupMcpRepo(random);
     const seedDb = await openDatabase(repo.dbPath);
     expect(seedDb.ok).toBe(true);
@@ -107,8 +108,19 @@ describe("mcpCreateCheckpoint", () => {
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
+    expect(result.error.code).toBe("INVALID_INPUT");
+    expect(result.error.message).toContain("proposals[0]");
     expect(result.error.message).toContain("secret was detected");
+    // Not the headings: they were fine until the scanner replaced the field.
     expect(result.error.message).not.toContain("H1");
+
+    // Nothing was written — not the checkpoint, and not a placeholder candidate.
+    const db = await openDatabase(repo.dbPath);
+    expect(db.ok).toBe(true);
+    if (!db.ok) return;
+    const candidates = await listCandidatesByStatus(db.value, repo.repositoryId, "pending");
+    expect(candidates.ok && candidates.value.length).toBe(0);
+    await closeDatabase(db.value);
   }, 15000);
 
   it("rejects a proposal whose body is not a canonical body, naming its index", async () => {

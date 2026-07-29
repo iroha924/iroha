@@ -1,10 +1,13 @@
 import type { Clock, IrohaError, RandomSource, Result } from "@iroha/domain";
 import { err, IrohaError as IrohaErrorClass, ok } from "@iroha/domain";
 import {
+  countKnowledgeEntities,
+  type EntityRow,
   getCanonicalDocumentByEntityId,
   getEntityById,
   getNeighbors,
   listKnowledgeEntities,
+  withTransaction,
 } from "@iroha/storage";
 import { decodeCursor, encodeCursor, resolvePageSize } from "./cursor.js";
 import { withDashboardRepository } from "./with-repository.js";
@@ -22,6 +25,8 @@ export interface KnowledgeListItem {
 export interface KnowledgeListPage {
   items: KnowledgeListItem[];
   nextCursor: string | null;
+  /** Rows matching the filters, for numbered pages. */
+  total: number;
 }
 
 export interface ListKnowledgeInput {
@@ -32,9 +37,23 @@ export interface ListKnowledgeInput {
   cursor?: string;
   statuses?: string[];
   entityTypes?: string[];
+  /** Rows to skip. Ignored when `cursor` is given. */
+  offset?: number;
 }
 
-/** Paginated approved-knowledge list (`GET /api/v1/knowledge`). */
+/**
+ * Paginated approved-knowledge list (`GET /api/v1/knowledge`).
+ *
+ * The page and `total` are read in one transaction for the same reason the review
+ * queue does it: two statements over the same table, and a sync writing between
+ * them makes the count disagree with the rows.
+ *
+ * `offset` is as unstable here as in the review queue: the order is
+ * `updated_at DESC`, so an approval lands at the front and repeats a row on the
+ * next page, and archiving one removes it from the default filter and can skip
+ * one. Numbered pages are worth that; a caller that must not miss a row uses the
+ * cursor.
+ */
 export async function listKnowledge(
   input: ListKnowledgeInput,
 ): Promise<Result<KnowledgeListPage, IrohaError>> {
@@ -51,15 +70,38 @@ export async function listKnowledge(
   return withDashboardRepository(
     { cwd: input.cwd, clock: input.clock, random: input.random },
     async (ctx) => {
-      const rows = await listKnowledgeEntities(ctx.db, ctx.repo.repositoryId, {
-        limit: pageSize + 1,
+      const filters = {
         ...(input.statuses !== undefined ? { statuses: input.statuses } : {}),
         ...(input.entityTypes !== undefined ? { entityTypes: input.entityTypes } : {}),
-        ...(before !== undefined ? { beforeUpdatedAt: before.key, beforeId: before.id } : {}),
-      });
-      if (!rows.ok) {
-        return rows;
+      };
+      const snapshot = await withTransaction<{ rows: EntityRow[]; total: number }>(
+        ctx.db,
+        "read",
+        async (tx) => {
+          const page = await listKnowledgeEntities(tx, ctx.repo.repositoryId, {
+            limit: pageSize + 1,
+            ...filters,
+            ...(before !== undefined
+              ? { beforeUpdatedAt: before.key, beforeId: before.id }
+              : input.offset !== undefined
+                ? { offset: input.offset }
+                : {}),
+          });
+          if (!page.ok) {
+            return page;
+          }
+          const count = await countKnowledgeEntities(tx, ctx.repo.repositoryId, filters);
+          if (!count.ok) {
+            return count;
+          }
+          return ok({ rows: page.value, total: count.value });
+        },
+      );
+      if (!snapshot.ok) {
+        return snapshot;
       }
+      const rows = { value: snapshot.value.rows };
+      const total = snapshot.value.total;
       const page = rows.value.slice(0, pageSize);
       const last = page.at(-1);
       const nextCursor =
@@ -77,6 +119,7 @@ export async function listKnowledge(
           updatedAt: row.updatedAt,
         })),
         nextCursor,
+        total,
       });
     },
   );

@@ -19,7 +19,7 @@ When you create or edit any of the above — especially a new `.claude/**` file 
 
 A canonical document's `title`, `summary`, and `body` are not a distributable. They are one repository's memory, read by whoever works in that repository, so they follow that repository's `config.default_language` rather than the English default above (#164). Write a Checkpoint or a Proposal in the language the config names, whatever language the surrounding session is in.
 
-This repository sets `ja` and does not commit its own `.iroha/` (see the root `.gitignore`), so nothing written there reaches a user and the English-artifact default has nothing to bite on.
+This repository does not commit its own `.iroha/` (see the root `.gitignore`), so nothing written there reaches a user and the English-artifact default has nothing to bite on. A fresh clone has no `.iroha/` at all until `iroha init` writes one, and `init` writes `en`; the working copy a maintainer accumulates knowledge in is theirs to set.
 
 ## Japanese is allowed here
 

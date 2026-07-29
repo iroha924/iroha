@@ -151,19 +151,3 @@ export function FilterChip({
     </Button>
   );
 }
-
-/** "Load more" affordance for cursor-paginated lists (contracts/dashboard-api.md §4). */
-export function LoadMore({ onClick, loading }: { onClick: () => void; loading: boolean }) {
-  const { t } = useI18n();
-  return (
-    <div className="mt-5 flex justify-center">
-      <Button type="button" variant="outline" onClick={onClick} disabled={loading}>
-        {loading ? (
-          <span className="iroha-ellipsis">{t("common.loading")}</span>
-        ) : (
-          t("common.loadMore")
-        )}
-      </Button>
-    </div>
-  );
-}

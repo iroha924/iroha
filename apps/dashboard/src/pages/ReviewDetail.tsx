@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ApiClientError, api } from "@/api/client.js";
 import { BackLink, ErrorState, Loading } from "@/components/brand.js";
+import { Markdown } from "@/components/markdown.js";
 import { Badge } from "@/components/ui/badge.js";
 import { Button } from "@/components/ui/button.js";
 import { Card, CardContent } from "@/components/ui/card.js";
@@ -15,8 +16,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select.js";
-import { Textarea } from "@/components/ui/textarea.js";
 import { useI18n } from "@/i18n/index.js";
+import { knowledgeTypeTone } from "@/lib/status.js";
+import { cn } from "@/lib/utils";
 
 /**
  * Candidate review detail (contracts/dashboard-api.md §6): edit the draft, view the
@@ -40,23 +42,35 @@ export function ReviewDetail() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
   const [reviewer, setReviewer] = useState("");
   // What the reviewer field was last *typed* into, which is not the same thing
   // as its value: prefilling and picking from the list both set a name without
   // expressing an intent to search. Empty means "no search, show everyone".
   const [nameQuery, setNameQuery] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
-
-  // Sync the editable form from the loaded draft when navigating to a candidate
-  // (keyed on the candidate id, not every refetch, so in-progress edits survive polling).
+  const [bodyExpanded, setBodyExpanded] = useState(false);
+  // Whether the rendered body is actually clipped. Source lines are the wrong
+  // measure: one 20,000-character paragraph is a single line and still overflows,
+  // and without this the reader would be left with a clipped body and no way to
+  // open it.
+  const clampRef = useRef<HTMLDivElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const [overflows, setOverflows] = useState(false);
   useEffect(() => {
-    if (q.data !== undefined) {
-      setTitle(q.data.draft.title);
-      setBody(q.data.draft.body);
-    }
-  }, [id, q.data?.id]);
+    const clamp = clampRef.current;
+    const content = contentRef.current;
+    if (clamp === null || content === null) return;
+    const measure = () => setOverflows(content.scrollHeight > clamp.clientHeight + 1);
+    measure();
+    // Observe the *content*, not the clamp: the clamp's own box is pinned by
+    // `max-h`, so it never resizes and an observer on it would never fire.
+    const observer = new ResizeObserver(measure);
+    observer.observe(content);
+    return () => observer.disconnect();
+    //  is in the deps because the component returns early while loading:
+    // on the first run both refs are still null, and without a re-run after the
+    // body renders the measurement never happens.
+  }, [bodyExpanded, q.data]);
 
   // The reviewer is almost always the person at the keyboard, so the local Git
   // identity seeds the field. Only while it is still untouched: retyping over a
@@ -82,19 +96,6 @@ export function ReviewDetail() {
       void queryClient.invalidateQueries({ queryKey: ["candidate", id] });
     }
   };
-
-  const save = useMutation({
-    mutationFn: () => {
-      const d = q.data;
-      if (d === undefined) throw new Error("no candidate");
-      return api.editCandidate(id, d.revisionToken, { ...d.draft, title, body });
-    },
-    onSuccess: () => {
-      setNotice(t("common.saved"));
-      invalidate();
-    },
-    onError,
-  });
 
   const approve = useMutation({
     mutationFn: () => {
@@ -148,32 +149,35 @@ export function ReviewDetail() {
 
       <Card>
         <CardContent className="space-y-4">
-          <Badge variant="pending" className="w-fit">
+          <Badge variant={knowledgeTypeTone(d.type)} className="w-fit">
             {t(`ktype.${d.type}`)}
           </Badge>
+          {/* No separate title element: §7 makes the body's first H1 equal to the
+              title, so the rendered body already leads with it. */}
           <div className="space-y-1.5">
-            <Label htmlFor="cand-title">{t("review.fieldTitle")}</Label>
-            <Input id="cand-title" value={title} onChange={(e) => setTitle(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="cand-body">{t("review.fieldBody")}</Label>
-            <Textarea
-              id="cand-body"
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              rows={10}
-              className="bg-paper-inset font-mono text-[13px]"
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="mt-1"
-              onClick={() => save.mutate()}
-              disabled={save.isPending}
+            {/* Rendered, not editable: the decision is whether this is worth
+                keeping, and Markdown source is harder to judge that from. */}
+            <div
+              ref={clampRef}
+              className={cn(
+                "rounded-xl bg-paper-inset px-4 py-3",
+                !bodyExpanded && "max-h-[36rem] overflow-hidden",
+              )}
             >
-              {t("common.save")}
-            </Button>
+              <div ref={contentRef}>
+                <Markdown source={d.draft.body} />
+              </div>
+            </div>
+            {overflows && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setBodyExpanded((open) => !open)}
+              >
+                {bodyExpanded ? t("review.collapseBody") : t("review.expandBody")}
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>

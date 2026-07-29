@@ -42,16 +42,16 @@ describe("App", () => {
     renderWithProviders(<App />);
 
     // English nav by default (distributable-language rule).
-    expect(await screen.findByRole("link", { name: "Review" })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "Candidates" })).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "JA" }));
-    expect(await screen.findByRole("link", { name: "レビュー待ち" })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "ナレッジ候補" })).toBeInTheDocument();
   });
 
   it("never renders an individual ranking on the overview", async () => {
     mockApi({ "GET /api/v1/bootstrap": BOOTSTRAP, "GET /api/v1/overview": OVERVIEW });
     renderWithProviders(<App />);
-    await screen.findByRole("link", { name: "Review" });
+    await screen.findByRole("link", { name: "Candidates" });
     expect(screen.queryByText(/ranking/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/leaderboard/i)).not.toBeInTheDocument();
   });
