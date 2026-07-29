@@ -26,6 +26,8 @@ import { runEmbeddingSync } from "./embedding-sync.js";
 import { createTempGitRepo, removeTempDir } from "./test-helpers/tmp-repo.js";
 
 const MIGRATIONS_DIR = fileURLToPath(new URL("../../../migrations", import.meta.url));
+/** Past any backoff, so a job left `failed` still shows as due. */
+const FAR_FUTURE = "2099-01-01T00:00:00.000Z";
 const SEED_TIMEOUT_MS = 15000;
 const CLOCK = new FixedClock(new Date("2026-01-01T00:00:00.000Z"));
 
@@ -197,10 +199,17 @@ describe("runEmbeddingSync", () => {
       // way, so the second call could only waste a request and produce a second
       // dead-lettered job whose shared cause appears nowhere in the counts.
       expect(fake.calls()).toBe(1);
-      expect(result.value.dead).toBe(1);
       expect(result.value.stopped).toBe("credentials");
       // Named so a reader knows which key to fix; the value is never carried.
       expect(result.value.apiKeyEnv).toBe("VOYAGE_API_KEY");
+
+      // Nothing is dead-lettered. `listDueEmbeddingJobs` selects only
+      // `pending`/`failed` and no path revives a dead job, so dead-lettering the
+      // one document that happened to go first would strand it permanently while
+      // the ones this branch skipped recover — the opposite of the intent.
+      expect(result.value.dead).toBe(0);
+      const due = await listDueEmbeddingJobs(database, FAR_FUTURE, 10);
+      expect(due.ok && due.value.length, "both jobs must still be embeddable").toBe(2);
     },
     SEED_TIMEOUT_MS,
   );

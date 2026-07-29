@@ -222,13 +222,19 @@ export async function runEmbeddingSync(
         continue;
       }
 
-      const attempts = job.attempts + 1;
-      const isTerminal = !embedded.error.retryable || attempts >= MAX_ATTEMPTS;
+      // A rejected credential says nothing about this document, so it must not
+      // spend the retry budget or reach `dead`: `listDueEmbeddingJobs` selects
+      // only `pending`/`failed` and nothing revives a dead job, so dead-lettering
+      // here would permanently strand whichever document happened to go first —
+      // the one case this whole branch exists to protect.
+      const credential = isCredentialFailure(embedded.error);
+      const attempts = credential ? job.attempts : job.attempts + 1;
+      const isTerminal = !credential && (!embedded.error.retryable || attempts >= MAX_ATTEMPTS);
       const status = isTerminal ? "dead" : "failed";
       const marked = await updateEmbeddingJobStatus(db, job.id, {
         status,
         attempts,
-        ...(status === "failed" ? { nextAttemptAt: backoffAt(clock, attempts) } : {}),
+        ...(status === "failed" ? { nextAttemptAt: backoffAt(clock, Math.max(1, attempts)) } : {}),
         lastErrorCode: embedded.error.code,
         updatedAt: clock.now().toISOString(),
       });
@@ -255,7 +261,7 @@ export async function runEmbeddingSync(
         outage = true;
         break;
       }
-      if (isCredentialFailure(embedded.error)) {
+      if (credential) {
         credentials = true;
         break;
       }
