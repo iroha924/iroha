@@ -47,7 +47,7 @@ describe("ReviewQueue", () => {
       "GET /api/v1/candidates": ok({ items: [], nextCursor: null, total: 0 }),
     });
     renderWithProviders(<ReviewQueue />);
-    await screen.findByText(/No candidates awaiting review/);
+    await screen.findByText(/No knowledge candidates/);
 
     expect(fn.mock.calls.some((c) => paramOf(String(c[0]), "status") === "pending")).toBe(true);
 
@@ -176,7 +176,7 @@ describe("ReviewQueue", () => {
     }) as unknown as typeof fetch;
     renderWithProviders(<ReviewQueue />);
 
-    expect(await screen.findByText(/No candidates awaiting review/)).toBeInTheDocument();
+    expect(await screen.findByText(/No knowledge candidates/)).toBeInTheDocument();
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
   });
 });

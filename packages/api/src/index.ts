@@ -29,7 +29,6 @@ export type {
   DigestTeamScope,
   DoctorRepairData,
   DoctorReport,
-  EditCandidateData,
   GraphData,
   GraphEdge,
   GraphNode,

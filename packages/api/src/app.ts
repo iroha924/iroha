@@ -6,7 +6,6 @@ import {
   type Clock,
   doctorRepair,
   ENTITY_TYPES,
-  editCandidate,
   getBootstrap,
   getCandidateDetail,
   getDigest,
@@ -127,14 +126,6 @@ const graphQuerySchema = z.strictObject({
 });
 const localSettingSchema = z.strictObject({ key: z.string().min(1).max(200), value: z.unknown() });
 const doctorRepairSchema = z.strictObject({ operation: z.string().min(1).max(64) });
-const editSchema = z.strictObject({
-  revisionToken: z.string().min(1),
-  // The draft is a `KnowledgeProposal` (validated by `proposalSchema` in the
-  // handler) plus an optional canonical `classification`; it is validated as a
-  // raw object here so the two strict schemas can be applied separately.
-  draft: z.record(z.string(), z.unknown()),
-});
-
 // A query param may arrive once (a string) or repeated (an array). The SPA sends
 // each once, but a duplicated param must not 400 — the query behavior is lenient
 // (contracts/dashboard-api.md: an invalid or unknown value is ignored, `?from=not-a-date`
@@ -592,58 +583,6 @@ export function createApp(config: AppConfig) {
       responses: RESPONSES,
     }),
     (c) => respond(c, getCandidateDetail({ ...useCaseCtx, candidateId: c.req.valid("param").id })),
-  );
-
-  app.openapi(
-    createRoute({
-      method: "patch",
-      path: "/api/v1/candidates/{id}",
-      tags: ["review"],
-      summary: "Edit a candidate draft",
-      request: withCsrf({ params: idParam, ...jsonBody(editSchema) }),
-      responses: RESPONSES,
-    }),
-    (c) => {
-      const body = c.req.valid("json");
-      const { classification: rawClassification, ...proposalPart } = body.draft;
-      const proposalParsed = proposalSchema.safeParse(proposalPart);
-      if (!proposalParsed.success) {
-        return fail(
-          c,
-          { code: "INVALID_INPUT", message: "Draft failed validation", retryable: false },
-          400,
-          fieldErrorsOf(proposalParsed.error),
-        );
-      }
-      let classification: CandidateClassification | undefined;
-      if (rawClassification !== undefined) {
-        const clsParsed = classificationSchema.safeParse(rawClassification);
-        if (!clsParsed.success) {
-          return fail(
-            c,
-            {
-              code: "INVALID_INPUT",
-              message: "Classification failed validation",
-              retryable: false,
-            },
-            400,
-            fieldErrorsOf(clsParsed.error),
-          );
-        }
-        // Zod `.optional()` widens each field to `T | undefined`; the runtime
-        // object omits absent keys, so it is a valid `CandidateClassification`.
-        classification = clsParsed.data as CandidateClassification;
-      }
-      return respond(
-        c,
-        editCandidate({
-          ...useCaseCtx,
-          candidateId: c.req.valid("param").id,
-          revisionToken: body.revisionToken,
-          draft: { ...proposalParsed.data, ...(classification ? { classification } : {}) },
-        }),
-      );
-    },
   );
 
   app.openapi(

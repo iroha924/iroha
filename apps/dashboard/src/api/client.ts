@@ -9,7 +9,6 @@ import type {
   DigestPeriodUnit,
   DoctorRepairData,
   DoctorReport,
-  EditCandidateData,
   GraphData,
   GraphPathData,
   KnowledgeDetailData,
@@ -164,8 +163,6 @@ export const api = {
     ),
   people: () => request<RepositoryPeopleData>("GET", "/v1/people"),
   candidate: (id: string) => request<CandidateDetailData>("GET", `/v1/candidates/${id}`),
-  editCandidate: (id: string, revisionToken: string, draft: unknown) =>
-    request<EditCandidateData>("PATCH", `/v1/candidates/${id}`, { revisionToken, draft }),
   approve: (id: string, revisionToken: string, actor: ReviewActor, comment?: string) =>
     request<ApproveCandidateData>("POST", `/v1/candidates/${id}/approve`, {
       revisionToken,

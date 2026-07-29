@@ -25,7 +25,7 @@ const LAUNCH_TOKEN = "e2e-all-tabs-token";
 const TABS = [
   { path: "/", nav: "Digest" },
   { path: "/overview", nav: "Overview" },
-  { path: "/review", nav: "Review" },
+  { path: "/review", nav: "Candidates" },
   { path: "/knowledge", nav: "Knowledge" },
   { path: "/graph", nav: "Graph" },
   { path: "/search", nav: "Search" },

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ApiClientError, api } from "@/api/client.js";
 import { BackLink, ErrorState, Loading } from "@/components/brand.js";
+import { Markdown } from "@/components/markdown.js";
 import { Badge } from "@/components/ui/badge.js";
 import { Button } from "@/components/ui/button.js";
 import { Card, CardContent } from "@/components/ui/card.js";
@@ -15,13 +16,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select.js";
-import { Textarea } from "@/components/ui/textarea.js";
 import { useI18n } from "@/i18n/index.js";
 import { knowledgeTypeTone } from "@/lib/status.js";
 import { cn } from "@/lib/utils";
 
-/** Tall enough to read a section without scrolling, short enough not to bury the buttons. */
-const COLLAPSED_BODY_ROWS = 30;
+/** Above this, the body is folded: long enough to read a section, short enough not to bury the verdict buttons. */
+const COLLAPSED_BODY_LINES = 30;
 
 /**
  * Candidate review detail (contracts/dashboard-api.md §6): edit the draft, view the
@@ -45,8 +45,6 @@ export function ReviewDetail() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
   const [reviewer, setReviewer] = useState("");
   // What the reviewer field was last *typed* into, which is not the same thing
   // as its value: prefilling and picking from the list both set a name without
@@ -54,16 +52,6 @@ export function ReviewDetail() {
   const [nameQuery, setNameQuery] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [bodyExpanded, setBodyExpanded] = useState(false);
-  const bodyLines = body.split("\n").length;
-
-  // Sync the editable form from the loaded draft when navigating to a candidate
-  // (keyed on the candidate id, not every refetch, so in-progress edits survive polling).
-  useEffect(() => {
-    if (q.data !== undefined) {
-      setTitle(q.data.draft.title);
-      setBody(q.data.draft.body);
-    }
-  }, [id, q.data?.id]);
 
   // The reviewer is almost always the person at the keyboard, so the local Git
   // identity seeds the field. Only while it is still untouched: retyping over a
@@ -89,19 +77,6 @@ export function ReviewDetail() {
       void queryClient.invalidateQueries({ queryKey: ["candidate", id] });
     }
   };
-
-  const save = useMutation({
-    mutationFn: () => {
-      const d = q.data;
-      if (d === undefined) throw new Error("no candidate");
-      return api.editCandidate(id, d.revisionToken, { ...d.draft, title, body });
-    },
-    onSuccess: () => {
-      setNotice(t("common.saved"));
-      invalidate();
-    },
-    onError,
-  });
 
   const approve = useMutation({
     mutationFn: () => {
@@ -132,6 +107,7 @@ export function ReviewDetail() {
   if (q.isPending) return <Loading />;
   if (q.isError || q.data === undefined) return <ErrorState />;
   const d = q.data;
+  const bodyLines = d.draft.body.split("\n").length;
   const secretBlocked = !d.validation.secretsClean;
   // Typing narrows the list rather than constraining it: the field is free text
   // so a name Git has never seen still approves. Matching is a plain
@@ -158,25 +134,21 @@ export function ReviewDetail() {
           <Badge variant={knowledgeTypeTone(d.type)} className="w-fit">
             {t(`ktype.${d.type}`)}
           </Badge>
+          <h1 className="font-display text-2xl font-semibold leading-snug tracking-tight text-ink">
+            {d.draft.title}
+          </h1>
           <div className="space-y-1.5">
-            <Label htmlFor="cand-title">{t("review.fieldTitle")}</Label>
-            <Input id="cand-title" value={title} onChange={(e) => setTitle(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="cand-body">{t("review.fieldBody")}</Label>
-            <Textarea
-              id="cand-body"
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              rows={bodyExpanded ? bodyLines : COLLAPSED_BODY_ROWS}
-              // Textarea carries `field-sizing-content`, which sizes to the content
-              // and makes `rows` inert — the fold does nothing without overriding it.
+            {/* Rendered, not editable: the decision is whether this is worth
+                keeping, and Markdown source is harder to judge that from. */}
+            <div
               className={cn(
-                "bg-paper-inset font-mono text-[13px]",
-                !bodyExpanded && "field-sizing-fixed overflow-auto",
+                "rounded-xl bg-paper-inset px-4 py-3",
+                !bodyExpanded && "max-h-[36rem] overflow-hidden",
               )}
-            />
-            {bodyLines > COLLAPSED_BODY_ROWS && (
+            >
+              <Markdown source={d.draft.body} />
+            </div>
+            {bodyLines > COLLAPSED_BODY_LINES && (
               <Button
                 type="button"
                 variant="ghost"
@@ -188,16 +160,6 @@ export function ReviewDetail() {
                   : t("review.expandBody").replace("{lines}", String(bodyLines))}
               </Button>
             )}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="mt-1"
-              onClick={() => save.mutate()}
-              disabled={save.isPending}
-            >
-              {t("common.save")}
-            </Button>
           </div>
         </CardContent>
       </Card>

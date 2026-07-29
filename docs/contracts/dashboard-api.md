@@ -148,7 +148,6 @@ Raw prompt, transcript, assistant message, and full tool payload endpoints do no
 |---|---|---|
 | `GET` | `/api/v1/candidates` | review queue |
 | `GET` | `/api/v1/candidates/:id` | payload, source, duplicate/conflict hints |
-| `PATCH` | `/api/v1/candidates/:id` | validate and edit draft |
 | `POST` | `/api/v1/candidates/:id/approve` | human approval + canonical publish |
 | `POST` | `/api/v1/candidates/:id/reject` | reject with optional reason |
 | `POST` | `/api/v1/candidates/:id/supersede` | replace pending/approved candidate relation |
@@ -168,7 +167,9 @@ That snapshot holds **within** a request, not across them, and `offset` addresse
 - The source is Git rather than the `actors` table, which only the Forge sync writes and which carries no repository scope.
 - An empty `names` and a `null` `self` are both valid, and the reviewer field still accepts a name that is not on the list.
 
-Candidate reads return `revisionToken`. PATCH/approve/reject/supersede require the same token. A mismatch returns HTTP 409 `CONFLICT` with no automatic merge.
+Candidate reads return `revisionToken`. Approve/reject/supersede require the same token. A mismatch returns HTTP 409 `CONFLICT` with no automatic merge.
+
+A candidate is not editable through the dashboard. The reviewer's decision is whether the knowledge is worth keeping, not what it should say; a candidate that is wrong is rejected, and the agent proposes again.
 
 Approve request:
 

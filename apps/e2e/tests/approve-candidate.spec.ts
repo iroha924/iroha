@@ -183,8 +183,8 @@ test("approve a fixture candidate, write canonical, and read it as approved know
   // exchanges it for the session cookie, then strips it from history.
   await page.goto(launchUrl);
 
-  // Review queue → open the pending fixture candidate.
-  await page.getByRole("link", { name: "Review", exact: true }).click();
+  // Knowledge candidates → open the pending fixture candidate.
+  await page.getByRole("link", { name: "Candidates", exact: true }).click();
   await expect(page).toHaveURL(/\/review$/);
   await page.getByRole("link", { name: DECISION_TITLE }).click();
   await expect(page).toHaveURL(/\/review\/[^/]+$/);

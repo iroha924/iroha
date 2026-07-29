@@ -10,7 +10,6 @@ import { err, IrohaError as IrohaErrorClass, makeTypedId, ok, parseTypedId } fro
 import {
   getCandidateById,
   insertApproval,
-  updateCandidatePayload,
   updateCandidateStatus,
   withTransaction,
 } from "@iroha/storage";
@@ -168,76 +167,6 @@ export async function supersedeCandidate(
           return approval;
         }
         return ok({ candidateId, status: "superseded" });
-      });
-    },
-  );
-}
-
-export interface EditCandidateInput {
-  cwd: string;
-  clock: Clock;
-  random: RandomSource;
-  candidateId: string;
-  revisionToken: string;
-  /** The validated (by the API boundary) replacement draft. */
-  draft: CandidateDraft;
-}
-
-export interface EditCandidateData {
-  candidateId: TypedId<"cand">;
-  revisionToken: string;
-}
-
-/**
- * Edits a pending candidate's draft (`PATCH /api/v1/candidates/:id`). Only the
- * payload changes — no canonical file, no status transition — guarded by the
- * optimistic token, and a new token is returned so the reviewer can continue
- * editing (contracts/dashboard-api.md §5). An `edit` audit row is appended.
- */
-export async function editCandidate(
-  input: EditCandidateInput,
-): Promise<Result<EditCandidateData, IrohaError>> {
-  const parsedId = parseTypedId("cand", input.candidateId);
-  if (!parsedId.ok) {
-    return parsedId;
-  }
-  const candidateId = parsedId.value;
-
-  return withDashboardWrite(
-    { cwd: input.cwd, clock: input.clock, random: input.random },
-    async (ctx) => {
-      const candidateResult = await getCandidateById(ctx.db, candidateId);
-      if (!candidateResult.ok) {
-        return candidateResult;
-      }
-      const candidate = candidateResult.value;
-      if (candidate === null) {
-        return err(new IrohaErrorClass("NOT_FOUND", "Candidate not found"));
-      }
-      if (candidate.status !== "pending") {
-        return err(new IrohaErrorClass("CONFLICT", "Only a pending candidate draft can be edited"));
-      }
-      const nextToken = newRevisionToken(ctx.random);
-      const nowIso = ctx.clock.now().toISOString();
-      return withTransaction<EditCandidateData>(ctx.db, "write", async (tx) => {
-        const updated = await updateCandidatePayload(tx, candidateId, {
-          expectedRevisionToken: input.revisionToken,
-          newRevisionToken: nextToken,
-          payloadJson: JSON.stringify(input.draft),
-        });
-        if (!updated.ok) {
-          return updated;
-        }
-        const approval = await insertApproval(tx, {
-          id: makeTypedId("apr", ctx.clock, ctx.random),
-          candidateId,
-          action: "edit",
-          createdAt: nowIso,
-        });
-        if (!approval.ok) {
-          return approval;
-        }
-        return ok({ candidateId, revisionToken: nextToken });
       });
     },
   );
