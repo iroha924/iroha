@@ -9,6 +9,41 @@ Entries are written by hand as part of the release, alongside the four version
 strings (`PLUGIN_VERSION`, the plugin `package.json`, `CLI_VERSION`, `SERVER_VERSION`)
 that `manifests.test.ts` asserts agree.
 
+## 0.4.0
+
+- **`iroha init` and `iroha sync` now index the repository's own instruction
+  documents** — `CLAUDE.md`, `AGENTS.md`, and `.claude/rules/**/*.md` — as
+  knowledge at `status = 'imported'`. They are not copied into `.iroha/` and they
+  never enter the review queue: these files are already committed and already
+  binding on whoever works in the repository, so a queue asking a maintainer to
+  approve their own `CLAUDE.md` was a rubber stamp. The source file stays the
+  single source of truth, and `sync` re-reads it when it changes (ADR-017,
+  `docs/contracts/canonical.md` §14).
+- **The `--scan` flag is gone, and the candidates it used to create were
+  unusable.** `iroha init --scan` wrote a candidate payload in a shape no reader
+  understood, so opening one in the dashboard returned a 500 and approving it
+  threw the same error — the candidates could be neither viewed nor approved,
+  from 0.1.1 (the first release carrying `--scan`) until now. Migration `007` deletes the
+  pending ones. `iroha init --scan` still runs: an unknown flag is ignored, and
+  plain `init` now does the import anyway.
+- The dashboard's **"Approved knowledge" page is now "Knowledge"**, with a status
+  filter. Imported documents appear alongside approved knowledge and are told
+  apart by their badge; `superseded` and `archived` remain opt-in. Their body and
+  source file are shown on the detail page.
+- Imported documents are returned by `search` and `get_context` at authority 80,
+  carrying a `document` source reference to the file they came from, and are
+  embedded on the same terms as approved knowledge. `get_active_rules` does
+  **not** serve them: the agent harness already auto-loads those files, and
+  pushing the same text again would deliver it twice.
+- A repository instruction document is not read if it resolves outside the
+  repository once symlinks are followed, and `.claude/rules` is containment-checked
+  before it is traversed rather than after. A document whose text trips the secret
+  scan is withheld from the index entirely, and any revision of it already indexed
+  is retired at the same time.
+- Deleting or renaming an instruction document now retires its entry, so a renamed
+  rule is no longer served under both names and a deleted one is no longer served
+  indefinitely.
+
 ## 0.3.6
 
 - **A proposal whose body is not a canonical document is now rejected when it is
