@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { Bar, BarChart, Cell, XAxis, YAxis } from "recharts";
 import { api } from "@/api/client.js";
-import { EmptyState, ErrorState, Loading, PageHeader } from "@/components/brand.js";
+import { ErrorState, InfoTip, Loading, PageHeader } from "@/components/brand.js";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card.js";
 import {
   type ChartConfig,
@@ -12,7 +13,7 @@ import {
 import { useI18n } from "@/i18n/index.js";
 import { KNOWLEDGE_TYPES } from "@/lib/status.js";
 
-function MiniStat({ label, value }: { label: string; value: number }) {
+function MiniStat({ label, value }: { label: ReactNode; value: number }) {
   return (
     <Card>
       <CardContent>
@@ -110,7 +111,10 @@ export function Overview() {
 
       <div className="mt-6 grid gap-6 sm:grid-cols-2">
         <MiniStat label={t("overview.approved")} value={d.approvedKnowledge} />
-        <MiniStat label={t("overview.dirty")} value={d.openDirtyMarkers} />
+        <MiniStat
+          label={<InfoTip label={t("overview.dirty")} explanation={t("overview.dirtyHint")} />}
+          value={d.openDirtyMarkers}
+        />
       </div>
     </section>
   );

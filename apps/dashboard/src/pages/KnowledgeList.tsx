@@ -2,7 +2,14 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api, type KnowledgeStatusFilter } from "@/api/client.js";
-import { EmptyState, ErrorState, FilterChip, Loading, PageHeader } from "@/components/brand.js";
+import {
+  EmptyState,
+  ErrorState,
+  FilterChip,
+  InfoTip,
+  Loading,
+  PageHeader,
+} from "@/components/brand.js";
 import { Badge } from "@/components/ui/badge.js";
 import {
   Pagination,
@@ -130,7 +137,7 @@ export function KnowledgeList() {
       <div className="mb-6 flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-ink-faint">
-            {t("common.status")}
+            <InfoTip label={t("common.status")} explanation={t("knowledge.statusHint")} />
           </span>
           {KNOWLEDGE_STATUSES.map((s) => (
             <FilterChip key={s} active={statuses.includes(s)} onClick={() => toggle("statuses", s)}>

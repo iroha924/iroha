@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "@/api/client.js";
-import { BackLink, ErrorState, Loading } from "@/components/brand.js";
+import { BackLink, ErrorState, InfoTip, Loading } from "@/components/brand.js";
 import { Markdown } from "@/components/markdown.js";
 import { Badge } from "@/components/ui/badge.js";
 import { DialogTitle } from "@/components/ui/dialog.js";
@@ -99,9 +99,14 @@ export function KnowledgeDetail({ asDialog = false }: { asDialog?: boolean }) {
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-ink-muted">
         <Badge variant={knowledgeTypeTone(d.type)}>{t(`ktype.${d.type}`)}</Badge>
         <Badge variant={knowledgeStatusTone(d.status)}>{t(`status.${d.status}`)}</Badge>
-        <span className="tabular-nums">
-          {t("knowledge.authority")} {d.authority}
-        </span>
+        <InfoTip
+          label={
+            <span className="tabular-nums">
+              {t("knowledge.authority")} {d.authority}
+            </span>
+          }
+          explanation={t("knowledge.authorityHint")}
+        />
         {d.revision !== null && (
           <span className="tabular-nums">
             {t("knowledge.revision")} {d.revision}
@@ -179,12 +184,26 @@ export function KnowledgeDetail({ asDialog = false }: { asDialog?: boolean }) {
           </Meta>
         )}
         {d.canonicalPath !== null && (
-          <Meta label={t("knowledge.canonicalPath")}>
+          <Meta
+            label={
+              <InfoTip
+                label={t("knowledge.canonicalPath")}
+                explanation={t("knowledge.canonicalPathHint")}
+              />
+            }
+          >
             <span className="font-mono text-[13px]">{d.canonicalPath}</span>
           </Meta>
         )}
         {d.sourcePath !== null && (
-          <Meta label={t("knowledge.sourcePath")}>
+          <Meta
+            label={
+              <InfoTip
+                label={t("knowledge.sourcePath")}
+                explanation={t("knowledge.sourcePathHint")}
+              />
+            }
+          >
             <span className="font-mono text-[13px]">{d.sourcePath}</span>
           </Meta>
         )}
@@ -211,7 +230,7 @@ export function KnowledgeDetail({ asDialog = false }: { asDialog?: boolean }) {
   );
 }
 
-function Meta({ label, children }: { label: string; children: React.ReactNode }) {
+function Meta({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
   return (
     <div>
       <dt className="text-[11.5px] font-semibold uppercase tracking-wider text-ink-faint">

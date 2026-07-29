@@ -1,8 +1,9 @@
-import { ArrowLeftIcon, CircleAlertIcon } from "lucide-react";
+import { ArrowLeftIcon, CircleAlertIcon, CircleHelpIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert.js";
 import { Button } from "@/components/ui/button.js";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip.js";
 import { useI18n } from "@/i18n/index.js";
 import { cn } from "@/lib/utils";
 
@@ -74,6 +75,37 @@ export function PageHeader({
       </div>
       {actions !== undefined && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
     </div>
+  );
+}
+
+/**
+ * A label followed by a `?` that explains a term the label cannot carry on its
+ * own. Reserve it for vocabulary this product invented, where not knowing it
+ * changes what the reader concludes — a `?` beside every label is the noise the
+ * brand's "don't decorate every element" rule is about.
+ *
+ * `explanation` is also the trigger's accessible name, so the text is reachable
+ * without hovering.
+ */
+export function InfoTip({ label, explanation }: { label: ReactNode; explanation: string }) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      {label}
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              aria-label={explanation}
+              className="text-ink-faint transition-colors hover:text-ink-muted"
+            />
+          }
+        >
+          <CircleHelpIcon aria-hidden="true" className="size-3.5" />
+        </TooltipTrigger>
+        <TooltipContent className="max-w-sm leading-relaxed">{explanation}</TooltipContent>
+      </Tooltip>
+    </span>
   );
 }
 

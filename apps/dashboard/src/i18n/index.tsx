@@ -13,6 +13,8 @@ const ja: Dict = {
   "overview.pending": "ナレッジ候補",
   "overview.approved": "承認済みナレッジ",
   "overview.dirty": "未解決マーカー",
+  "overview.dirtyHint":
+    "同期・承認・埋め込みのいずれかが途中で終わり、まだ解消されていない箇所の件数です。正本とローカル索引の食い違いは、診断ページの「DB を再同期」で解消できます。",
   "overview.composition": "種類別ナレッジ",
   "overview.noKnowledge": "承認済みナレッジはまだありません。",
   "ktype.decision": "決定",
@@ -51,6 +53,8 @@ const ja: Dict = {
   "knowledge.title": "ナレッジ",
   "knowledge.empty": "ナレッジはまだありません。",
   "knowledge.authority": "権威度",
+  "knowledge.authorityHint":
+    "検索結果の並び順に効く 0〜100 の重みです。100 はスコアが 1.25 倍、80〜99 は 1.10 倍になります。",
   "knowledge.revision": "リビジョン",
   "knowledge.approvedBy": "承認者",
   "knowledge.createdBy": "作成者",
@@ -60,7 +64,13 @@ const ja: Dict = {
   "knowledge.languages": "言語",
   "knowledge.labels": "ラベル",
   "knowledge.canonicalPath": "正本ファイル",
+  "knowledge.canonicalPathHint":
+    "Git で追跡される正本の Markdown ファイルです。チームで共有される唯一の出どころで、ローカル DB はここから作り直せる索引にすぎません。",
   "knowledge.sourcePath": "取り込み元ファイル",
+  "knowledge.sourcePathHint":
+    "取り込み元のファイルです。.iroha/ にはコピーされず、元のファイルが権威のままなので、そちらを変えれば次の sync で反映されます。",
+  "knowledge.statusHint":
+    "承認済み: レビューを通ったもの。取り込み: CLAUDE.md や .claude/rules から取り込まれ、レビューが要らないもの。置換済み: 新しい版に差し替えられたもの。アーカイブ: 廃止されたもの。",
   "search.title": "検索",
   "search.placeholder": "ナレッジを検索…",
   "search.run": "検索",
@@ -201,6 +211,8 @@ const en: Dict = {
   "overview.pending": "Knowledge candidates",
   "overview.approved": "Approved knowledge",
   "overview.dirty": "Unresolved markers",
+  "overview.dirtyHint":
+    "How many syncs, approvals, or embedding jobs stopped part-way and have not been cleared. When canonical and the local index disagree, Doctor's “Resync DB” reconciles them.",
   "overview.composition": "Knowledge by type",
   "overview.noKnowledge": "No approved knowledge yet.",
   "ktype.decision": "Decision",
@@ -239,6 +251,8 @@ const en: Dict = {
   "knowledge.title": "Knowledge",
   "knowledge.empty": "No knowledge yet.",
   "knowledge.authority": "Authority",
+  "knowledge.authorityHint":
+    "A 0–100 weight on how search ranks this. 100 multiplies its score by 1.25; 80–99 by 1.10.",
   "knowledge.revision": "Revision",
   "knowledge.approvedBy": "Approved by",
   "knowledge.createdBy": "Created by",
@@ -248,7 +262,13 @@ const en: Dict = {
   "knowledge.languages": "Languages",
   "knowledge.labels": "Labels",
   "knowledge.canonicalPath": "Canonical file",
+  "knowledge.canonicalPathHint":
+    "The Git-tracked canonical Markdown file — the one source the team shares. The local database is only an index rebuildable from it.",
   "knowledge.sourcePath": "Imported from",
+  "knowledge.sourcePathHint":
+    "The file this was imported from. It is not copied into .iroha/; the original stays authoritative, so editing it there is what the next sync picks up.",
+  "knowledge.statusHint":
+    "Approved: passed review. Imported: taken from CLAUDE.md or .claude/rules, needing none. Superseded: replaced by a newer revision. Archived: deprecated.",
   "search.title": "Search",
   "search.placeholder": "Search knowledge…",
   "search.run": "Search",

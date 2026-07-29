@@ -242,6 +242,13 @@ test("every tab renders against the real API with no errors", async ({ page }) =
     await expect(page.locator("h1"), `${tab.nav} h1 count`).toHaveCount(1);
   }
 
+  // Same reason as the dialog below: a tooltip only mounts its portal on hover, so
+  // walking past /overview never exercises the positioner the console watcher guards.
+  await page.goto(`${origin}/overview`);
+  await settled(page);
+  await page.locator('[data-slot="tooltip-trigger"]').first().hover();
+  await expect(page.locator('[data-slot="tooltip-content"]')).toBeVisible();
+
   // Opening the problems dialog is what exposes a Dialog's runtime <style> to the
   // console watcher below; walking past /doctor only renders its trigger.
   await page.goto(`${origin}/doctor`);
