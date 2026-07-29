@@ -249,7 +249,8 @@ Rationale: `voyage-4-large` is a current general-purpose multilingual retrieval 
 - GitHub is the first P1 Forge provider.
 - GitLab is represented by the provider port and fixtures only in 0.1.
 - Forge failures never fail canonical sync.
-- Authentication uses existing user tooling where possible; tokens are never copied into iroha storage.
+- The Forge token is stored in `$XDG_CONFIG_HOME/iroha/credentials.json` beside the embedding key (ADR-018), read on each use, and registered from the dashboard's Settings page or `iroha credentials github` (stdin only). No environment variable is read.
+- Neither the token nor its location may be written to `.iroha/`, the local DB, logs, or diagnostics. Presence may be reported; the value may not.
 
 ## 13. Distribution and integrity
 

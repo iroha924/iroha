@@ -300,13 +300,16 @@ ADR-016のperiod Digestはここから削除された。session数・checkpoint�
 
 ### Provider credential（ADR-018）
 
-embedding provider の API key は**環境変数から読まない**。`$XDG_CONFIG_HOME/iroha/credentials.json`（未設定なら `~/.config/iroha/`、file 0600 / dir 0700）に置き、**呼び出しのたびに読む**。`.iroha/config.yaml` の `api_key_env` は削除する。
+provider の credential — embedding provider の API key と Forge の token — は**環境変数から読まない**。`$XDG_CONFIG_HOME/iroha/credentials.json`（未設定なら `~/.config/iroha/`、file 0600 / dir 0700）に置き、**呼び出しのたびに読む**。`.iroha/config.yaml` の `api_key_env` と `forge.api_token_env` は削除する。
 
 **理由は環境変数が陳腐化するからである。** プロセスは起動時の環境を凍結し、以後 `~/.zshrc` を更新しても反映されない。iroha の credential 消費者の中心は **Claude Code / Codex が spawn する MCP server** であり、これは常に長命な親プロセスの子である。実際にこのリポジトリで、key を差し替えた後も MCP server が古い key を持ち続け、query embedding が全て 401 で失敗し、検索が語彙のみに degrade したまま**誰も気づかない**状態が発生した。`iroha doctor` は環境変数の**存在**しか確認できないため `(key set)` と報告し続けた。同じ現象は MCP 一般の問題として報告されている（anthropics/claude-code #1254 / #10955、いわゆる "split-brain"）。既知の対処は client の再起動だけで、**プロセスの外から環境変数を差し替える手段は存在しない**。オンデマンドで読めるファイルにすることが唯一の構造的解決である。
 
-代償は 2 つあり、いずれも受け入れる:
+`contracts/compatibility.md` §12 は当初「token を iroha の storage に複製しない」としていた。これは本 ADR で**改訂する**。理由は embedding key とまったく同じで、環境変数から読む限り MCP server は起動時の値を持ち続け、差し替えても反映されないからである。Forge だけ別機構にすれば、同じ問題を抱えたまま利用者が覚えるべき概念が 2 つになる。
+
+代償は 3 つあり、いずれも受け入れる:
 
 - **平文の secret がディスクに載る。** 従来も `~/.zshrc` に平文で置かれていたので露出量そのものは増えないが、iroha が secret を**書く側**になるのは初めてである。file 0600 / dir 0700 とし、値は API response にも log にも error にも決して載せない（存在有無だけを返す）。OS keychain は platform 分岐のコストが大きく、v0.1 の範囲では採らない。
+- **Forge token は embedding key より権限が広い。** Voyage の key は embedding API にしか使えないが、GitHub の personal access token は repository の読み取り権限を持つ。それでも平文で置くのは、**置かない場合の代替が `~/.zshrc` の平文**であり露出量が減らないうえに、陳腐化して黙って壊れる方が実害が大きいためである。required scope は README のとおり読み取りのみ（classic なら `repo`、fine-grained なら Contents: Read と Pull requests: Read）に留める。
 - **iroha 初の repository 外 state になる。** これまで state は全て repository 配下（`.iroha/` と `.git/iroha/`）に閉じていた。しかし API key は **account の credential であって repository の設定ではない**。`.iroha/config.yaml` は git-tracked かつ team-shared で値を書けない以上、machine-scoped な置き場が意味論的に正しい。`.git/` 配下を避けるのは、`.git` の複製や archive に key が随伴しないためである。
 
 `~/.iroha/` は**採らない**。`.iroha` は本製品が canonical directory に与えている名前であり、README は「`.iroha/` を commit せよ」と指示している。dotfiles を `git init ~` で管理している利用者にとって `~/.iroha` は tracked directory であり、製品自身が commit を指示している場所に平文の key を置くことになる（review で `git add -A` により再現）。XDG の位置に移したうえで、当該 directory には `*` だけの `.gitignore` を書く — `~/.config` 自体を dotfiles repository に含める運用は珍しくないため、名前を変えるだけでは足りない。

@@ -36,6 +36,12 @@ that `manifests.test.ts` asserts agree.
   name — if you pasted the key itself there, it is in your Git history and needs
   rotating.
 
+- **`compatibility.md` §12 is amended by ADR-018.** It previously said Forge
+  tokens are never copied into iroha storage; the GitHub token now lives in the
+  same file as the embedding key, for the same reason (an environment variable a
+  spawned MCP server read at startup cannot be rotated). The token is read-scope
+  only and never reaches `.iroha/`, the local DB, logs, or diagnostics.
+
 - **New: `iroha credentials <voyage|github>`** and
   `PUT /api/v1/settings/credentials`. Both are write-only: no endpoint and no
   command returns a stored key, and the dashboard and `doctor` report presence
