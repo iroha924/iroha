@@ -6,12 +6,11 @@ import type { Database } from "./connection.js";
 import { mapLibsqlError } from "./errors.js";
 
 /**
- * contracts/database.md §4 says migration files are named
- * `<four-digit>_<name>.sql`, but the actual `migrations/001_initial.sql` uses
- * a 3-digit prefix. Rather than picking a side of that prose/filename
- * disagreement, this accepts any digit-count numeric prefix.
+ * The migration filename convention, enforced rather than assumed
+ * (contracts/database.md §4). Fixed-width because the version is what orders
+ * these files to a reader, and a mixed-width set stops sorting the way it reads.
  */
-const MIGRATION_FILENAME_PATTERN = /^(\d+)_(.+)\.sql$/;
+const MIGRATION_FILENAME_PATTERN = /^(\d{3})_(.+)\.sql$/;
 
 export interface MigrationFile {
   version: number;
@@ -26,7 +25,7 @@ function computeChecksum(sql: string): string {
   return `sha256:${createHash("sha256").update(sql).digest("hex")}`;
 }
 
-/** Reads and parses every `<digits>_<name>.sql` file in `migrationsDir`, sorted by version. */
+/** Reads and parses every `<three-digit>_<name>.sql` file in `migrationsDir`, sorted by version. */
 export async function loadMigrations(
   migrationsDir: string,
 ): Promise<Result<MigrationFile[], IrohaError>> {
@@ -41,6 +40,19 @@ export async function loadMigrations(
   for (const entry of entries) {
     const match = MIGRATION_FILENAME_PATTERN.exec(entry);
     if (!match) {
+      // A `.sql` file that does not match is a mis-named migration, and skipping
+      // it silently is the worst available outcome: the schema it was written to
+      // create never exists, and nothing anywhere says so. Anything else in the
+      // directory (a README, an editor's backup) is not our business.
+      if (entry.endsWith(".sql")) {
+        return err(
+          new IrohaError(
+            "INTERNAL_ERROR",
+            `Migration file "${entry}" is not named <three-digit>_<name>.sql`,
+            { details: { filename: entry } },
+          ),
+        );
+      }
       continue;
     }
     const versionText = match[1];

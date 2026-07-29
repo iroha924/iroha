@@ -123,6 +123,25 @@ describe("runMigrations", () => {
     }
   });
 
+  it("rejects a mis-named migration file instead of silently skipping it", async () => {
+    // contracts/database.md §4 names the convention; before this the runner
+    // accepted any digit count and `continue`d past anything else, so a typo in
+    // the prefix meant the migration simply never ran and nothing said so.
+    const migrationsDir = await copyMigrationsDir();
+    tempDirs.push(migrationsDir);
+    await writeFile(
+      join(migrationsDir, "9_add_synthetic_table.sql"),
+      "BEGIN IMMEDIATE;\nCREATE TABLE synthetic_three (id INTEGER PRIMARY KEY);\nPRAGMA user_version = 9;\nCOMMIT;\n",
+      "utf8",
+    );
+
+    const result = await loadMigrations(migrationsDir);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.message).toContain("9_add_synthetic_table.sql");
+  });
+
   it("fails with SCHEMA_MISMATCH when an already-applied migration file's content changes", async () => {
     const migrationsDir = await copyMigrationsDir();
     tempDirs.push(migrationsDir);
@@ -411,17 +430,18 @@ describe("loadMigrations", () => {
     }
   });
 
-  it("accepts both 3-digit and 4-digit numeric prefixes", async () => {
+  it("rejects a prefix that is not exactly three digits", async () => {
+    // The width is the whole point: mixed widths stop sorting the way they read,
+    // and `0002_` sorting before `001_` is a migration order nobody intended.
     tempDir = await mkdtemp(join(tmpdir(), "iroha-migrations-load-"));
     await writeFile(join(tempDir, "001_initial.sql"), "SELECT 1;", "utf8");
     await writeFile(join(tempDir, "0002_next.sql"), "SELECT 2;", "utf8");
 
     const result = await loadMigrations(tempDir);
 
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.value.map((f) => f.version)).toEqual([1, 2]);
-    }
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.message).toContain("0002_next.sql");
   });
 
   it("fails when two files claim the same version", async () => {

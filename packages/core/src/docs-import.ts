@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { Dirent } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { scanForSecrets } from "@iroha/canonical";
+import { deriveSummary, scanForSecrets } from "@iroha/canonical";
 import {
   type Clock,
   type IrohaError,
@@ -218,18 +218,6 @@ function splitOptionalFrontmatter(content: string): {
 function entityIdForDoc(relativePath: string): TypedId<"rul"> {
   const seed = createHash("sha256").update(`iroha:imported-doc-id:${relativePath}`).digest();
   return makeDeterministicTypedId("rul", seed);
-}
-
-/** The first non-empty, non-heading line, as the one-line summary the search and context tools show. */
-function deriveSummary(body: string): string | undefined {
-  for (const line of body.split("\n")) {
-    const trimmed = line.trim();
-    if (trimmed.length === 0 || trimmed.startsWith("#")) {
-      continue;
-    }
-    return trimmed.slice(0, 500);
-  }
-  return undefined;
 }
 
 /**

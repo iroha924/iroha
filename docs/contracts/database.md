@@ -66,7 +66,8 @@ Rules:
 
 ## 4. Migration policy
 
-- Raw forward-only SQL files named `<four-digit>_<name>.sql`.
+- Raw forward-only SQL files named `<three-digit>_<name>.sql`. The runner enforces it: a `.sql`
+  file in the directory that does not match is an error, never a silently skipped migration.
 - `schema_migrations` and `PRAGMA user_version` must agree.
 - A migration runs inside `BEGIN IMMEDIATE` when the engine permits it.
 - Migration checksum is recorded; an applied file whose checksum changes is a hard error.
