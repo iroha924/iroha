@@ -164,7 +164,10 @@ export function App() {
                     if (!open) void navigate(-1);
                   }}
                 >
-                  <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
+                  {/* 60% of the viewport from `sm` up; below it the base
+                      `max-w-[calc(100%-2rem)]` keeps winning, since 60% of a phone
+                      is too narrow to read a rendered body in. */}
+                  <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-[60vw]">
                     <KnowledgeDetail asDialog />
                   </DialogContent>
                 </Dialog>
