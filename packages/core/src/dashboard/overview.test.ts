@@ -144,8 +144,8 @@ describe("getOverview", () => {
       await seedGuardrail(db, repo.repositoryId, "ok", '{"tools":["Write"],"paths":["x/**"]}');
       // No paths: nothing for the hook to match on, so CI is the only enforcement layer.
       await seedGuardrail(db, repo.repositoryId, "nopath", '{"tools":["Write"]}');
-      // Valid JSON (the column CHECKs that) but not a valid guard spec, which is
-      // the shape a malformed rule actually reaches the database in.
+      // Valid JSON, which the column's CHECK constraint requires, but not a valid
+      // guard spec — the shape a malformed rule actually reaches the database in.
       await seedGuardrail(db, repo.repositoryId, "bad", '{"paths":"x/**"}');
     } finally {
       await closeDatabase(db);

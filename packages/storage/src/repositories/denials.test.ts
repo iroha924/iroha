@@ -146,9 +146,9 @@ describe("getDenialFacts", () => {
 
     await seedDenial(database, "in", turn, INSIDE, { path: "packages/git/run.ts" });
     // The window is `[start, end)`: the start instant counts, the end instant does not.
-    await seedDenial(database, "atstart", turn, WINDOW.start, { path: "packages/git/a.ts" });
+    await seedDenial(database, "atStart", turn, WINDOW.start, { path: "packages/git/a.ts" });
     await seedDenial(database, "before", turn, BEFORE, { path: "packages/git/b.ts" });
-    await seedDenial(database, "atend", turn, AT_END, { path: "packages/git/c.ts" });
+    await seedDenial(database, "atEnd", turn, AT_END, { path: "packages/git/c.ts" });
     await seedDenial(database, "other", otherTurn, INSIDE, { path: "packages/git/d.ts" });
 
     const facts = await getDenialFacts(database, REPO, WINDOW);
