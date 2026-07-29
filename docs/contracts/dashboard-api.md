@@ -198,7 +198,7 @@ Approval invokes the exact transaction in `contracts/canonical.md`. The API does
 
 `GET /api/v1/knowledge` query parameters: `cursor`, `limit`, `offset`, `status` (repeatable; `approved`|`superseded`|`archived`, default `approved`), `type` (repeatable; one of the seven knowledge `entity_type`s). Values outside these sets are ignored, and `type` never widens beyond the knowledge set. The response carries `total` alongside `items` and `nextCursor`, so the page can number itself.
 
-`offset` addresses a row position and is ignored when `cursor` is given. The dropped-row hazard recorded for the review queue does not apply here: that queue shrinks under the reader because deciding a candidate removes it, whereas this list only grows — approving adds a row and superseding changes a status. The page and `total` are still read in one transaction, so a concurrent `sync` cannot make the count disagree with the rows it is counting.
+`offset` addresses a row position and is ignored when `cursor` is given. It carries the same instability as the review queue's, and for the same reason: the order is `updated_at DESC`, so an approval lands at the front and shifts every later page down — the last row of page 1 reappears on page 2 — while archiving or superseding a row removes it from the default filter and shifts the rest up, which can skip one entirely. Growth alone is not safety: it duplicates rather than drops, but a status change does drop. A reader who needs to traverse the whole set without gaps must use the cursor. The page and `total` are still read in one transaction, so a concurrent `sync` cannot make the count disagree with the rows it is counting.
 
 Graph query limits: depth 4, 200 edges, 200 nodes. UI must show truncation.
 

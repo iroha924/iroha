@@ -48,9 +48,11 @@ export interface ListKnowledgeInput {
  * queue does it: two statements over the same table, and a sync writing between
  * them makes the count disagree with the rows.
  *
- * Unlike the review queue, this list only grows — approving adds a row and
- * superseding changes a status — so an offset window does not drop a row out from
- * under a reader paging forward.
+ * `offset` is as unstable here as in the review queue: the order is
+ * `updated_at DESC`, so an approval lands at the front and repeats a row on the
+ * next page, and archiving one removes it from the default filter and can skip
+ * one. Numbered pages are worth that; a caller that must not miss a row uses the
+ * cursor.
  */
 export async function listKnowledge(
   input: ListKnowledgeInput,

@@ -99,10 +99,12 @@ export function validateBodyForType(
   // Normalize to NFC before comparing: the same visible title in precomposed
   // vs. combining-character form is byte-different but semantically equal, and
   // a raw `!==` would falsely reject a genuinely matching title.
-  // Trimmed on both sides: a Markdown heading cannot carry leading or trailing
-  // whitespace, and `title` is not trimmed by its schema, so a padded title would
-  // otherwise make the template unsatisfiable rather than merely unmet.
-  if (firstH1.text.trim().normalize("NFC") !== title.trim().normalize("NFC")) {
+  //
+  // Compared exactly, not trimmed. A Markdown heading cannot carry leading or
+  // trailing whitespace, so trimming here would let a padded title through and
+  // publish a canonical document whose frontmatter and H1 visibly differ — §7
+  // asks for equality. Padding is removed where the title is written instead.
+  if (firstH1.text.normalize("NFC") !== title.normalize("NFC")) {
     return err(
       new IrohaError(
         "INVALID_INPUT",

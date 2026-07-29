@@ -36,9 +36,9 @@ function readFilter(params: URLSearchParams, key: string, allowed: readonly stri
  * Filters and page live in the URL, per the §2 state rules, so a filtered page is
  * linkable and changing a filter cannot leave a stale page number behind.
  *
- * Offset is safe here in a way it is not for the review queue: this list only
- * grows — approving adds a row, superseding changes a status — so paging forward
- * cannot drop a row out from under the reader.
+ * Offset carries the same instability as the review queue's: a new approval
+ * sorts to the front and repeats a row on the next page, and archiving one can
+ * skip a row. Accepted for numbered pages, not argued away.
  */
 export function KnowledgeList() {
   const { t } = useI18n();

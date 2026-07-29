@@ -94,12 +94,19 @@ describe("validateBodyForType", () => {
       "x",
     ].join("\n");
 
-  // `title` has no trim in its schema, and a Markdown heading cannot carry
-  // leading or trailing whitespace, so comparing untrimmed makes a padded title
-  // impossible to satisfy rather than merely unmet.
-  it("matches a padded title against the heading it can actually be written as", () => {
+  // Equality is exact. A Markdown heading cannot carry surrounding whitespace, so
+  // a padded title has no writable H1 — which is why the padding is removed where
+  // the title is written (`checkpointInputSchema`) rather than tolerated here.
+  // Trimming here instead would publish a document whose frontmatter and H1 differ.
+  it("rejects a padded title rather than quietly accepting a different H1", () => {
     const result = validateBodyForType("rule", "  Padded title ", ruleBody("# Padded title"));
-    expect(result.ok).toBe(true);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.message).toContain("must equal the title");
+  });
+
+  it("accepts the same title once the padding is gone", () => {
+    expect(validateBodyForType("rule", "Padded title", ruleBody("# Padded title")).ok).toBe(true);
   });
 
   it("still rejects a heading that differs by more than whitespace", () => {

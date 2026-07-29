@@ -19,7 +19,7 @@ import {
   updateTurnCheckpointState,
 } from "@iroha/storage";
 import { runIdempotentWrite } from "./idempotency.js";
-import { validateProposalBody } from "./proposal-body.js";
+import { proposalWasRedacted, validateProposalBody } from "./proposal-body.js";
 import { type FieldRedaction, redactField, redactProposal, redactReference } from "./redact.js";
 import { verifySessionToken } from "./verify-session-token.js";
 import { withMcpRepository } from "./with-repository.js";
@@ -191,22 +191,28 @@ async function redactCheckpoint(
  * (`contracts/mcp.md` §6.6 step 9) — otherwise upgrading past the release that
  * added this check would turn a settled write into `INVALID_INPUT`.
  */
-function validateProposalBodies(
+function proposalsToStore(
   proposals: CheckpointInput["proposals"],
   redactions: readonly FieldRedaction[],
-): Result<void, IrohaError> {
+): Result<CheckpointInput["proposals"], IrohaError> {
+  const keep: CheckpointInput["proposals"] = [];
   for (const [index, proposal] of proposals.entries()) {
-    const body = validateProposalBody(
-      proposal,
-      redactions,
-      `proposals[${index}]`,
-      `proposals[${index}]: `,
-    );
+    // A redacted field is a placeholder that can never satisfy §7, so storing it
+    // would enqueue a candidate no reviewer can approve. Drop that proposal and
+    // keep the checkpoint: §6.6 reports the replacement through `redactions[]`,
+    // and the turn's objective, implementation and validation are not the
+    // agent's mistake to lose. The dropped one is visible as an id missing from
+    // `candidateIds` next to its entry in `redactions[]`.
+    if (proposalWasRedacted(redactions, `proposals[${index}]`)) {
+      continue;
+    }
+    const body = validateProposalBody(proposal, `proposals[${index}]`, `proposals[${index}]: `);
     if (!body.ok) {
       return err(body.error);
     }
+    keep.push(proposal);
   }
-  return ok(undefined);
+  return ok(keep);
 }
 
 function storedToData(responseJson: string): McpCreateCheckpointData {
@@ -331,12 +337,9 @@ export async function mcpCreateCheckpoint(
           resultEntityId: data.checkpointId,
         }),
         work: async (tx) => {
-          const bodies = validateProposalBodies(
-            redacted.value.proposals,
-            redacted.value.redactions,
-          );
-          if (!bodies.ok) {
-            return err(bodies.error);
+          const storable = proposalsToStore(redacted.value.proposals, redacted.value.redactions);
+          if (!storable.ok) {
+            return err(storable.error);
           }
           const entity = await insertEntity(tx, {
             id: checkpointId,
@@ -372,7 +375,7 @@ export async function mcpCreateCheckpoint(
           }
 
           const candidateIds: TypedId<"cand">[] = [];
-          for (const proposal of redacted.value.proposals) {
+          for (const proposal of storable.value) {
             const candidateId = makeTypedId("cand", ctx.clock, ctx.random);
             const revisionToken = Buffer.from(ctx.random.bytes(16)).toString("base64url");
             const candidate = await insertCandidate(tx, {

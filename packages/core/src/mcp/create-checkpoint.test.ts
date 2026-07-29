@@ -84,7 +84,7 @@ describe("mcpCreateCheckpoint", () => {
   // A secret in a proposal must not cost the checkpoint. mcp.md §6.6 replaces the
   // flagged field and reports it through `redactions[]` on the successful response,
   // so the template gate has to stand down rather than reject a placeholder.
-  it("saves the checkpoint and reports the redaction when a secret is in a proposal body", async () => {
+  it("saves the checkpoint but omits the proposal when a secret is in its body", async () => {
     repo = await setupMcpRepo(random);
     const seedDb = await openDatabase(repo.dbPath);
     expect(seedDb.ok).toBe(true);
@@ -109,6 +109,9 @@ describe("mcpCreateCheckpoint", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.redactions.map((r) => r.field)).toContain("proposals[0].body");
+    // Omitted, not stored: a placeholder body can never satisfy the template, so
+    // enqueuing it would create a candidate nobody can approve.
+    expect(result.value.candidateIds).toEqual([]);
 
     // The checkpoint itself survived, which is the whole point.
     const db = await openDatabase(repo.dbPath);
@@ -116,6 +119,8 @@ describe("mcpCreateCheckpoint", () => {
     if (!db.ok) return;
     const checkpoint = await getCheckpointById(db.value, result.value.checkpointId);
     expect(checkpoint.ok && checkpoint.value !== null).toBe(true);
+    const candidates = await listCandidatesByStatus(db.value, repo.repositoryId, "pending");
+    expect(candidates.ok && candidates.value.length).toBe(0);
     await closeDatabase(db.value);
   }, 15000);
 

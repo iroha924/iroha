@@ -89,7 +89,10 @@ export const proposalSchema = z
       "pattern",
       "review_learning",
     ]),
-    title: z.string().min(1).max(160),
+    // Trimmed at the boundary so the stored title can equal its H1 exactly: a
+    // Markdown heading cannot carry surrounding whitespace, so a padded title
+    // would make the body template unsatisfiable rather than merely unmet.
+    title: z.string().trim().min(1).max(160),
     summary: z.string().min(1).max(1000),
     body: z.string().min(1).max(20000),
     confidence: z.number().min(0).max(1).optional(),
