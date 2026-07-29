@@ -4,6 +4,8 @@ import { printError, printSuccess } from "../output.js";
 import { definition, labelColumn, muted, statusGlyph, title } from "../render.js";
 
 const PROVIDERS: readonly CredentialProvider[] = ["voyage", "github"];
+/** Generous relative to `writeApiKey`'s 1000-character bound, so the message stays that check's. */
+const MAX_STDIN_BYTES = 64 * 1024;
 
 function isProvider(value: string): value is CredentialProvider {
   return (PROVIDERS as readonly string[]).includes(value);
@@ -19,13 +21,22 @@ function isProvider(value: string): value is CredentialProvider {
  * terminal echo suppression (and its backspace/Ctrl-C/paste edge cases) for a
  * path the dashboard's Settings page already covers with a real password field.
  */
-async function readSecretFromStdin(): Promise<string> {
+async function readSecretFromStdin(): Promise<string | null> {
   const chunks: Buffer[] = [];
+  let size = 0;
   for await (const chunk of process.stdin) {
     // A stream with an encoding set yields strings, one without yields Buffers;
     // decoding at the end rather than per chunk keeps a multi-byte character
     // split across a chunk boundary intact.
-    chunks.push(typeof chunk === "string" ? Buffer.from(chunk, "utf8") : (chunk as Buffer));
+    const buffer = typeof chunk === "string" ? Buffer.from(chunk, "utf8") : (chunk as Buffer);
+    size += buffer.length;
+    // Stop reading rather than buffering to the end and letting `writeApiKey`
+    // judge: a mistaken `< some-huge-file` would otherwise exhaust memory before
+    // reaching the check that was going to reject it anyway.
+    if (size > MAX_STDIN_BYTES) {
+      return null;
+    }
+    chunks.push(buffer);
   }
   return Buffer.concat(chunks).toString("utf8");
 }
@@ -62,7 +73,16 @@ export const credentialsCommand = define({
       return;
     }
 
-    const written = await writeApiKey(provider, await readSecretFromStdin());
+    const secret = await readSecretFromStdin();
+    if (secret === null) {
+      printError(json, {
+        code: "INVALID_INPUT",
+        message: "The input on stdin is far larger than an API key — this looks like a file.",
+      });
+      return;
+    }
+
+    const written = await writeApiKey(provider, secret);
     if (!written.ok) {
       printError(json, written.error);
       return;

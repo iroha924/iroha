@@ -28,7 +28,8 @@ function settings(retentionDays: number | null) {
     local: {
       embeddingKeyPresent: false,
       forgeTokenPresent: false,
-      credentialsUnreadable: false,
+      embeddingKeyUnreadable: false,
+      forgeTokenUnreadable: false,
       retentionDays,
     },
   });
@@ -148,5 +149,31 @@ describe("Settings — provider credentials", () => {
 
     const button = screen.getByRole("button", { name: "Save: GitHub token" }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
+  });
+  it("does not discard an unsaved toggle when a credential is saved", async () => {
+    mockApi({
+      "GET /api/v1/settings": settings(null),
+      "PUT /api/v1/settings/credentials": ok({ provider: "voyage", present: true }),
+    });
+    renderWithProviders(<Settings />);
+    await screen.findByText("Voyage API key");
+
+    // Enabling embedding, then pasting the key, then pressing Save is the
+    // natural order. Refetching `settings` here would replace `shared` and the
+    // effect would revert the toggle under the user.
+    // The `id` lands on Base UI's hidden checkbox; the operable element is the
+    // sibling with role="switch", and its state shows up as `data-checked`.
+    const toggle = screen.getByRole("switch", { name: "Enable embedding" });
+    await userEvent.click(toggle);
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+
+    const field = document.getElementById("cfg-key-voyage") as HTMLInputElement;
+    await userEvent.type(field, "pa-pasted-key");
+    await userEvent.click(screen.getByRole("button", { name: "Save: Voyage API key" }));
+
+    await waitFor(() => expect(field.value).toBe(""));
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    // And the row must reflect the key it just stored.
+    expect(screen.getAllByText("Set").length).toBeGreaterThan(0);
   });
 });

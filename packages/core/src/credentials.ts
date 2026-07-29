@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { chmod, lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { appendFile, chmod, lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { err, IrohaError, ok, type Result } from "@iroha/domain";
@@ -35,9 +35,6 @@ const SELF_IGNORE = "*\n";
 const providerSchema = z.enum(["voyage", "github"]);
 export type CredentialProvider = z.infer<typeof providerSchema>;
 
-/** One provider's entry. Extra fields are rejected so a typo is not silently ignored. */
-const entrySchema = z.strictObject({ apiKey: z.string().min(1) });
-
 /**
  * Longest key accepted. Voyage and GitHub tokens are well under 200 characters;
  * the bound exists so a mistaken `iroha credentials voyage < some-file` fails
@@ -53,6 +50,17 @@ const MAX_KEY_LENGTH = 1000;
  * is still legible.
  */
 const KEY_PATTERN = /^[!-~]+$/;
+
+/**
+ * One provider's entry. Extra fields are rejected so a typo is not silently
+ * ignored, and the key must meet the same constraints `writeApiKey` enforces —
+ * a file restored from a backup or edited by hand is not held to the write path,
+ * and a key with a newline in it would otherwise be reported as a retryable
+ * network outage forever (see `KEY_PATTERN`).
+ */
+const entrySchema = z.strictObject({
+  apiKey: z.string().min(1).max(MAX_KEY_LENGTH).regex(KEY_PATTERN),
+});
 
 export interface CredentialsLocation {
   dir: string;
@@ -73,13 +81,18 @@ export interface CredentialsLocation {
  * — possibly a tracked directory (`.claude/rules/path-and-symlink-safety.md`).
  * Rejecting the value outright is an allowlist, which that rule prefers over
  * validating a path after the fact.
+ *
+ * The separator is platform-conditional because a backslash is an ordinary
+ * filename character on POSIX: splitting on it there would invent a `..` in the
+ * legal path `/tmp/team\../config` and silently redirect the key to `~/.config`.
  */
+const SEPARATOR = process.platform === "win32" ? /[/\\]/ : /\//;
+
 function usableConfigHome(value: string | undefined): string | undefined {
   if (value === undefined || value.length === 0 || !isAbsolute(value)) {
     return undefined;
   }
-  const segments = value.split(/[/\\]/);
-  return segments.includes("..") ? undefined : value;
+  return value.split(SEPARATOR).includes("..") ? undefined : value;
 }
 
 export function credentialsLocation(): CredentialsLocation {
@@ -123,18 +136,13 @@ type Credentials = Record<string, unknown>;
  * trap `parseRepositoryConfig` exists to keep `config.yaml` out of, and the same
  * reason `salt.ts` merges with `...existing`.
  */
-async function readCredentials(): Promise<Result<Credentials, IrohaError>> {
-  const { file } = credentialsLocation();
-  const content = await readFileOrNull(file);
-  if (!content.ok) {
-    return content;
-  }
-  if (content.value === null) {
+function parseCredentials(content: string | null): Result<Credentials, IrohaError> {
+  if (content === null) {
     return ok({});
   }
   let json: unknown;
   try {
-    json = JSON.parse(content.value);
+    json = JSON.parse(content);
   } catch {
     return err(unreadable("The iroha credentials file is not valid JSON"));
   }
@@ -142,6 +150,11 @@ async function readCredentials(): Promise<Result<Credentials, IrohaError>> {
     return err(unreadable("The iroha credentials file is not a JSON object"));
   }
   return ok(json as Credentials);
+}
+
+async function readCredentials(): Promise<Result<Credentials, IrohaError>> {
+  const content = await readFileOrNull(credentialsLocation().file);
+  return content.ok ? parseCredentials(content.value) : content;
 }
 
 /**
@@ -190,8 +203,10 @@ export async function hasApiKey(
  *
  * `wx` creates without following an existing path, so a `.gitignore` a dotfiles
  * manager symlinked to a shared source does not get its target overwritten with
- * `*`. An existing regular file is accepted as the user's own; anything else
- * (a symlink, a directory) is refused rather than trusted.
+ * `*`. Anything that is not a regular file (a symlink, a directory) is refused
+ * rather than trusted, and a regular file that does not already carry the pattern
+ * gets it appended — accepting any existing `.gitignore` would accept one holding
+ * only `node_modules/`, which ignores nothing that matters here.
  */
 async function ensureSelfIgnore(dir: string): Promise<Result<void, IrohaError>> {
   const path = join(dir, ".gitignore");
@@ -211,6 +226,10 @@ async function ensureSelfIgnore(dir: string): Promise<Result<void, IrohaError>> 
           "The .gitignore beside the iroha credentials file is not a regular file; iroha will not store a key it cannot keep out of Git",
         ),
       );
+    }
+    const existing = await readFile(path, "utf8");
+    if (!existing.split(/\r?\n/).includes(SELF_IGNORE.trim())) {
+      await appendFile(path, existing.endsWith("\n") ? SELF_IGNORE : `\n${SELF_IGNORE}`, "utf8");
     }
   } catch (cause) {
     return err(unreadable("Failed to inspect the iroha credentials .gitignore", cause));
@@ -280,15 +299,22 @@ async function writeApiKeyUnlocked(
     );
   }
 
-  const existing = await readCredentials();
-  // A file this version cannot read at all (not JSON, not an object) is still
-  // replaceable: refusing would leave the dashboard showing "Not set" with no way
-  // to repair it from the UI, and nothing recoverable is being discarded. A file
-  // that parses keeps every key it holds — including a provider whose own entry
-  // is malformed, which `readApiKey` reports per provider rather than wholesale.
-  const raw = existing.ok ? existing.value : {};
-
   const { dir, file } = credentialsLocation();
+  const content = await readFileOrNull(file);
+  // An I/O failure is not a corrupt file. Treating EACCES as "start from empty"
+  // would let a save that only meant to add one provider erase every other stored
+  // credential, because the directory can still be writable when the file is not
+  // readable.
+  if (!content.ok) {
+    return content;
+  }
+  // Unparseable content *is* replaceable: refusing would leave the dashboard
+  // showing "Not set" with no way to repair it from the UI, and nothing
+  // recoverable is being discarded. A file that parses keeps every key it holds —
+  // including a provider whose own entry is malformed, which `readApiKey` reports
+  // per provider rather than wholesale.
+  const parsed = parseCredentials(content.value);
+  const raw = parsed.ok ? parsed.value : {};
   const next = { ...raw, [provider]: { apiKey: trimmed } };
   // `random`, not `Date.now()`: two calls in the same millisecond otherwise
   // compute the same temp path, so one `rename` fails ENOENT and the file can be
@@ -298,8 +324,11 @@ async function writeApiKeyUnlocked(
   try {
     await mkdir(dir, { recursive: true, mode: 0o700 });
     // `mkdir`'s mode applies only when it creates the directory, so a directory
-    // that already existed (`~/.config` is usually 0755) keeps its own mode.
-    await chmod(dir, 0o700).catch(() => undefined);
+    // that already existed (`~/.config` is usually 0755) keeps its own mode. Not
+    // swallowed: on a shared writable directory, failing to narrow the mode is
+    // what lets another account replace `credentials.json`, and reporting success
+    // would claim a protection ADR-018 says is in place when it is not.
+    await chmod(dir, 0o700);
   } catch (cause) {
     return err(unreadable("Failed to create the iroha credentials directory", cause));
   }

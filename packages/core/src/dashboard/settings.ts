@@ -19,11 +19,15 @@ export interface SettingsData {
     embeddingKeyPresent: boolean;
     forgeTokenPresent: boolean;
     /**
-     * The credentials file exists but could not be read. Distinct from "no key":
-     * rendering an unreadable file as absent tells the user to re-enter a key
+     * The stored entry exists but could not be read. Distinct from "no key":
+     * rendering an unreadable entry as absent tells the user to re-enter a key
      * that is already there, and hides the one thing they need to act on.
+     *
+     * Per provider, because each entry is validated on its own — one malformed
+     * entry must not make the other provider's working key read as broken.
      */
-    credentialsUnreadable: boolean;
+    embeddingKeyUnreadable: boolean;
+    forgeTokenUnreadable: boolean;
     /** Local event-data retention: the window in days, or `null` when off. */
     retentionDays: number | null;
   };
@@ -55,7 +59,8 @@ export async function getSettings(
         local: {
           embeddingKeyPresent: embeddingKey.ok && embeddingKey.value,
           forgeTokenPresent: forgeToken.ok && forgeToken.value,
-          credentialsUnreadable: !embeddingKey.ok || !forgeToken.ok,
+          embeddingKeyUnreadable: !embeddingKey.ok,
+          forgeTokenUnreadable: !forgeToken.ok,
           retentionDays: retention.ok ? retention.value.setting.days : null,
         },
       });

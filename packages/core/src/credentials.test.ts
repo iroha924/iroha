@@ -269,15 +269,54 @@ describe("credentials", () => {
   });
 
   it("ignores an XDG_CONFIG_HOME that would fold a .. before a symlink", () => {
-    const withoutDots = credentialsLocation().dir;
-    process.env.XDG_CONFIG_HOME = `${process.env.XDG_CONFIG_HOME}/link/..`;
+    // The helper points XDG_CONFIG_HOME at `<temp home>/.config`, which is also
+    // what the fallback computes — so a rejected value lands on the same path.
+    const honoured = credentialsLocation().dir;
+    process.env.XDG_CONFIG_HOME = join(String(process.env.XDG_CONFIG_HOME), "link", "..");
 
     // `join` collapses `..` lexically, before the filesystem follows `link`, so
     // honouring this would place the key somewhere the user never named
     // (.claude/rules/path-and-symlink-safety.md).
-    expect(credentialsLocation().dir).not.toContain("link");
-    expect(credentialsLocation().dir).toBe(
-      withoutDots.replace(/\.config[/\\]iroha$/, ".config/iroha"),
-    );
+    expect(credentialsLocation().dir).toBe(honoured);
+  });
+
+  it("keeps a backslash in a POSIX path, where it is an ordinary character", () => {
+    if (process.platform === "win32") return;
+    // `team\..` is one legal directory name on POSIX and contains no `..`
+    // component. Splitting on backslashes would invent one and silently redirect
+    // the key to ~/.config.
+    const configured = `${String(process.env.XDG_CONFIG_HOME)}/team\\..`;
+    process.env.XDG_CONFIG_HOME = configured;
+
+    expect(credentialsLocation().dir).toBe(join(configured, "iroha"));
+  });
+
+  it("appends its pattern to a .gitignore that does not already cover the key", async () => {
+    const { dir } = credentialsLocation();
+    await mkdir(dir, { recursive: true, mode: 0o700 });
+    await writeFile(join(dir, ".gitignore"), "node_modules/\n", "utf8");
+
+    await writeApiKey("voyage", "pa-example");
+
+    // Accepting any existing file would accept one that ignores nothing relevant,
+    // and the next `git add -A` in a dotfiles worktree would stage the key.
+    const ignore = await readFile(join(dir, ".gitignore"), "utf8");
+    expect(ignore).toContain("node_modules/");
+    expect(ignore.split(/\r?\n/)).toContain("*");
+  });
+
+  it("rejects a stored key that an HTTP header cannot carry", async () => {
+    const { dir, file } = credentialsLocation();
+    await mkdir(dir, { recursive: true, mode: 0o700 });
+    // A backup restored by hand is not held to the write path's checks, and this
+    // value would otherwise be reported as a retryable network outage forever.
+    await writeFile(file, JSON.stringify({ voyage: { apiKey: "pa-one\npa-two" } }), {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+
+    const key = await readApiKey("voyage");
+
+    expect(key.ok).toBe(false);
   });
 });

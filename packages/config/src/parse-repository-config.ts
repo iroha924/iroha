@@ -85,7 +85,14 @@ export function withoutLegacySecretLocationKeys(content: string): string | null 
   const removed = REMOVED_SECRET_LOCATION_KEYS.map((path) => document.deleteIn([...path])).some(
     Boolean,
   );
-  return removed ? String(document) : null;
+  if (!removed) {
+    return null;
+  }
+  // `yaml` always emits LF. Left alone, a CRLF file would come back with every
+  // line changed, turning the promised one-line deletion into a whole-file diff
+  // that fights the repository's line-ending policy on every run.
+  const next = String(document);
+  return content.includes("\r\n") ? next.replace(/\n/g, "\r\n") : next;
 }
 
 function withoutRemovedKeys(document: unknown): unknown {

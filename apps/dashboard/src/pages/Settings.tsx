@@ -1,4 +1,4 @@
-import type { RepositoryConfig } from "@iroha/api";
+import type { RepositoryConfig, SettingsData } from "@iroha/api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useState } from "react";
 import { api } from "@/api/client.js";
@@ -74,7 +74,23 @@ function CredentialRow({
     onSuccess: () => {
       setValue("");
       toast.add({ type: "success", title: t("common.saved") });
-      void queryClient.invalidateQueries({ queryKey: ["settings"] });
+      // Patched, not invalidated. Refetching `settings` would replace `shared`
+      // and the effect below would overwrite whatever the user had toggled but
+      // not yet saved — and enabling embedding, then pasting the key, then
+      // pressing Save is the natural order.
+      queryClient.setQueryData(["settings"], (previous: SettingsData | undefined) =>
+        previous === undefined
+          ? previous
+          : {
+              ...previous,
+              local: {
+                ...previous.local,
+                ...(provider === "voyage"
+                  ? { embeddingKeyPresent: true, embeddingKeyUnreadable: false }
+                  : { forgeTokenPresent: true, forgeTokenUnreadable: false }),
+              },
+            },
+      );
       // Doctor reports the same presence, so a stale copy would still show the
       // key as missing right after saving it.
       void queryClient.invalidateQueries({ queryKey: ["doctor"] });
@@ -147,7 +163,12 @@ export function Settings() {
   };
 
   useEffect(() => {
-    if (q.data !== undefined) setConfig(q.data.shared);
+    // Seeded once, not re-seeded on every refetch. Any refetch of this query
+    // would otherwise discard edits the user has made but not yet saved — and
+    // saving a credential, or any other write that touches `settings`, is
+    // exactly such a refetch. Enabling embedding, pasting the key, then pressing
+    // Save is the natural order, and it must not revert the toggle.
+    setConfig((current) => current ?? q.data?.shared ?? null);
   }, [q.data]);
 
   const saveRetention = useMutation({
@@ -230,7 +251,7 @@ export function Settings() {
             label={t("settings.embeddingKey")}
             hint={t("settings.embeddingKeyHint")}
             present={local.embeddingKeyPresent}
-            unreadable={local.credentialsUnreadable}
+            unreadable={local.embeddingKeyUnreadable}
           />
 
           <SettingRow
@@ -252,7 +273,7 @@ export function Settings() {
             label={t("settings.forgeToken")}
             hint={t("settings.forgeTokenHint")}
             present={local.forgeTokenPresent}
-            unreadable={local.credentialsUnreadable}
+            unreadable={local.forgeTokenUnreadable}
           />
 
           <SettingRow

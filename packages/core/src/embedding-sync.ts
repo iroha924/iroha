@@ -128,13 +128,13 @@ export async function runEmbeddingSync(
       stopped: null,
     });
   }
-  // Re-resolved per batch rather than once for the run. A sync over a large index
-  // issues thousands of requests over minutes; holding one snapshot would mean a
-  // key replaced partway through never takes effect, which is the staleness
-  // ADR-018 exists to remove — reintroduced inside a single process instead of
-  // across a restart. `compatibility.md` §11 requires the key to be read on each
-  // request; a batch is the granularity at which the queue is polled anyway, so
-  // this costs one small file read per 128 documents.
+  // Re-resolved before each request, not once for the run. A sync over a large
+  // index issues thousands of requests over minutes; holding one snapshot would
+  // mean a key replaced partway through never takes effect, which is the
+  // staleness ADR-018 exists to remove — reintroduced inside a single process
+  // instead of across a restart. `compatibility.md` §11 says the key is read on
+  // each request, and one small file read against one HTTPS request is what that
+  // costs.
   const resolveProvider = async (): Promise<EmbeddingProvider | null> =>
     options.provider ?? (await resolveEmbeddingProvider(config));
   if ((await resolveProvider()) === null) {
@@ -161,14 +161,6 @@ export async function runEmbeddingSync(
       return dueResult;
     }
     if (dueResult.value.length === 0) {
-      break;
-    }
-    const provider = await resolveProvider();
-    if (provider === null) {
-      // The key was removed mid-run. Stopping reports it as a credential problem
-      // rather than dead-lettering every remaining document against a provider
-      // that no longer exists.
-      credentials = true;
       break;
     }
 
@@ -212,6 +204,14 @@ export async function runEmbeddingSync(
         continue;
       }
 
+      const provider = await resolveProvider();
+      if (provider === null) {
+        // The key was removed mid-run. Stopping reports it as a credential
+        // problem rather than dead-lettering every remaining document against a
+        // provider that no longer exists.
+        credentials = true;
+        break;
+      }
       const embedded = await provider.embed([`${doc.title}\n\n${doc.body}`], "document");
       if (embedded.ok) {
         const vector = embedded.value[0];

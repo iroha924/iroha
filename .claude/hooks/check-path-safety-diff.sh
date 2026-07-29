@@ -16,7 +16,12 @@ set -euo pipefail
 # So an ordinary `cat <<EOF ... && vitest` was raising a push-approval prompt.
 # Re-checking the command here is what actually restricts this to a push.
 INPUT=$(cat 2>/dev/null || true)
-if [ -n "$INPUT" ] && ! printf '%s' "$INPUT" | grep -q 'git push'; then
+# Deliberately matches `push` alone rather than the literal `git push`: git accepts
+# global options before the subcommand (`git -C <path> push`), and a payload the
+# filter could not parse is exactly the shape most likely to carry one. Erring
+# toward running the check costs a redundant diff scan that prints nothing;
+# erring the other way silently skips the guard on a real push.
+if [ -n "$INPUT" ] && ! printf '%s' "$INPUT" | grep -q 'push'; then
   exit 0
 fi
 
