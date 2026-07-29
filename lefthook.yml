@@ -15,6 +15,20 @@ pre-commit:
       # the commit; fix it with `pnpm exec markdownlint-cli2 --fix`.
       run: pnpm run lint:md
 
+    - name: typos
+      # Same engine and version CI's docs-lint step pins (crate-ci/typos v1.48.0
+      # == `brew install typos-cli`), run repo-wide with no glob exactly as the
+      # action does, so local == CI. ~40ms. Not an npm dependency, so it follows
+      # secret-scan's shape: it blocks when the binary is present and degrades to
+      # a warning when it is not, since CI's docs-lint job stays authoritative.
+      # A false positive on an intentional word belongs in _typos.toml, not here.
+      run: |
+        if command -v typos >/dev/null 2>&1; then
+          typos
+        else
+          echo "typos not installed locally (CI's docs-lint job still checks this) — install via 'brew install typos-cli' to catch it before push" >&2
+        fi
+
     - name: typecheck
       run: pnpm typecheck
 

@@ -32,9 +32,9 @@ the **trigger** (when to run it).
   `pnpm install --frozen-lockfile` in CI (`ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION`). Pin a version
   that is already older than the cutoff, or add a `minimumReleaseAgeExclude` entry with a reason.
 - **typos allowlist.** A tool whose name looks like a misspelling (e.g. `sherif` → "sheriff") trips the
-  CI `typos` check. Add it to `_typos.toml` `[default.extend-words]` as `name = "name"`. `typos` is a
-  CI-only gate (not in the pre-commit/pre-push hooks), so a local `pnpm install` will not catch this —
-  the failure only shows up in the `docs-lint` job.
+  `typos` check. Add it to `_typos.toml` `[default.extend-words]` as `name = "name"`. `typos` is not an
+  npm dependency, so `pnpm install` does not provide it — see the typos entry below for how it is
+  installed and where it runs.
 
 ## Toolchain pinning — mise
 
@@ -91,6 +91,26 @@ the **trigger** (when to run it).
     report it as an unlisted binary.
 - When knip flags a genuinely unused export that is still used **within its own file**, remove the
   `export` keyword (make it file-local) rather than deleting the symbol.
+
+## Spell check — typos
+
+- **What:** `pnpm typos` runs [crate-ci/typos](https://github.com/crate-ci/typos), a source-code spell
+  checker, repo-wide against the `_typos.toml` allowlist. It checks code and prose alike, not just
+  `docs/`. ~40ms on this repo.
+- **Trigger:** it runs itself — the `pre-commit` hook invokes it on every commit, and CI's `docs-lint`
+  job runs the same check. Run `pnpm typos` by hand when you want it without committing.
+- **Install it:** `brew install typos-cli` (a Rust binary, like `semgrep` is a pipx tool — hence the
+  `knip.json` `ignoreBinaries` entry). **Pin parity matters:** CI pins the action at `v1.48.0` and brew
+  currently ships exactly `1.48.0`, so local and CI agree. If brew moves ahead of the pinned action,
+  local can flag a word CI does not (or miss one it does) — check both when a typo result surprises you.
+- **Not installed is not a failure.** The hook degrades to a warning rather than blocking, the same way
+  `secret-scan` treats `gitleaks`, because CI's `docs-lint` job remains the authoritative gate. So a
+  contributor without the binary is never blocked, and never silently protected either.
+- **`typos` resolves its config from the file's location, not your cwd.** Running it on a path outside
+  the repository silently ignores `_typos.toml` and flags every allowlisted token. Verified: the same
+  line containing `sherif` passes inside the repo and fails from a temp directory. Only ever point it
+  at paths in the repo.
+- A false positive belongs in `_typos.toml` with a one-line reason, not in a hook exclusion.
 
 ## Dependency upgrades — taze
 
