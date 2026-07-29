@@ -9,6 +9,44 @@ Entries are written by hand as part of the release, alongside the four version
 strings (`PLUGIN_VERSION`, the plugin `package.json`, `CLI_VERSION`, `SERVER_VERSION`)
 that `manifests.test.ts` asserts agree.
 
+## 0.3.6
+
+- **A proposal whose body is not a canonical document is now rejected when it is
+  written, not when someone tries to approve it.** The body template
+  (`docs/contracts/canonical.md` §7 — an H1 equal to the title, then the required
+  H2 sections for that type) was only ever checked at approval, so an agent could
+  write anything and a reviewer inherited a candidate no one could approve and no
+  agent was still around to fix. In one dogfooding repository this had made the
+  entire queue unapprovable: of 64 pending candidates, **zero** could be approved
+  — 36 had no H1, 19 had an H1 that did not match the title, 9 were missing a
+  required section. `create_checkpoint` and `propose_knowledge` now both reject,
+  and the error names the sections the body is missing so the agent can rewrite it.
+- A secret found in a proposal's title or body is also a rejection now. The scan
+  replaces the whole field, and a placeholder can never satisfy the template, so
+  the call fails rather than storing a candidate that is permanently stuck.
+  `contracts/mcp.md` §6.6 step 5 previously said nothing about either case.
+- **A title may no longer begin or end with whitespace.** A Markdown heading
+  cannot carry it, so a padded title had no writable H1 and could never satisfy
+  §7. Rejected in the JSON Schemas and the Zod mirrors alike.
+- The SessionStart context now tells the agent which language to write a
+  Checkpoint or Proposal in, taken from `config.default_language`. It had only
+  ever chosen the dashboard's locale; the content language was whatever the agent
+  happened to be writing in.
+- The context block no longer loses its tail when it is long. It was truncated
+  from the end, so ten approved rules with long summaries could cut the closing
+  tag and the language instruction entirely.
+- Dashboard: candidate and knowledge badges are coloured by knowledge **type**
+  rather than by status, so a type reads as the same colour on every page, and
+  the seven tones now meet WCAG 2.2 AA on their backgrounds. The review queue is
+  called *Knowledge candidates*, the approved-knowledge list has numbered pages,
+  a long candidate body is folded with an expand toggle, and a select shows the
+  chosen label rather than the stored value (`forever`, `week`, `en`).
+- Dashboard: the candidate detail is **read-only**. The reviewer's decision is
+  whether the knowledge is worth keeping, not what it should say; approving used
+  the stored draft and never the on-screen text, so editing and approving without
+  saving discarded the edit silently. The session, run and checkpoint pages are
+  removed with it — browsing an activity log is not what this is for.
+
 ## 0.3.5
 
 - iroha stops demanding a Checkpoint after every command. It asked for one on
