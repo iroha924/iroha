@@ -8,7 +8,6 @@ iroha's **distributables and artifacts default to English**. Japanese is "an add
 - CLI output, error messages, help text.
 - Source-code comments, docstrings, identifiers.
 - **Everything under `.claude/**`** — rules (`.claude/rules/`), skills (`.claude/skills/*/SKILL.md`, incl. the frontmatter `description`), agents (`.claude/agents/`), hooks, and commands. This repo is public and its `.claude/` files are read by English-context reviewers (Codex reads `.claude/rules/*.md` in CI per `AGENTS.md`).
-- **Everything under `.gemini/`** — `config.yaml`'s comments and `styleguide.md`, for the same reason: they are instructions to a hosted reviewer, and `styleguide.md` also sets the language its findings are written in.
 - `README`, `.github/` templates, and any contract docs that ship with the product.
 - Canonical **section headings** written into `.iroha/` (`Observation`, `Evidence`, …). They are contract constants in `packages/canonical/src/body-template.ts`, not prose. The prose between them is governed below, not here.
 - **The dashboard UI's default locale** (`apps/dashboard`'s i18n fallback is `en`).
