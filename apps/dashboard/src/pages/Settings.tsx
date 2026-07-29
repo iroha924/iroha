@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select.js";
 import { Switch } from "@/components/ui/switch.js";
+import { toast } from "@/components/ui/toast.js";
 import { useI18n } from "@/i18n/index.js";
 
 function SettingRow({
@@ -67,7 +68,6 @@ export function Settings() {
   const queryClient = useQueryClient();
   const q = useQuery({ queryKey: ["settings"], queryFn: api.settings });
   const [config, setConfig] = useState<RepositoryConfig | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const retentionLabels: Record<string, string> = {
     forever: t("settings.retentionForever"),
     ...Object.fromEntries(
@@ -86,22 +86,22 @@ export function Settings() {
     mutationFn: (unit: "week" | "month") =>
       api.updateLocalSetting(DIGEST_PERIOD_SETTING_KEY, { unit }),
     onSuccess: () => {
-      setNotice(t("common.saved"));
+      toast.add({ type: "success", title: t("common.saved") });
       void queryClient.invalidateQueries({ queryKey: ["settings"] });
       // The front page reads this key to pick its window.
       void queryClient.invalidateQueries({ queryKey: ["digest"] });
     },
-    onError: () => setNotice(t("common.error")),
+    onError: () => toast.add({ type: "error", title: t("common.error") }),
   });
   const saveRetention = useMutation({
     mutationFn: (days: number | null) => api.updateLocalSetting(RETENTION_SETTING_KEY, { days }),
     onSuccess: () => {
-      setNotice(t("common.saved"));
+      toast.add({ type: "success", title: t("common.saved") });
       void queryClient.invalidateQueries({ queryKey: ["settings"] });
       // The Doctor page reports the window and the row counts it governs.
       void queryClient.invalidateQueries({ queryKey: ["doctor"] });
     },
-    onError: () => setNotice(t("common.error")),
+    onError: () => toast.add({ type: "error", title: t("common.error") }),
   });
 
   const save = useMutation({
@@ -110,11 +110,11 @@ export function Settings() {
       return api.updateSharedConfig(config);
     },
     onSuccess: () => {
-      setNotice(t("common.saved"));
+      toast.add({ type: "success", title: t("common.saved") });
       void queryClient.invalidateQueries({ queryKey: ["settings"] });
       void queryClient.invalidateQueries({ queryKey: ["bootstrap"] });
     },
-    onError: () => setNotice(t("common.error")),
+    onError: () => toast.add({ type: "error", title: t("common.error") }),
   });
 
   if (q.isPending) return <Loading />;
@@ -124,10 +124,6 @@ export function Settings() {
   return (
     <section className="max-w-2xl">
       <PageHeader title={t("settings.title")} />
-
-      {notice !== null && (
-        <p className="mb-4 rounded-xl bg-approve-tint px-3 py-2 text-sm text-approve">{notice}</p>
-      )}
 
       <Card>
         <CardContent className="divide-y divide-hairline">

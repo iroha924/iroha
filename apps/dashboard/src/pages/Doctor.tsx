@@ -12,6 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table.js";
+import { toast } from "@/components/ui/toast.js";
 import { useI18n } from "@/i18n/index.js";
 import type { StatusTone } from "@/lib/status.js";
 
@@ -85,12 +86,14 @@ export function Doctor() {
   const repair = useMutation({
     mutationFn: () => api.doctorRepair("resync"),
     onSuccess: () => {
+      toast.add({ type: "success", title: t("doctor.resyncDone") });
       void queryClient.invalidateQueries({ queryKey: ["doctor"] });
       void queryClient.invalidateQueries({ queryKey: ["overview"] });
-      // The resync appends a `sync.canonical` row; without this it stays
-      // invisible in the list below until the user clicks "Re-run".
+      // A resync that skipped a document appends a `sync.canonical` row; without
+      // this it stays invisible until the user clicks "Re-run".
       void queryClient.invalidateQueries({ queryKey: ["events"] });
     },
+    onError: () => toast.add({ type: "error", title: t("common.error") }),
   });
 
   if (q.isPending) return <Loading />;

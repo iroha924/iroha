@@ -3,8 +3,14 @@ import { type RenderResult, render } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
+import { Toaster } from "@/components/ui/toast.js";
 import { I18nProvider } from "@/i18n/index.js";
 
+/**
+ * Mirrors `App`'s provider stack, `Toaster` included: pages report a completed
+ * save through `toast.add`, which renders nothing without a mounted Toaster, so
+ * leaving it out would make every write-confirmation assertion silently vacuous.
+ */
 export function renderWithProviders(
   ui: ReactElement,
   initialEntries: string[] = ["/"],
@@ -14,6 +20,7 @@ export function renderWithProviders(
     <QueryClientProvider client={queryClient}>
       <I18nProvider>
         <MemoryRouter initialEntries={initialEntries}>{ui}</MemoryRouter>
+        <Toaster closeLabel="Close" />
       </I18nProvider>
     </QueryClientProvider>,
   );

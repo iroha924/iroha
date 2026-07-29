@@ -1,8 +1,9 @@
 import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { api } from "@/api/client.js";
 import { Settings } from "@/pages/Settings.js";
-import { mockApi, ok, renderWithProviders } from "@/test-utils.js";
+import { fail, mockApi, ok, renderWithProviders } from "@/test-utils.js";
 
 const SHARED = {
   repository_id: "repo_01JQZ0000000000000000001",
@@ -75,5 +76,33 @@ describe("Settings — local event retention", () => {
       key: "retention.local_events",
       value: { days: 30 },
     });
+  });
+});
+
+describe("Settings — save feedback", () => {
+  it("confirms a completed save with a toast", async () => {
+    mockApi({
+      "GET /api/v1/settings": settings(null),
+      "PATCH /api/v1/settings/shared": ok(SHARED),
+    });
+    renderWithProviders(<Settings />);
+    await screen.findByText("Keep local session history");
+
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("Saved.")).toBeDefined();
+  });
+
+  it("reports a rejected save as an error toast", async () => {
+    mockApi({
+      "GET /api/v1/settings": settings(null),
+      "PATCH /api/v1/settings/shared": fail("INTERNAL_ERROR", 500),
+    });
+    renderWithProviders(<Settings />);
+    await screen.findByText("Keep local session history");
+
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("Something went wrong.")).toBeDefined();
   });
 });

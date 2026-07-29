@@ -4,6 +4,7 @@ import { NavLink, Route, Routes } from "react-router-dom";
 import { ApiClientError, api } from "@/api/client.js";
 import { Mark } from "@/components/brand.js";
 import { Card, CardContent } from "@/components/ui/card.js";
+import { Toaster } from "@/components/ui/toast.js";
 import { type Locale, useI18n } from "@/i18n/index.js";
 import { cn } from "@/lib/utils";
 import { Digest } from "@/pages/Digest.js";
@@ -139,6 +140,10 @@ export function App() {
           <Route path="/doctor" element={<Doctor />} />
         </Routes>
       </main>
+      {/* Outside <main> because it outlives the route that raised it: approving a
+          candidate navigates back to the queue, and the confirmation has to survive
+          that unmount. */}
+      <Toaster closeLabel={t("common.close")} />
     </div>
   );
 }
