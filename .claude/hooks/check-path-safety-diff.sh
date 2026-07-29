@@ -10,6 +10,16 @@
 # letting it go through silently.
 set -euo pipefail
 
+# settings.json gates this with `if: "Bash(git push *)"`, but that filter is
+# documented as best-effort: when it cannot parse the command it fails open and
+# runs the hook regardless of the pattern, and a heredoc is enough to defeat it.
+# So an ordinary `cat <<EOF ... && vitest` was raising a push-approval prompt.
+# Re-checking the command here is what actually restricts this to a push.
+INPUT=$(cat 2>/dev/null || true)
+if [ -n "$INPUT" ] && ! printf '%s' "$INPUT" | grep -q 'git push'; then
+  exit 0
+fi
+
 UPSTREAM=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)
 if [ -z "$UPSTREAM" ]; then
   # No upstream yet — most commonly the first push of a new branch (e.g.
