@@ -57,3 +57,27 @@ Before flagging something as a spec gap or missing consideration, look for the r
 ## Commit and PR conventions
 
 Conventional Commits (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`, `ci:`, `perf:`, `build:`), single-line subject, imperative mood, no `Co-Authored-By` trailer, no `--force` push to `main`.
+
+The PR body follows `.github/pull_request_template.md`. Immediately after `gh pr create`, post the
+development self-review as a PR comment — if and only if a draft exists and the head SHA recorded in
+it is still `HEAD`. A stale draft would misdescribe the diff it is attached to, so refuse instead:
+
+```bash
+draft="$(git rev-parse --git-path iroha-review-draft.md)"
+if [ -f "$draft" ]; then
+  range="$(grep -m1 -oE '[0-9a-f]{40}\.\.[0-9a-f]{40}' "$draft")"
+  drafted="${range##*..}"
+  if [ "$drafted" = "$(git rev-parse HEAD)" ]; then
+    gh pr comment <PR> --edit-last --create-if-none --body-file "$draft"
+  else
+    echo "stale draft (head ${drafted:-unreadable} is not HEAD) — re-run the self-review; do not post"
+  fi
+fi
+```
+
+The draft is written by the `iroha-review` skill and is optional — no draft means no comment, and
+never an empty placeholder. It is one sticky comment identified by its hidden
+`<!-- iroha-review-summary -->` marker (never by author), so a second post updates it in place;
+`--edit-last` only reaches your own *last* comment, so once a triage reply sits after the summary,
+edit the summary by its comment id. Format and severity levels:
+`.claude/skills/iroha-review/pr-comment-template.md`.

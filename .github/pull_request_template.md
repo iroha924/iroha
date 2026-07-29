@@ -34,7 +34,7 @@ When affected, also run and paste `pnpm test:contracts` / `test:integration` / `
 
 - [ ] Self-reviewed (a human read the AI-authored changes)
 - [ ] Prose and machine contracts stay in sync (`schemas/*.json` / `packages/domain/src/schemas/*.ts` / `migrations/*.sql`)
-- [ ] If a security-sensitive package was touched (credential / subprocess / path handling), ran an adversarial review via `security-diff-reviewer`
+- [ ] If a security-sensitive package was touched (credential / subprocess / path handling), the posted `iroha-review` summary comment shows `security-diff-reviewer` among the reviewers that ran
 - [ ] No secrets or local absolute paths in the diff
 
 <!-- PR title follows Conventional Commits (feat: / fix: / docs: / refactor: / test: / chore: / ci: / perf: / build:). -->
