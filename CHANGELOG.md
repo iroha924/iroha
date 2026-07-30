@@ -9,6 +9,41 @@ Entries are written by hand as part of the release, alongside the four version
 strings (`PLUGIN_VERSION`, the plugin `package.json`, `CLI_VERSION`, `SERVER_VERSION`)
 that `manifests.test.ts` asserts agree.
 
+## 0.6.1
+
+- **Your agent is now asked to proofread a Checkpoint before saving it.** If your
+  repository's `config.default_language` is `ja`, generated Japanese had no check
+  on it anywhere: only `proposals` reaches you in the dashboard, while `summary`
+  and `unresolved` are stored exactly as written and read back into a later
+  session. Agents produced non-words (a wrong kanji inside a 漢語 compound),
+  phrasing calqued from English, and stacked nouns, and nothing surfaced it.
+
+  The `create_checkpoint` and `propose_knowledge` tool descriptions now require a
+  proofreading pass over the fields that hold prose, the `checkpoint` skill
+  carries the full five-lens procedure with worked examples, and the SessionStart
+  context adds one line for `ja` repositories. Machine-significant values —
+  `validation[].command`, `implementation[].file`/`symbol`, paths, URLs, and the
+  canonical H2 section headings, which stay English in every locale — are
+  explicitly excluded, so proofreading cannot rewrite the record of what ran or
+  break a proposal's body template.
+
+  This is a caller obligation, not a server-side check: nothing iroha could ship
+  decides whether a phrase is idiomatic, and a morphological dictionary would be
+  8-18x the size of the entire published package.
+
+- **The Stop hook no longer asks for a long Checkpoint.** It listed the fields to
+  "include", which read as an instruction to fill each one at length and produced
+  summaries running past 2,000 characters — slower to write and no more useful to
+  the next session. It now asks for what changed, what it verified, and what is
+  still open, and scopes `unresolved` to work that is genuinely still open, since
+  both `get_context` and `get_session_state` present every entry there as work to
+  pick up.
+
+- **The `checkpoint` skill named three fields that do not exist.** It asked for
+  `intent`, `changes`, and `decisions`; the tool takes `objective`,
+  `implementation`, and has no `decisions` field at all. It now matches the
+  schema and says which fields are read back, so effort goes where it is used.
+
 ## 0.6.0
 
 - **Breaking: API keys move out of environment variables and into
