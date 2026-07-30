@@ -199,10 +199,25 @@ export function serializeCanonicalDocument(
     );
   }
 
+  // §5 mandates LF, and `parseCanonicalDocument` rejects a stray CR outright —
+  // but step 8 trims only spaces and tabs, so a CR survives into the serialized
+  // text and the round-trip parse below would fail as an INTERNAL_ERROR. Both
+  // this and the whitespace-only case are caller input, not serializer defects,
+  // so each is rejected here with a message a reviewer can act on. Normalizing
+  // CRLF to LF instead would make such a body approvable, but that changes what
+  // canonical data may contain and contradicts the parser's documented stance
+  // that a CR is malformed input rather than a cosmetic variation.
+  if (parsedCandidate.data.body.includes("\r")) {
+    return err(
+      new IrohaError(
+        "INVALID_INPUT",
+        "Canonical document body must use LF line endings; it contains a carriage return",
+      ),
+    );
+  }
+
   // Step 1 validates `body` against `min(1)` before step 8 runs, so a body made
-  // only of whitespace passes there and normalizes away to nothing. That is
-  // caller input, not a serializer defect, so it is rejected here rather than
-  // left to surface as an INTERNAL_ERROR from the round-trip parse below.
+  // only of whitespace passes there and normalizes away to nothing.
   const expectedBody = normalizedBody(parsedCandidate.data.body);
   if (expectedBody.length === 0) {
     return err(
@@ -213,7 +228,12 @@ export function serializeCanonicalDocument(
   // Steps 3-7: normalize field order, label/source/relation sorting, timestamps.
   const orderedFrontmatter = orderFrontmatter(parsedCandidate.data.frontmatter);
   const yamlText = stringifyYaml(orderedFrontmatter).replace(/\n+$/, "");
-  const rawContent = `---\n${yamlText}\n---\n\n${parsedCandidate.data.body}\n`;
+  // Built from the normalized body, not the raw one. Step 8 does not remove a
+  // body's own leading blank lines — the parser strips them as envelope on the
+  // way back — so serializing the raw text would let bodies that differ only
+  // there produce different bytes and a different hash, one per extra blank
+  // line, against the byte-identical-output guarantee above.
+  const rawContent = `---\n${yamlText}\n---\n\n${expectedBody}\n`;
   // Step 8: trim trailing spaces, exactly one final newline.
   const content = normalizeWhitespace(rawContent);
 
