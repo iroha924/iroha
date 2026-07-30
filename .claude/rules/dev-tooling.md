@@ -28,9 +28,12 @@ the **trigger** (when to run it).
 - **Strict catalog.** `pnpm-workspace.yaml` has `catalogMode: strict`, so every dependency — including
   a root-only dev tool — must be pinned in the `catalog:` block and referenced as `"catalog:"` in the
   consuming `package.json`. A bare version string fails install.
-- **`minimumReleaseAge` guard.** A freshly published version (younger than the cutoff) fails
-  `pnpm install --frozen-lockfile` in CI (`ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION`). Pin a version
-  that is already older than the cutoff, or add a `minimumReleaseAgeExclude` entry with a reason.
+- **No release-age floor on install.** `pnpm install` accepts a version published minutes ago —
+  `minimumReleaseAge` is not set for this workspace, and a `minimumReleaseAgeExclude` list sat there
+  for five months with no parent key to exclude from, so none of it ever ran (#198). The only age
+  policy is Renovate's `minimumReleaseAge: "3 days"`, which delays when the bot *proposes* a bump; it
+  places no constraint on a bump written by hand, which is how every catalog entry here arrives. So a
+  fresh version is a judgment call at the moment you pin it, not something tooling will stop.
 - **typos allowlist.** A tool whose name looks like a misspelling (e.g. `sherif` → "sheriff") trips the
   `typos` check. Add it to `_typos.toml` `[default.extend-words]` as `name = "name"`. `typos` is not an
   npm dependency, so `pnpm install` does not provide it — see the typos entry below for how it is
@@ -183,9 +186,9 @@ the **trigger** (when to run it).
 - **Trigger:** it runs on every PR (CI `size` job); run it locally after adding a UI dependency or a
   heavy import. Bumping a ceiling is a deliberate act — do it in the same PR that adds the weight, with
   a note on why.
-- **Supply-chain note:** size-limit 13.0.1 is in `minimumReleaseAgeExclude` (it was one day old at
-  adoption). It is a devDependency by a high-reputation author, so this is
-  accepted — but prefer an already-aged version for any future bump.
+- **Supply-chain note:** size-limit 13.0.1 was one day old when it was pinned. It is a devDependency
+  by a high-reputation author, so that was accepted — but prefer an already-aged version for any
+  future bump, because nothing in the tooling will stop a fresh one (see the release-age bullet above).
 
 ## End-to-end release smoke — Verdaccio + zx
 
