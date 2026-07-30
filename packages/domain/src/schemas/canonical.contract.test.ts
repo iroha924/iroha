@@ -307,6 +307,20 @@ const negativeFixtures: Array<[string, unknown]> = [
     }),
   ],
   [
+    "sources[].line_end past MAX_SAFE_INTEGER",
+    withFrontmatter({
+      sources: [
+        {
+          type: "file",
+          ref: "packages/a.ts",
+          path: "packages/a.ts",
+          line_start: 1,
+          line_end: 1e21,
+        },
+      ],
+    }),
+  ],
+  [
     "session.run_count past MAX_SAFE_INTEGER",
     doc({
       ...baseFields({ id: `ses_${ULID_A}`, title: "Session" }),
@@ -349,6 +363,20 @@ describe("canonical document schema: AJV/Zod equivalence", () => {
       withFrontmatter({ approved_at: "2026-07-18T00:00:00.123456Z" }),
     ],
     ["second 59 and hour 23", withFrontmatter({ approved_at: "2026-12-31T23:59:59Z" })],
+    [
+      "line_start and line_end at MAX_SAFE_INTEGER",
+      withFrontmatter({
+        sources: [
+          {
+            type: "file",
+            ref: "packages/a.ts",
+            path: "packages/a.ts",
+            line_start: Number.MAX_SAFE_INTEGER,
+            line_end: Number.MAX_SAFE_INTEGER,
+          },
+        ],
+      }),
+    ],
   ];
 
   for (const [label, fixture] of boundaryFixtures) {
