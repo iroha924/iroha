@@ -16,17 +16,21 @@ pre-commit:
       run: pnpm run lint:md
 
     - name: typos
-      # Same engine and version CI's docs-lint step pins (crate-ci/typos v1.48.0
-      # == `brew install typos-cli`), run repo-wide with no glob exactly as the
-      # action does, so local == CI. ~40ms. Not an npm dependency, so it follows
-      # secret-scan's shape: it blocks when the binary is present and degrades to
-      # a warning when it is not, since CI's docs-lint job stays authoritative.
-      # A false positive on an intentional word belongs in _typos.toml, not here.
+      # Same engine CI's docs-lint step pins (crate-ci/typos). Scoped to the staged
+      # files rather than the tree: bare `typos` walks the working directory, so one
+      # typo in an unstaged edit or an untracked file (CLAUDE.local.md is not
+      # gitignored) would block every unrelated commit. Passing paths explicitly also
+      # reaches `.claude/**`, which the tree walk skips as hidden.
+      #
+      # Not an npm dependency, so it follows secret-scan's shape: it blocks when the
+      # binary is present and degrades to a warning when it is not, since CI's
+      # docs-lint job stays authoritative. A false positive on an intentional word
+      # belongs in _typos.toml, not in an exclusion here.
       run: |
         if command -v typos >/dev/null 2>&1; then
-          typos
+          typos {staged_files}
         else
-          echo "typos not installed locally (CI's docs-lint job still checks this) — install via 'brew install typos-cli' to catch it before push" >&2
+          echo "typos not installed locally (CI's docs-lint job still checks this) — 'brew install typos-cli' on macOS, or see .claude/rules/dev-tooling.md for Linux/WSL" >&2
         fi
 
     - name: typecheck
