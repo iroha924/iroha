@@ -115,7 +115,7 @@
         "command": { "type": "string", "maxLength": 2000 },
         "result": { "enum": ["passed", "failed", "not_run"] },
         "note": { "type": "string", "maxLength": 2000 },
-        "durationMs": { "type": "integer", "minimum": 0 }
+        "durationMs": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
       },
       "additionalProperties": false
     },
@@ -127,7 +127,12 @@
           "enum": ["issue", "pull_request", "review", "commit", "file", "symbol", "url", "document"]
         },
         "ref": { "type": "string", "minLength": 1, "maxLength": 500 },
-        "url": { "type": "string", "format": "uri", "maxLength": 2048 },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "maxLength": 2048,
+          "$comment": "Deliberately not equivalent to z.url(); see the same field in canonical-v1.schema.json for why the mirror is approximate here (#169)."
+        },
         "path": { "$ref": "#/$defs/relativePath" }
       },
       "additionalProperties": false

@@ -289,6 +289,49 @@ const negativeFixtures: Array<[string, unknown]> = [
       review_learning: { category: "vibes" },
     }),
   ],
+  // Shapes the JSON Schema accepted while Zod rejected them (#169), each
+  // verified to be accepted by the pre-fix schema so the fixture is a
+  // regression guard and not a restatement. Two mechanisms: the old
+  // `$defs.timestamp` anchored only `Z$`, and `ajv-formats` splits the date
+  // from the time on `/t|\s/i`, so a space or a lowercase `t` separator and a
+  // leap second all passed; and `{"type":"integer"}` carries no upper bound
+  // while `.int()` stops at the safe-integer range.
+  ["approved_at leap second", withFrontmatter({ approved_at: "2026-12-31T23:59:60Z" })],
+  ["created_at space separator", withFrontmatter({ created_at: "2026-07-18 00:00:00Z" })],
+  ["created_at lowercase t separator", withFrontmatter({ created_at: "2026-07-18t00:00:00Z" })],
+  ["revision past MAX_SAFE_INTEGER", withFrontmatter({ revision: 1e21 })],
+  [
+    "sources[].line_start past MAX_SAFE_INTEGER",
+    withFrontmatter({
+      sources: [{ type: "file", ref: "packages/a.ts", path: "packages/a.ts", line_start: 1e21 }],
+    }),
+  ],
+  [
+    "sources[].line_end past MAX_SAFE_INTEGER",
+    withFrontmatter({
+      sources: [
+        {
+          type: "file",
+          ref: "packages/a.ts",
+          path: "packages/a.ts",
+          line_start: 1,
+          line_end: 1e21,
+        },
+      ],
+    }),
+  ],
+  [
+    "session.run_count past MAX_SAFE_INTEGER",
+    doc({
+      ...baseFields({ id: `ses_${ULID_A}`, title: "Session" }),
+      type: "session_summary",
+      session: { platforms: ["claude_code"], run_count: 1e21, outcome: "completed" },
+    }),
+  ],
+  // Not a pre-fix gap — `ajv-formats` full mode already capped the hour at 23,
+  // so this went green before the change too. It covers the new pattern's own
+  // `([01][0-9]|2[0-3])` group, which nothing else exercises.
+  ["created_at hour 24", withFrontmatter({ created_at: "2026-07-18T24:00:00Z" })],
 ];
 
 describe("canonical document schema: AJV/Zod equivalence", () => {
@@ -303,6 +346,43 @@ describe("canonical document schema: AJV/Zod equivalence", () => {
     it(`rejects (both validators): ${label}`, () => {
       expect(ajvValidate(fixture)).toBe(false);
       expect(zodValid(fixture)).toBe(false);
+    });
+  }
+
+  // The bounds added for #169 sit one step above these values, so a tighter
+  // bound would start rejecting legitimate documents. Asserting the accepted
+  // side is what makes the negative fixtures above a bound rather than a ban.
+  const boundaryFixtures: Array<[string, unknown]> = [
+    ["revision at MAX_SAFE_INTEGER", withFrontmatter({ revision: Number.MAX_SAFE_INTEGER })],
+    [
+      "timestamp with no fractional seconds",
+      withFrontmatter({ approved_at: "2026-07-18T00:00:00Z" }),
+    ],
+    [
+      "timestamp with six fractional digits",
+      withFrontmatter({ approved_at: "2026-07-18T00:00:00.123456Z" }),
+    ],
+    ["second 59 and hour 23", withFrontmatter({ approved_at: "2026-12-31T23:59:59Z" })],
+    [
+      "line_start and line_end at MAX_SAFE_INTEGER",
+      withFrontmatter({
+        sources: [
+          {
+            type: "file",
+            ref: "packages/a.ts",
+            path: "packages/a.ts",
+            line_start: Number.MAX_SAFE_INTEGER,
+            line_end: Number.MAX_SAFE_INTEGER,
+          },
+        ],
+      }),
+    ],
+  ];
+
+  for (const [label, fixture] of boundaryFixtures) {
+    it(`accepts (both validators): ${label}`, () => {
+      expect(ajvValidate(fixture)).toBe(true);
+      expect(zodValid(fixture)).toBe(true);
     });
   }
 });

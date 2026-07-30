@@ -208,6 +208,43 @@ const negativeFixtures: Array<[string, unknown]> = [
     "payload extra field rejected",
     base({ kind: "SESSION_STARTED", payload: { source: "startup", extra: 1 } }),
   ],
+  // The three constraints #169 tightened in this schema. Each was accepted by
+  // the pre-fix version, so without these the tightenings could be reverted
+  // with `pnpm test:contracts` still green — the sibling schemas got fixtures
+  // and this one did not.
+  [
+    "occurredAt leap second",
+    base({
+      kind: "SESSION_STARTED",
+      payload: { source: "startup" },
+      occurredAt: "2026-12-31T23:59:60Z",
+    }),
+  ],
+  [
+    "occurredAt space separator",
+    base({
+      kind: "SESSION_STARTED",
+      payload: { source: "startup" },
+      occurredAt: "2026-07-18 00:00:00Z",
+    }),
+  ],
+  [
+    "payload.durationMs past MAX_SAFE_INTEGER",
+    base({
+      kind: "TOOL_COMPLETED",
+      payload: {
+        toolName: "Edit",
+        phase: "post",
+        targets: [],
+        status: "succeeded",
+        durationMs: 1e21,
+      },
+    }),
+  ],
+  [
+    "payload.backgroundTaskCount past MAX_SAFE_INTEGER",
+    base({ kind: "TURN_STOPPED", payload: { stopHookActive: false, backgroundTaskCount: 1e21 } }),
+  ],
 ];
 
 describe("normalized event schema: AJV/Zod equivalence", () => {
@@ -222,6 +259,38 @@ describe("normalized event schema: AJV/Zod equivalence", () => {
     it(`rejects (both validators): ${label}`, () => {
       expect(ajvValidate(fixture)).toBe(false);
       expect(zodValid(fixture)).toBe(false);
+    });
+  }
+
+  // The accepted side of the bounds above — a tighter one would reject these.
+  const boundaryFixtures: Array<[string, unknown]> = [
+    [
+      "payload.durationMs at MAX_SAFE_INTEGER",
+      base({
+        kind: "TOOL_COMPLETED",
+        payload: {
+          toolName: "Edit",
+          phase: "post",
+          targets: [],
+          status: "succeeded",
+          durationMs: Number.MAX_SAFE_INTEGER,
+        },
+      }),
+    ],
+    [
+      "occurredAt with no fractional seconds",
+      base({
+        kind: "SESSION_STARTED",
+        payload: { source: "startup" },
+        occurredAt: "2026-07-18T00:00:00Z",
+      }),
+    ],
+  ];
+
+  for (const [label, fixture] of boundaryFixtures) {
+    it(`accepts (both validators): ${label}`, () => {
+      expect(ajvValidate(fixture)).toBe(true);
+      expect(zodValid(fixture)).toBe(true);
     });
   }
 });

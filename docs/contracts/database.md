@@ -62,7 +62,7 @@ Rules:
 - retry `SQLITE_BUSY` with bounded jitter for at most 2 seconds;
 - Hook handlers do not run migrations unless explicitly invoked by `init`, `sync`, or `doctor --repair`;
 - a schema mismatch makes writes unavailable but permits read-only diagnostics;
-- application timestamps are UTC RFC 3339 strings with milliseconds.
+- application timestamps are UTC RFC 3339 strings, always written with milliseconds (they come from `Clock.now().toISOString()`).
 
 ## 4. Migration policy
 

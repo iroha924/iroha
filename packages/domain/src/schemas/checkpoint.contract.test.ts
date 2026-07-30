@@ -186,6 +186,12 @@ const negativeFixtures: Array<[string, unknown]> = [
     "proposal confidence out of range",
     baseInput({ proposals: [{ ...minimalProposal, confidence: 1.5 }] }),
   ],
+  // `{"type":"integer"}` carries no upper bound while `.int()` stops at the
+  // safe-integer range (#169). Verified accepted by the pre-fix schema.
+  [
+    "validation[].durationMs past MAX_SAFE_INTEGER",
+    baseInput({ validation: [{ result: "passed", durationMs: 1e21 }] }),
+  ],
 ];
 
 describe("checkpoint input schema: AJV/Zod equivalence", () => {
@@ -200,6 +206,21 @@ describe("checkpoint input schema: AJV/Zod equivalence", () => {
     it(`rejects (both validators): ${label}`, () => {
       expect(ajvValidate(fixture)).toBe(false);
       expect(zodValid(fixture)).toBe(false);
+    });
+  }
+
+  // The accepted side of the #169 bound — a tighter bound would reject this.
+  const boundaryFixtures: Array<[string, unknown]> = [
+    [
+      "validation[].durationMs at MAX_SAFE_INTEGER",
+      baseInput({ validation: [{ result: "passed", durationMs: Number.MAX_SAFE_INTEGER }] }),
+    ],
+  ];
+
+  for (const [label, fixture] of boundaryFixtures) {
+    it(`accepts (both validators): ${label}`, () => {
+      expect(ajvValidate(fixture)).toBe(true);
+      expect(zodValid(fixture)).toBe(true);
     });
   }
 });

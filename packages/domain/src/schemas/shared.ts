@@ -17,9 +17,16 @@ export function typedId(prefix: IdPrefix) {
 export const repositoryIdSchema = typedId("repo");
 
 /**
- * Matches `$defs.timestamp`: `format: "date-time"` + `pattern: "Z$"`. Zod's
- * `offset: false` (the default) already requires the literal uppercase "Z"
- * suffix and rejects numeric offsets, so no extra refinement is needed.
+ * Mirrors `$defs.timestamp`, whose `pattern` spells out the same grammar this
+ * accepts: a `T` separator, an hour capped at 23, seconds capped at 59, an
+ * optional fractional part, and a literal uppercase `Z`.
+ *
+ * One residual difference, checked rather than assumed: `z.iso.datetime()`
+ * makes the seconds group **optional**, so it accepts `2026-07-18T00:00Z`,
+ * which both `format: "date-time"` and the pattern reject. Every timestamp
+ * iroha writes comes from `Clock.now().toISOString()` and therefore carries
+ * seconds and milliseconds, so nothing it produces lands in that gap — but an
+ * externally authored `.iroha/` file could.
  */
 export const timestampSchema = z.iso.datetime();
 

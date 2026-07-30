@@ -141,7 +141,7 @@ Required for every document:
 - `title`: 1–160 characters;
 - `status`: `approved`, `superseded`, or `archived`;
 - `revision`: positive integer;
-- `created_at`, `updated_at`, `approved_at`: UTC RFC 3339 with milliseconds;
+- `created_at`, `updated_at`, `approved_at`: UTC RFC 3339. iroha always **writes** milliseconds — every one comes from `Clock.now().toISOString()` — while the schema **accepts** an optional fractional part, so a hand-authored file without one still validates;
 - `created_by`, `approved_by`: privacy-safe actor references;
 - `labels`: normalized label slugs;
 - `scope`: repository/path/symbol/language applicability;
@@ -286,6 +286,7 @@ search:
 forge:
   provider: github
   enabled: false
+  review_learning_threshold: 3
 privacy:
   canonical_prompt_content: false
   canonical_transcript_content: false
@@ -297,6 +298,7 @@ Rules:
 - `repository_id` is generated once and committed.
 - Local overrides are stored under the Git internal iroha directory, not in this file.
 - Unknown configuration keys are rejected for schema v1.
+- `forge.review_learning_threshold` is the only key above with a default (`3`), so a config that omits it still parses even though unknown keys are rejected. It is the floor on how many distinct pull requests a review-comment pattern must recur across before `iroha sync` proposes it as a `review_learning` candidate; the schema's own floor is `2`, since a "recurrence" of one is a single comment. `iroha init` writes it explicitly and the serializer re-emits it, so a committed config carries it.
 
 ## 10. Labels
 
