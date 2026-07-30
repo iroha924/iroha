@@ -137,7 +137,7 @@
           "type": "string",
           "format": "uri",
           "maxLength": 2048,
-          "not": { "pattern": "^[A-Za-z][A-Za-z0-9+.\\-]*://(?:$|[?#])" }
+          "$comment": "Deliberately not equivalent to the Zod mirror's z.url(). format: uri is RFC 3986; z.url() is new URL(), a WHATWG implementation, and the two disagree in both directions on an unbounded set: empty authorities differ per scheme (http:// rejected, file:// accepted), and so do port range, IPv4 and punycode parsing, IDN, and percent-encoding. A regex cannot express WHATWG host rules, and an attempt to (#169) closed one shape while missing twelve and newly rejecting file:// and git://. Scope locked: url is the one field where the mirror is approximate. Constrain it at the boundary that cares, not here."
         },
         "path": {
           "type": "string",

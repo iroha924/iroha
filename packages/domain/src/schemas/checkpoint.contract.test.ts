@@ -186,15 +186,11 @@ const negativeFixtures: Array<[string, unknown]> = [
     "proposal confidence out of range",
     baseInput({ proposals: [{ ...minimalProposal, confidence: 1.5 }] }),
   ],
-  // Shapes the JSON Schema accepted while Zod rejected them (#169): `integer`
-  // carries no upper bound, and `format: uri` accepts an empty authority.
+  // `{"type":"integer"}` carries no upper bound while `.int()` stops at the
+  // safe-integer range (#169). Verified accepted by the pre-fix schema.
   [
     "validation[].durationMs past MAX_SAFE_INTEGER",
     baseInput({ validation: [{ result: "passed", durationMs: 1e21 }] }),
-  ],
-  [
-    "references[].url scheme-only",
-    baseInput({ references: [{ type: "url", ref: "r", url: "http://" }] }),
   ],
 ];
 
@@ -213,15 +209,11 @@ describe("checkpoint input schema: AJV/Zod equivalence", () => {
     });
   }
 
-  // The accepted side of the #169 bounds — a tighter bound would reject these.
+  // The accepted side of the #169 bound — a tighter bound would reject this.
   const boundaryFixtures: Array<[string, unknown]> = [
     [
       "validation[].durationMs at MAX_SAFE_INTEGER",
       baseInput({ validation: [{ result: "passed", durationMs: Number.MAX_SAFE_INTEGER }] }),
-    ],
-    [
-      "references[].url with an empty host but a path",
-      baseInput({ references: [{ type: "url", ref: "r", url: "http:///path" }] }),
     ],
   ];
 

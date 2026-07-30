@@ -131,7 +131,7 @@
           "type": "string",
           "format": "uri",
           "maxLength": 2048,
-          "not": { "pattern": "^[A-Za-z][A-Za-z0-9+.\\-]*://(?:$|[?#])" }
+          "$comment": "Deliberately not equivalent to z.url(); see the same field in canonical-v1.schema.json for why the mirror is approximate here (#169)."
         },
         "path": { "$ref": "#/$defs/relativePath" }
       },

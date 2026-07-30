@@ -289,23 +289,22 @@ const negativeFixtures: Array<[string, unknown]> = [
       review_learning: { category: "vibes" },
     }),
   ],
-  // The three shapes the JSON Schema accepted while Zod rejected them (#169).
-  // RFC 3339 `date-time` permits a leap second, `{"type":"integer"}` has no
-  // upper bound, and `format: uri` accepts an empty authority — none of which
-  // `z.iso.datetime()`, `.int()`, or `z.url()` allow. The fixture guard is what
-  // keeps the pair from drifting apart again, so these have to stay.
+  // Shapes the JSON Schema accepted while Zod rejected them (#169), each
+  // verified to be accepted by the pre-fix schema so the fixture is a
+  // regression guard and not a restatement. Two mechanisms: the old
+  // `$defs.timestamp` anchored only `Z$`, and `ajv-formats` splits the date
+  // from the time on `/t|\s/i`, so a space or a lowercase `t` separator and a
+  // leap second all passed; and `{"type":"integer"}` carries no upper bound
+  // while `.int()` stops at the safe-integer range.
   ["approved_at leap second", withFrontmatter({ approved_at: "2026-12-31T23:59:60Z" })],
-  ["created_at hour 24", withFrontmatter({ created_at: "2026-07-18T24:00:00Z" })],
+  ["created_at space separator", withFrontmatter({ created_at: "2026-07-18 00:00:00Z" })],
+  ["created_at lowercase t separator", withFrontmatter({ created_at: "2026-07-18t00:00:00Z" })],
   ["revision past MAX_SAFE_INTEGER", withFrontmatter({ revision: 1e21 })],
   [
     "sources[].line_start past MAX_SAFE_INTEGER",
     withFrontmatter({
       sources: [{ type: "file", ref: "packages/a.ts", path: "packages/a.ts", line_start: 1e21 }],
     }),
-  ],
-  [
-    "sources[].url scheme-only",
-    withFrontmatter({ sources: [{ type: "url", ref: "r", url: "http://" }] }),
   ],
   [
     "session.run_count past MAX_SAFE_INTEGER",
@@ -315,6 +314,10 @@ const negativeFixtures: Array<[string, unknown]> = [
       session: { platforms: ["claude_code"], run_count: 1e21, outcome: "completed" },
     }),
   ],
+  // Not a pre-fix gap — `ajv-formats` full mode already capped the hour at 23,
+  // so this went green before the change too. It covers the new pattern's own
+  // `([01][0-9]|2[0-3])` group, which nothing else exercises.
+  ["created_at hour 24", withFrontmatter({ created_at: "2026-07-18T24:00:00Z" })],
 ];
 
 describe("canonical document schema: AJV/Zod equivalence", () => {
@@ -346,14 +349,6 @@ describe("canonical document schema: AJV/Zod equivalence", () => {
       withFrontmatter({ approved_at: "2026-07-18T00:00:00.123456Z" }),
     ],
     ["second 59 and hour 23", withFrontmatter({ approved_at: "2026-12-31T23:59:59Z" })],
-    [
-      "url with an empty host but a path",
-      withFrontmatter({ sources: [{ type: "url", ref: "r", url: "http:///path" }] }),
-    ],
-    [
-      "non-http scheme with no authority",
-      withFrontmatter({ sources: [{ type: "url", ref: "r", url: "urn:isbn:0451450523" }] }),
-    ],
   ];
 
   for (const [label, fixture] of boundaryFixtures) {

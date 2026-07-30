@@ -141,7 +141,7 @@ Required for every document:
 - `title`: 1–160 characters;
 - `status`: `approved`, `superseded`, or `archived`;
 - `revision`: positive integer;
-- `created_at`, `updated_at`, `approved_at`: UTC RFC 3339 with milliseconds;
+- `created_at`, `updated_at`, `approved_at`: UTC RFC 3339. iroha always **writes** milliseconds — every one comes from `Clock.now().toISOString()` — while the schema **accepts** an optional fractional part, so a hand-authored file without one still validates;
 - `created_by`, `approved_by`: privacy-safe actor references;
 - `labels`: normalized label slugs;
 - `scope`: repository/path/symbol/language applicability;
