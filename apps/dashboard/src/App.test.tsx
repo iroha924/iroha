@@ -36,6 +36,7 @@ const OVERVIEW = ok({
     clusters: { items: [], total: 0, truncated: false },
   },
   pendingReviewLearnings: 0,
+  latestCheckpoint: null,
 });
 
 describe("App", () => {

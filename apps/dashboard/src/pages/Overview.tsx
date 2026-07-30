@@ -221,6 +221,49 @@ export function Overview() {
         </Card>
       </div>
 
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>{t("overview.handback")}</CardTitle>
+          {/* Not decoration: a reader who takes this for reviewed knowledge draws
+              the opposite conclusion from the one the card exists to enable. */}
+          <CardDescription>{t("overview.handbackScope")}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {d.latestCheckpoint === null ? (
+            <p className="text-sm text-ink-faint">{t("overview.handbackNone")}</p>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-xs text-ink-faint tabular-nums">
+                {d.latestCheckpoint.id} · {d.latestCheckpoint.outcome} ·{" "}
+                {d.latestCheckpoint.createdAt}
+              </p>
+              <p className="whitespace-pre-wrap text-pretty text-sm">
+                {d.latestCheckpoint.summary}
+              </p>
+              <div>
+                <p className="text-xs font-medium text-ink-muted">
+                  {t("overview.handbackUnresolved")}
+                </p>
+                {d.latestCheckpoint.unresolved.length === 0 ? (
+                  <p className="mt-1 text-sm text-ink-faint">
+                    {t("overview.handbackNoUnresolved")}
+                  </p>
+                ) : (
+                  <ul className="mt-1 list-disc space-y-1 pl-5 text-sm">
+                    {d.latestCheckpoint.unresolved.map((item, i) => (
+                      // Free text with no stable id of its own; order is the identity.
+                      <li key={`${d.latestCheckpoint?.id}-${i}`} className="text-pretty">
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <p className="mt-10 text-pretty text-xs text-ink-faint">{t("overview.advisoryNote")}</p>
     </section>
   );

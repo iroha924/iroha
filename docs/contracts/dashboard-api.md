@@ -262,6 +262,15 @@ Checkpoints written, per-period approval totals — are deliberately absent. The
 this replaced and were counted but never acted on; browsing an activity log is not what this
 product is for, and a number nobody acts on trains readers to ignore the ones they should.
 
+Overview also carries the **latest Checkpoint's `summary` and `unresolved`** — the one Checkpoint
+anything reads back, via `listCheckpointsBySession(db, sessionId, 1)` in the SessionStart hook, in
+§6.4 `get_session_state`, and in §6.2 `get_context`. This is not the activity volume the paragraph
+above rules out, and not the Checkpoint detail page #177 removed: it is the text an agent is handed
+after a compaction, on resume, and at the next tool call, and it is the only stored text that passes
+no review step — of a Checkpoint, just `proposals` become Candidates a human approves. Shown
+read-only, one row, with no history and no list. `latestCheckpoint` is `null` before the first
+Checkpoint exists.
+
 Do not present a blended adherence score, and state that advisory rules are not machine-observable
 rather than implying they were measured. Frame enforceability symmetrically: a Guardrail that names
 no paths is the setup failing the agent, which is as much the story as the agent breaking a rule.

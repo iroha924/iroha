@@ -761,6 +761,33 @@ export async function getCheckpointById(
   }
 }
 
+/**
+ * The newest Checkpoint anywhere in the repository. `checkpoints` carries no
+ * `repository_id`, so the scope comes from its session; ordering is over the
+ * whole joined set, which `idx_checkpoints_session_time` cannot serve on its own
+ * — acceptable because this reads one row for a single dashboard card, not a
+ * hot path.
+ */
+export async function getLatestCheckpointForRepository(
+  db: Executor,
+  repositoryId: TypedId<"repo">,
+): Promise<Result<CheckpointRow | null, IrohaError>> {
+  try {
+    const result = await db.execute({
+      sql: `SELECT c.* FROM checkpoints c
+              JOIN agent_sessions s ON s.id = c.session_id
+             WHERE s.repository_id = ?
+             ORDER BY c.created_at DESC
+             LIMIT 1`,
+      args: [repositoryId],
+    });
+    const row = result.rows[0];
+    return ok(row === undefined ? null : rowToCheckpoint(row));
+  } catch (cause) {
+    return err(mapLibsqlError(cause, "Failed to read the latest checkpoint"));
+  }
+}
+
 /** Matches the `idx_checkpoints_session_time` index. */
 export async function listCheckpointsBySession(
   db: Executor,
