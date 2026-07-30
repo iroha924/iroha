@@ -13,11 +13,13 @@ Do NOT run a CLI command for this. Call the iroha MCP tool **`create_checkpoint`
 |---|---|---|
 | `unresolved` | `get_context` **and** `get_session_state` — the only field two consumers read | What a later session must pick up: the open question, the blocked step, the decision still owed. Specific enough to act on without this conversation. |
 | `summary` | `get_session_state` | What changed, what it verified, what is still open. A few sentences, not a report. |
-| `references` | `get_session_state`, but **only** `issue` and `pull_request` entries | The issue/PR this belongs to. Other types are stored and never surfaced. |
-| `objective`, `implementation`, `validation` | Nothing reads these back | A terse record — the changed file and a one-line what, the command and its result. Not prose. |
+| `references` | Two different paths — see below | The issue/PR this belongs to, plus any canonical entity it builds on. |
+| `objective`, `implementation`, `validation` | Nothing reads these back | A terse record — the changed file and a one-line what, the command and its result. |
 | `proposals` | A human, in the dashboard | Reusable knowledge worth keeping past this session. The one field a reviewer actually sees. |
 
 `outcome` (`completed` / `partial` / `blocked` / `no_change`) is read back too — set it honestly; `partial` with a clear `unresolved` is more useful than `completed` on unfinished work.
+
+`references` is worth recording for both of its consumers. An `issue` or `pull_request` entry is extracted by `get_session_state`. Separately, **any** entry whose `ref` is an existing canonical entity id — a `rule`, `decision`, or other approved document — is materialized as a `checkpoint RELATED_TO entity` edge that `get_relations` and the graph can then surface, whatever its `type`. So a reference to knowledge this work built on carries real provenance and should be recorded. Only an entry whose `ref` resolves to no entity (a bare file path, say) stays on the Checkpoint row alone.
 
 A Checkpoint becomes a **local, pending candidate** — it is never authoritative and is excluded from retrieval until a human approves it in the iroha dashboard. Do not write raw prompts, transcripts, secrets, or credentials into a Checkpoint.
 
@@ -27,13 +29,15 @@ Write the content in the repository's `config.default_language`, then check it *
 
 ### What the passes cover, and what they must not touch
 
-Read **only the prose**: `objective`, `summary`, `unresolved`, and each proposal's `title`, `summary`, and the text under its headings.
+Read **every field you wrote prose into**: `objective`, `summary`, `unresolved`, `implementation[].change`, `validation[].note`, and each proposal's `title`, `summary`, and the text under its headings.
 
 Leave these exactly as written — they are machine-significant, and "improving" one turns the Checkpoint into a false record of what happened:
 
 - `validation[].command` and `implementation[].file`/`symbol` — the command that actually ran and the artifact that actually changed;
 - `references[].ref`/`url` and any path or identifier inside prose;
 - **the canonical H2 headings** (`Context`, `Observation`, `Recommended action`, …). They are contract constants compared as exact English strings in every locale, so translating one is rejected as a missing section — even in a repository whose content language is Japanese.
+
+The split is per field, not per entry: `implementation[].change` is prose to check, while `implementation[].file` beside it is not.
 
 ### The five passes
 

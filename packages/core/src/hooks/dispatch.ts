@@ -565,14 +565,19 @@ async function handleToolSettled(
  * Kept short on purpose. Listing the fields to "include" read as an instruction
  * to fill every one at length, which produced Checkpoints whose `summary` ran
  * past 2,000 characters — slow to write, slow to re-read before saving, and no
- * more useful to the next session. What earns detail is `unresolved`: it is the
- * only field two consumers read back (`get_context` and `get_session_state`),
- * so it is what a later session actually resumes from.
+ * more useful to the next session.
+ *
+ * `unresolved` is named specifically because two consumers read it back
+ * (`get_context` and `get_session_state`), but it is scoped to what is *still
+ * open*: both of those present every entry as work to pick up, so a finished
+ * detail parked there tells the next session that completed work still needs
+ * action. "Leave it empty when nothing is open" is load-bearing, not padding.
  */
 const CONTINUATION_REASON =
   "Save an iroha checkpoint with the create_checkpoint MCP tool, then finish. " +
-  "Keep it short — what changed, what it verified, what is still open — and put " +
-  "the detail in unresolved, which the next session reads back. " +
+  "Keep it short: what changed, what it verified, what is still open. " +
+  "Put only what is still open in unresolved — the next session reads those back " +
+  "as work to pick up, so leave it empty when nothing is. " +
   "Do not invent work that did not occur.";
 
 /**

@@ -265,7 +265,7 @@ Continuation output:
 ```json
 {
   "decision": "block",
-  "reason": "Save an iroha checkpoint with the create_checkpoint MCP tool, then finish. Keep it short — what changed, what it verified, what is still open — and put the detail in unresolved, which the next session reads back. Do not invent work that did not occur."
+  "reason": "Save an iroha checkpoint with the create_checkpoint MCP tool, then finish. Keep it short: what changed, what it verified, what is still open. Put only what is still open in unresolved — the next session reads those back as work to pick up, so leave it empty when nothing is. Do not invent work that did not occur."
 }
 ```
 
