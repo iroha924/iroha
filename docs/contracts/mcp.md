@@ -288,6 +288,8 @@ Annotations: local-write, idempotent by `idempotencyKey`, non-canonical.
 
 Input must validate against `checkpoint-v1.schema.json`.
 
+The tool description requires the caller to re-read every field it wrote prose into before calling — `objective`, `summary`, `unresolved`, `implementation[].change`, `validation[].note`, and a proposal's `title`/`summary`/`body` — in separate reads for non-words, calqued phrasing, unnatural collocation, invented terminology, and padding, and the `checkpoint` skill carries the full procedure. The split is per field, not per entry: `validation[].command` and `implementation[].file`/`symbol` sit beside prose fields but are the record of what ran and what changed, so rewriting one would make the Checkpoint misdescribe the work; the canonical H2 headings are likewise exact English constants in every locale (`canonical.md` §7). This is a caller obligation, not a server-side check: iroha ships nothing that can decide whether a phrase is idiomatic, and a morphological dictionary would be 8-18x the whole published package. It matters most for `summary` and `unresolved`, which unlike `proposals` are stored with no approval step and are read back by a later session through §6.4 `get_session_state`. `hooks.md` §9 states the same requirement in the SessionStart block, emitted per locale.
+
 Transaction:
 
 1. validate and authenticate session token;

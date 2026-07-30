@@ -12,6 +12,25 @@ const KNOWLEDGE_LANGUAGE_NAMES: Record<RepositoryConfig["default_language"], str
   en: "English",
 };
 
+/**
+ * Per-locale reminder to re-read drafted prose before writing it. A Checkpoint's
+ * `summary` is stored with no approval step and is read back by a later session
+ * (`mcp/get-session-state.ts`), so the write is the last point anything can
+ * catch unnatural prose — and judging naturalness is something only the agent
+ * re-reading it can do, not a check iroha could ship (a morphological
+ * dictionary is 8-18x the whole published package, and no pattern set decides
+ * whether a phrase is idiomatic).
+ *
+ * `ja` only: the class that motivated this is wrong-kanji substitution inside a
+ * 漢語 compound, which yields a non-word with no English analogue. Keyed like
+ * {@link KNOWLEDGE_LANGUAGE_NAMES} so a new locale has to decide rather than
+ * inherit silently.
+ */
+const PROSE_REREAD_LINES: Record<RepositoryConfig["default_language"], string | null> = {
+  ja: "Before saving, check that Japanese in separate reads — non-words, calques, unnatural collocation, invented terminology, padding — and fix what a native speaker would not write (see the `checkpoint` skill).",
+  en: null,
+};
+
 export interface RecentCheckpoint {
   id: string;
   summary: string;
@@ -79,10 +98,12 @@ export function formatSessionContext(input: SessionContextInput): string {
   // pushed onto `lines`. Ten approved rules with 1,000-character summaries reach
   // the cap on their own, and trimming from the end took the closing tag and the
   // content-language line §9 requires on every SessionStart.
+  const reread = PROSE_REREAD_LINES[input.knowledgeLanguage];
   const footer = [
     "",
     "Use the iroha MCP search tool for full sources. Create a checkpoint after meaningful work.",
     `Write checkpoint and proposal content in ${KNOWLEDGE_LANGUAGE_NAMES[input.knowledgeLanguage]} (config.default_language), whatever language this session is in.`,
+    ...(reread === null ? [] : [reread]),
     "[/iroha]",
   ].join("\n");
 
