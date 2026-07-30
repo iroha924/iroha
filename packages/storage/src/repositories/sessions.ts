@@ -767,6 +767,11 @@ export async function getCheckpointById(
  * whole joined set, which `idx_checkpoints_session_time` cannot serve on its own
  * — acceptable because this reads one row for a single dashboard card, not a
  * hot path.
+ *
+ * The `id DESC` tie-breaker is what `dashboard-api.md` §4 requires of every sort:
+ * two sessions can write in the same millisecond, and `created_at` alone would
+ * let the answer change after a rebuild or a query-plan change. `chk_` ids are
+ * ULIDs, so id order agrees with creation order within the same millisecond.
  */
 export async function getLatestCheckpointForRepository(
   db: Executor,
@@ -777,7 +782,7 @@ export async function getLatestCheckpointForRepository(
       sql: `SELECT c.* FROM checkpoints c
               JOIN agent_sessions s ON s.id = c.session_id
              WHERE s.repository_id = ?
-             ORDER BY c.created_at DESC
+             ORDER BY c.created_at DESC, c.id DESC
              LIMIT 1`,
       args: [repositoryId],
     });

@@ -41,7 +41,7 @@ const ja: Dict = {
   "overview.noKnowledge": "承認済みナレッジはまだありません。",
   "overview.handback": "エージェントに戻される記録",
   "overview.handbackScope":
-    "承認を通らない唯一のテキストです。チェックポイントのうち提案だけが承認キューに入り、要約と未解決事項はそのまま保存され、圧縮後・再開時・同一セッションの後続ターンでエージェントに読み返されます。ここでは読むだけで、直すことはできません。",
+    "承認を通らない唯一のテキストです。チェックポイントのうち提案だけが承認キューに入り、要約と未解決事項はそのまま保存されます。エージェントがこれを受け取るのは、圧縮後と再開時のセッション開始、そして自分で状態を問い合わせたときです。ここでは読むだけで、直すことはできません。",
   "overview.handbackNone": "チェックポイントはまだありません。",
   "overview.handbackUnresolved": "未解決事項",
   "overview.handbackNoUnresolved": "未解決事項なし。",
@@ -222,7 +222,7 @@ const en: Dict = {
   "overview.noKnowledge": "No approved knowledge yet.",
   "overview.handback": "What the agent is handed back",
   "overview.handbackScope":
-    "The only text here that passes no review. Of a Checkpoint, just its proposals reach the approval queue — the summary and unresolved items are stored as written and read back to the agent after a compaction, on resume, and by the next tool call in the same session. Readable here, not editable.",
+    "The only text here that passes no review. Of a Checkpoint, just its proposals reach the approval queue — the summary and unresolved items are stored as written. An agent receives them when a session starts after a compaction or a resume, and whenever it asks for its own state. Readable here, not editable.",
   "overview.handbackNone": "No Checkpoint written yet.",
   "overview.handbackUnresolved": "Unresolved",
   "overview.handbackNoUnresolved": "Nothing left unresolved.",

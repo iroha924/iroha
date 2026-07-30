@@ -59,10 +59,11 @@ export interface OverviewDenials {
  * — `listCheckpointsBySession(db, sessionId, 1)` in the SessionStart hook, in
  * `get_session_state`, and in `get_context`. Shown because that text passes no
  * review step: only a Checkpoint's `proposals` become Candidates a human
- * approves, while `summary` and `unresolved` are stored as written and fed back
- * on resume, after a compaction, and to the next tool call in the same session
- * (#199). It is not an activity volume — the count of Checkpoints written stays
- * deliberately absent (`dashboard-api.md` §7).
+ * approves, while `summary` and `unresolved` are stored as written. An agent
+ * receives them at SessionStart after a compaction or a resume, and whenever it
+ * calls `get_context` or `get_session_state` — not on an ordinary tool call,
+ * which reads nothing (#199). It is not an activity volume — the count of
+ * Checkpoints written stays deliberately absent (`dashboard-api.md` §7).
  */
 export interface OverviewLatestCheckpoint {
   id: string;

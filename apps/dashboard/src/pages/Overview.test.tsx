@@ -58,6 +58,10 @@ describe("Overview: what the agent is handed back", () => {
     // The outcome and id are what let a reader tell which record they are reading.
     expect(screen.getByText(/chk_01JQZ0000000000000000001/)).toBeInTheDocument();
     expect(screen.getByText(/partial/)).toBeInTheDocument();
+    // With two agents in one repository, the session id is the only thing saying
+    // which of them this text goes back to, and there is no detail view to look
+    // it up in.
+    expect(screen.getByText(/ses_01JQZ0000000000000000001/)).toBeInTheDocument();
   });
 
   it("says nothing is unresolved rather than rendering an empty list", async () => {

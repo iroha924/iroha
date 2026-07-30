@@ -266,7 +266,8 @@ Overview also carries the **latest Checkpoint's `summary` and `unresolved`** —
 anything reads back, via `listCheckpointsBySession(db, sessionId, 1)` in the SessionStart hook, in
 §6.4 `get_session_state`, and in §6.2 `get_context`. This is not the activity volume the paragraph
 above rules out, and not the Checkpoint detail page #177 removed: it is the text an agent is handed
-after a compaction, on resume, and at the next tool call, and it is the only stored text that passes
+at SessionStart after a compaction or a resume, and whenever it calls §6.2 `get_context` or §6.4
+`get_session_state` — an ordinary tool call reads nothing. It is the only stored text that passes
 no review step — of a Checkpoint, just `proposals` become Candidates a human approves. Shown
 read-only, one row, with no history and no list. `latestCheckpoint` is `null` before the first
 Checkpoint exists.

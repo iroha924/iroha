@@ -233,9 +233,15 @@ export function Overview() {
             <p className="text-sm text-ink-faint">{t("overview.handbackNone")}</p>
           ) : (
             <div className="space-y-4">
+              {/* The session id is not decoration: with two agents running in
+                  one repository, it is the only thing saying which of them this
+                  text goes back to, and no Checkpoint detail view exists to
+                  look it up in. */}
               <p className="text-xs text-ink-faint tabular-nums">
                 {d.latestCheckpoint.id} · {d.latestCheckpoint.outcome} ·{" "}
                 {d.latestCheckpoint.createdAt}
+                <br />
+                {d.latestCheckpoint.sessionId}
               </p>
               <p className="whitespace-pre-wrap text-pretty text-sm">
                 {d.latestCheckpoint.summary}
