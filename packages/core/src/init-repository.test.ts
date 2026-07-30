@@ -192,6 +192,31 @@ describe("initRepository", () => {
     expect(migrated.ok && migrated.value.pastedSecrets).toEqual([]);
   });
 
+  it("removes canonical.session_auto_publish from the file, and never writes it", async () => {
+    repoDir = await createTempGitRepo();
+    const first = await initRepository(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR);
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    const configPath = join(first.value.irohaCanonicalDir, "config.yaml");
+    expect(await readFile(configPath, "utf8")).not.toContain("session_auto_publish");
+
+    await writeFile(
+      configPath,
+      (await readFile(configPath, "utf8")).replace(
+        "  require_human_approval: true",
+        "  require_human_approval: true\n  session_auto_publish: true",
+      ),
+      "utf8",
+    );
+
+    const migrated = await initRepository(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR);
+    expect(migrated.ok).toBe(true);
+
+    // `.iroha/config.yaml` is committed and team-shared, so a value canonical.md
+    // §8 forbids has to leave the file, not just the parse.
+    expect(await readFile(configPath, "utf8")).not.toContain("session_auto_publish");
+  });
+
   it("keeps the comments a team wrote around the keys it deletes", async () => {
     repoDir = await createTempGitRepo();
     const first = await initRepository(repoDir, CLOCK, new CryptoRandomSource(), MIGRATIONS_DIR);

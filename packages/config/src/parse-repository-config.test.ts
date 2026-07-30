@@ -13,7 +13,6 @@ repository_id: ${repositoryId}
 default_language: ja
 canonical:
   require_human_approval: true
-  session_auto_publish: false
 search:
   embedding:
     enabled: false
@@ -81,6 +80,21 @@ describe("parseRepositoryConfig", () => {
     if (!result.ok) return;
     expect(Object.keys(result.value.search.embedding)).not.toContain("api_key_env");
     expect(Object.keys(result.value.forge)).not.toContain("api_token_env");
+  });
+
+  it("drops canonical.session_auto_publish, which nothing read", () => {
+    const yaml = validYaml().replace(
+      "  require_human_approval: true",
+      "  require_human_approval: true\n  session_auto_publish: false",
+    );
+
+    const result = parseRepositoryConfig(yaml);
+
+    expect(result.ok, "a config from an earlier version must still parse").toBe(true);
+    if (!result.ok) return;
+    expect(Object.keys(result.value.canonical)).not.toContain("session_auto_publish");
+    // Not a secret location, so `doctor`/`init` must not report it as one.
+    expect(findRemovedSecretLocations(yaml)).toEqual([]);
   });
 
   it("rejects an unsupported default_language", () => {

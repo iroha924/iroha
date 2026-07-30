@@ -5,7 +5,7 @@ import {
   findRemovedSecretLocations,
   parseRepositoryConfig,
   type RepositoryConfig,
-  withoutLegacySecretLocationKeys,
+  withoutRemovedConfigKeys,
 } from "@iroha/config";
 import {
   type Clock,
@@ -64,7 +64,6 @@ function buildDefaultConfig(repositoryId: TypedId<"repo">): RepositoryConfig {
     default_language: "en",
     canonical: {
       require_human_approval: true,
-      session_auto_publish: false,
     },
     search: {
       embedding: {
@@ -177,12 +176,12 @@ async function resolveOrRegisterRepository(
       return parsed;
     }
     repositoryId = parsed.value.repository_id as TypedId<"repo">;
-    // `parseRepositoryConfig` drops the pre-0.6.0 keys that named where a secret
-    // was read from, but only in memory. Rewriting here is what makes the
-    // deletion reach the file every teammate reads and Git tracks — otherwise a
-    // teammate sets the environment variable the committed file still names and
-    // silently gets nothing.
-    migratedConfig = withoutLegacySecretLocationKeys(existingConfig) ?? undefined;
+    // `parseRepositoryConfig` drops the keys no longer in the schema, but only in
+    // memory. Rewriting here is what makes the deletion reach the file every
+    // teammate reads and Git tracks — otherwise a teammate sets the environment
+    // variable the committed file still names and silently gets nothing, or flips
+    // a boolean nothing reads.
+    migratedConfig = withoutRemovedConfigKeys(existingConfig) ?? undefined;
     // 0.5.x rejected anything but an environment-variable name here, so a value
     // that is not one is plausibly the key itself. The rewrite below removes it
     // from the file, which also removes the only thing `doctor` can notice — so

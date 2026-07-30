@@ -5,21 +5,34 @@ import { type RepositoryConfig, repositoryConfigSchema } from "./schemas/reposit
 
 /**
  * Keys that named where a secret used to be read from, before credentials moved
- * out of the repository (ADR-018).
- *
- * They are dropped rather than rejected. `repositoryConfigSchema` is a
- * `strictObject`, so a config written by an earlier version would otherwise fail
- * to parse and take every command down with it — on a file the user has no
- * reason to suspect and did not touch. Dropping them on read is only half the
- * migration; `initRepository` uses `findRemovedSecretLocations` below to rewrite
- * the file so the deletion actually reaches Git.
+ * out of the repository (ADR-018). A value here is plausibly the secret itself,
+ * which is why these are reported by `findRemovedSecretLocations` and the other
+ * removed keys below are not.
  */
 const REMOVED_SECRET_LOCATION_KEYS = [
   ["search", "embedding", "api_key_env"],
   ["forge", "api_token_env"],
 ] as const;
 
-/** What an env-var name looks like — the constraint 0.5.x enforced on these keys. */
+/**
+ * Every key no longer in `repositoryConfigSchema`.
+ *
+ * They are dropped rather than rejected. The schema is a `strictObject`, so a
+ * config written by an earlier version would otherwise fail to parse and take
+ * every command down with it — on a file the user has no reason to suspect and
+ * did not touch. Dropping them on read is only half the migration;
+ * `initRepository` uses `withoutRemovedConfigKeys` below to rewrite the file so
+ * the deletion actually reaches Git.
+ */
+const REMOVED_KEYS = [
+  ...REMOVED_SECRET_LOCATION_KEYS,
+  // A `canonical.md` §8 rule ("a Session Summary is never auto-published in
+  // v0.1") that no code ever read, on a Git-tracked file a team could set to a
+  // state the contract forbids.
+  ["canonical", "session_auto_publish"],
+] as const;
+
+/** What an env-var name looks like — the constraint 0.5.x enforced on the secret-location keys. */
 const ENV_VAR_NAME = /^[A-Z][A-Z0-9_]*$/;
 
 function readAtPath(document: unknown, path: readonly string[]): unknown {
@@ -72,19 +85,17 @@ export function findRemovedSecretLocations(content: string): RemovedSecretLocati
  * Edits the parsed document rather than re-serializing the validated object:
  * `serializeRepositoryConfig` rebuilds the file from scratch, which would drop
  * every comment a team wrote in its own `config.yaml` — a migration nobody asked
- * for, on a file nobody touched. Deleting the two nodes leaves the rest byte-for
- * -byte alone, so the change really does land in Git as a one-line deletion.
+ * for, on a file nobody touched. Deleting the nodes leaves the rest byte-for-byte
+ * alone, so the change really does land in Git as a small deletion.
  */
-export function withoutLegacySecretLocationKeys(content: string): string | null {
+export function withoutRemovedConfigKeys(content: string): string | null {
   let document: ReturnType<typeof parseDocument>;
   try {
     document = parseDocument(content);
   } catch {
     return null;
   }
-  const removed = REMOVED_SECRET_LOCATION_KEYS.map((path) => document.deleteIn([...path])).some(
-    Boolean,
-  );
+  const removed = REMOVED_KEYS.map((path) => document.deleteIn([...path])).some(Boolean);
   if (!removed) {
     return null;
   }
@@ -100,7 +111,7 @@ function withoutRemovedKeys(document: unknown): unknown {
     return document;
   }
   const root = { ...(document as Record<string, unknown>) };
-  for (const path of REMOVED_SECRET_LOCATION_KEYS) {
+  for (const path of REMOVED_KEYS) {
     let node: Record<string, unknown> = root;
     // Rebuild each level on the way down so the caller's object is untouched;
     // bail the moment the shape stops matching and let Zod report it properly.

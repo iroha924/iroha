@@ -16,7 +16,6 @@ export function serializeRepositoryConfig(config: RepositoryConfig): string {
     default_language: config.default_language,
     canonical: {
       require_human_approval: config.canonical.require_human_approval,
-      session_auto_publish: config.canonical.session_auto_publish,
     },
     search: {
       embedding: {
