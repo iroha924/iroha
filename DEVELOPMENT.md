@@ -28,7 +28,7 @@ iroha の開発に使っている技術を「何か / iroha での役割 / い�
 |---|---|---|
 | **pnpm workspace**（v11、`pnpm-workspace.yaml`） | 20 パッケージのモノレポ管理。ワークスペース依存は `workspace:*` | 依存の追加/更新時 |
 | ├ **strict catalog**（`catalogMode: strict`） | 依存をカタログに集中ピン留め。`package.json` では `"catalog:"` で参照。バージョンの単一情報源 | 依存追加時は必ずカタログにピン留め→`"catalog:"` 参照。**例外**: turbo は `compatibility.md` の表が「exact in root devDependencies」を指定しているためカタログ外の直接ピン（`"turbo": "2.10.5"`） |
-| ├ **公開直後版のガード** | 実際に効いているのは Renovate の `minimumReleaseAge: 3 days`（`.github/renovate.json`）。pnpm 側の `minimumReleaseAge` は**未設定**で、`minimumReleaseAgeExclude` リストだけが残置＝手で足した新しすぎる依存を install が弾くことはない | 新規依存は数日以上枯れた版を自分で選ぶ（自動では止まらない） |
+| ├ **公開直後版のガード** | 実際に効いているのは Renovate の `minimumReleaseAge: 3 days`（`.github/renovate.json`）で、これは bot が bump を**提案する**タイミングを遅らせるだけ。pnpm 側の `minimumReleaseAge` は**未設定**なので、手で足した新しすぎる依存を install が弾くことはない（#198 で無効だった除外リストを削除済み） | 新規依存は数日以上枯れた版を自分で選ぶ（自動では止まらない） |
 | └ **overrides** | 上流に in-range 修正が無い transitive 脆弱性を強制パッチ（例: `fast-uri`, `js-yaml@5.2.1`） | osv-scan が transitive CVE を出し、上流未修正のとき |
 | **turbo**（`turbo.json`） | タスクのキャッシュ付き並列オーケストレーション。依存辺は `build: ^build` と、`typecheck`/`test`: **上流の `build`**（同名タスクの上流ではない）。`lint` は依存辺なしで全パッケージ並列 | `pnpm lint` 等が内部で `turbo run` を呼ぶ。キャッシュヒットで `>>> FULL TURBO` |
 | **tsdown**（rolldown ベース） | 実行コードのビルド（`dist/*.mjs` + `.d.mts`）。tsconfig の `paths` を自動解決 | `pnpm build`。プラグイン配布バンドルは `deps.alwaysBundle:[/^@iroha\//]` でワークスペースのみ inline |
@@ -99,7 +99,7 @@ iroha の開発に使っている技術を「何か / iroha での役割 / い�
 
 | 技術 | 何か / iroha での役割 | いつ使う（トリガー） |
 |---|---|---|
-| **@modelcontextprotocol/sdk 1.29** | Claude Code / Codex へ検索等のツールを公開。**stdio トランスポート**（HTTP transport は不使用＝該当脆弱性に到達しない） | `packages/mcp`。ツールは `dispatchTool` 経由、承認は human 経路（`approveCandidate`） |
+| **@modelcontextprotocol/sdk 1.30** | Claude Code / Codex へ検索等のツールを公開。**stdio トランスポート**（HTTP transport は不使用＝該当脆弱性に到達しない） | `packages/mcp`。ツールは `dispatchTool` 経由、承認は human 経路（`approveCandidate`） |
 
 ## 10. Forge（GitHub 連携、WP-12）
 
