@@ -146,6 +146,23 @@ function normalizeWhitespace(text: string): string {
   return `${trimmedLines.join("\n").replace(/\n+$/, "")}\n`;
 }
 
+/**
+ * The body the round-trip is expected to yield: step 8 above deliberately
+ * rewrites it (per-line trailing whitespace — which is how CommonMark writes a
+ * hard line break — and the final newlines), and `parseCanonicalDocument` counts
+ * the newlines surrounding the body as envelope rather than content. This is what
+ * the guard below compares the reparsed body against; comparing against the
+ * pre-normalization input instead would fail on every body step 8 legally
+ * rewrites, aborting the approval write on valid Markdown.
+ */
+function normalizedBody(body: string): string {
+  const normalized = normalizeWhitespace(body);
+  let start = 0;
+  while (normalized[start] === "\n") start++;
+  // `normalizeWhitespace` appends exactly one final newline; the file owns it.
+  return normalized.slice(start, -1);
+}
+
 export interface SerializedCanonicalDocument {
   content: string;
   hash: string;
@@ -182,6 +199,17 @@ export function serializeCanonicalDocument(
     );
   }
 
+  // Step 1 validates `body` against `min(1)` before step 8 runs, so a body made
+  // only of whitespace passes there and normalizes away to nothing. That is
+  // caller input, not a serializer defect, so it is rejected here rather than
+  // left to surface as an INTERNAL_ERROR from the round-trip parse below.
+  const expectedBody = normalizedBody(parsedCandidate.data.body);
+  if (expectedBody.length === 0) {
+    return err(
+      new IrohaError("INVALID_INPUT", "Canonical document body is empty after normalization"),
+    );
+  }
+
   // Steps 3-7: normalize field order, label/source/relation sorting, timestamps.
   const orderedFrontmatter = orderFrontmatter(parsedCandidate.data.frontmatter);
   const yamlText = stringifyYaml(orderedFrontmatter).replace(/\n+$/, "");
@@ -212,7 +240,7 @@ export function serializeCanonicalDocument(
       ),
     );
   }
-  if (reparsed.value.body !== parsedCandidate.data.body) {
+  if (reparsed.value.body !== expectedBody) {
     return err(
       new IrohaError(
         "INTERNAL_ERROR",

@@ -32,7 +32,7 @@ Effects.
 
 Other options.`;
 
-function candidate(overrides: Record<string, unknown> = {}) {
+function candidate(overrides: Record<string, unknown> = {}, body: string = decisionBody) {
   return {
     frontmatter: {
       schema_version: 1,
@@ -56,7 +56,7 @@ function candidate(overrides: Record<string, unknown> = {}) {
       decision: { kind: "architecture" },
       ...overrides,
     },
-    body: decisionBody,
+    body,
   };
 }
 
@@ -144,6 +144,44 @@ describe("serializeCanonicalDocument", () => {
     if (result.ok) {
       const reparsed = parseCanonicalDocument(result.value.content);
       expect(reparsed.ok).toBe(true);
+    }
+  });
+
+  // §11 step 8 deliberately rewrites the whitespace of the bodies below, so the
+  // round-trip guard has to compare against the normalized form — the input as
+  // written never appears on disk.
+  it("accepts a body containing a Markdown hard line break", () => {
+    const hardBreak = decisionBody.replace("Some context.", "Some context.  \nStill context.");
+    const result = serializeCanonicalDocument(candidate({}, hardBreak));
+    expect(result.ok, result.ok ? "" : `${result.error.code}: ${result.error.message}`).toBe(true);
+    if (result.ok) {
+      expect(result.value.document.body).toContain("Some context.\nStill context.");
+      expect(result.value.content).not.toContain(" \n");
+    }
+  });
+
+  it("accepts a body ending with trailing newlines", () => {
+    const result = serializeCanonicalDocument(candidate({}, `${decisionBody}\n\n`));
+    expect(result.ok, result.ok ? "" : `${result.error.code}: ${result.error.message}`).toBe(true);
+    if (result.ok) {
+      expect(result.value.document.body).toBe(decisionBody);
+      expect(result.value.content.endsWith("Other options.\n")).toBe(true);
+    }
+  });
+
+  it("accepts a body starting with a blank line", () => {
+    const result = serializeCanonicalDocument(candidate({}, `\n${decisionBody}`));
+    expect(result.ok, result.ok ? "" : `${result.error.code}: ${result.error.message}`).toBe(true);
+    if (result.ok) {
+      expect(result.value.document.body).toBe(decisionBody);
+    }
+  });
+
+  it("rejects a whitespace-only body as invalid input, not an internal error", () => {
+    const result = serializeCanonicalDocument(candidate({}, "   \n  "));
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("INVALID_INPUT");
     }
   });
 
