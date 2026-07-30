@@ -20,7 +20,6 @@ const searchConfigSchema = z.strictObject({
 
 const canonicalConfigSchema = z.strictObject({
   require_human_approval: z.boolean(),
-  session_auto_publish: z.boolean(),
 });
 
 /** `pull_requests.provider`'s CHECK constraint (migrations/001_initial.sql) is the narrowest forge-provider enum in the schema. */

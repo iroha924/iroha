@@ -32,7 +32,7 @@ Effects.
 
 Other options.`;
 
-function candidate(overrides: Record<string, unknown> = {}) {
+function candidate(overrides: Record<string, unknown> = {}, body: string = decisionBody) {
   return {
     frontmatter: {
       schema_version: 1,
@@ -56,7 +56,7 @@ function candidate(overrides: Record<string, unknown> = {}) {
       decision: { kind: "architecture" },
       ...overrides,
     },
-    body: decisionBody,
+    body,
   };
 }
 
@@ -138,12 +138,95 @@ describe("serializeCanonicalDocument", () => {
     }
   });
 
+  // The key-order case above varies only the frontmatter, so it cannot see a body
+  // the serializer rewrites. Each of these differs from `decisionBody` only in
+  // whitespace step 8 removes, so all four must land on the same bytes.
+  it("produces byte-identical output for bodies differing only in normalized whitespace", () => {
+    const variants = [
+      decisionBody,
+      `\n${decisionBody}`,
+      `\n\n\n${decisionBody}`,
+      `${decisionBody}\n\n`,
+    ].map((body) => serializeCanonicalDocument(candidate({}, body)));
+
+    const baseline = variants[0];
+    expect(baseline?.ok, baseline?.ok === false ? baseline.error.message : "").toBe(true);
+    if (!baseline?.ok) return;
+    for (const [index, variant] of variants.entries()) {
+      expect(variant?.ok, variant?.ok === false ? variant.error.message : "").toBe(true);
+      if (!variant?.ok) continue;
+      expect(variant.value.content, `variant ${index} content`).toBe(baseline.value.content);
+      expect(variant.value.hash, `variant ${index} hash`).toBe(baseline.value.hash);
+    }
+  });
+
   it("produces output that itself parses successfully", () => {
     const result = serializeCanonicalDocument(candidate());
     expect(result.ok).toBe(true);
     if (result.ok) {
       const reparsed = parseCanonicalDocument(result.value.content);
       expect(reparsed.ok).toBe(true);
+    }
+  });
+
+  // §11 step 8 deliberately rewrites the whitespace of the bodies below, so the
+  // round-trip guard has to compare against the normalized form — the input as
+  // written never appears on disk.
+  //
+  // Step 8 therefore makes a trailing-space hard break unrepresentable in a
+  // canonical body: the two spaces go, and what CommonMark would render as a line
+  // break becomes a space. The point here is that the write no longer aborts, not
+  // that the break survives.
+  it("normalizes away a Markdown hard line break instead of aborting the write", () => {
+    const hardBreak = decisionBody.replace("Some context.", "Some context.  \nStill context.");
+    const result = serializeCanonicalDocument(candidate({}, hardBreak));
+    expect(result.ok, result.ok ? "" : `${result.error.code}: ${result.error.message}`).toBe(true);
+    if (result.ok) {
+      expect(result.value.document.body).toContain("Some context.\nStill context.");
+      expect(result.value.content).not.toMatch(/[ \t]\n/);
+    }
+  });
+
+  it("accepts a body ending with trailing newlines", () => {
+    const result = serializeCanonicalDocument(candidate({}, `${decisionBody}\n\n`));
+    expect(result.ok, result.ok ? "" : `${result.error.code}: ${result.error.message}`).toBe(true);
+    if (result.ok) {
+      expect(result.value.document.body).toBe(decisionBody);
+      expect(result.value.content.endsWith("Other options.\n")).toBe(true);
+    }
+  });
+
+  it("accepts a body starting with a blank line", () => {
+    const result = serializeCanonicalDocument(candidate({}, `\n${decisionBody}`));
+    expect(result.ok, result.ok ? "" : `${result.error.code}: ${result.error.message}`).toBe(true);
+    if (result.ok) {
+      expect(result.value.document.body).toBe(decisionBody);
+    }
+  });
+
+  // Step 8 trims only spaces and tabs, so without an explicit gate a CR reaches
+  // `parseCanonicalDocument`, which rejects it — surfacing as an INTERNAL_ERROR a
+  // reviewer cannot act on, for a body a CRLF editor or a quoted review comment
+  // produces routinely.
+  it.each([
+    ["CRLF line endings", "\r\n"],
+    ["a lone carriage return", "\r"],
+  ])("rejects a body with %s as invalid input, not an internal error", (_label, eol) => {
+    const result = serializeCanonicalDocument(
+      candidate({}, decisionBody.replace("Some context.", `Some context.${eol}Still context.`)),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("INVALID_INPUT");
+      expect(result.error.message).toContain("carriage return");
+    }
+  });
+
+  it("rejects a whitespace-only body as invalid input, not an internal error", () => {
+    const result = serializeCanonicalDocument(candidate({}, "   \n  "));
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("INVALID_INPUT");
     }
   });
 

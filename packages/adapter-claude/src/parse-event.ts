@@ -38,14 +38,14 @@ const rawUserPromptSubmit = rawCommon.extend({ prompt: z.string() });
 const rawPreToolUse = rawCommon.extend({
   tool_name: z.string().min(1),
   tool_input: rawToolInput,
-  tool_use_id: z.string().optional(),
+  tool_use_id: z.string().nullish(),
 });
 const rawPostToolUse = rawCommon.extend({
   tool_name: z.string().min(1),
   tool_input: rawToolInput,
   tool_response: z.unknown(),
-  tool_use_id: z.string().optional(),
-  duration_ms: z.number().int().min(0).optional(),
+  tool_use_id: z.string().nullish(),
+  duration_ms: z.number().int().min(0).nullish(),
 });
 /**
  * `PostToolUseFailure` carries the same tool identity as `PostToolUse`, minus the
@@ -58,8 +58,8 @@ const rawPostToolUse = rawCommon.extend({
 const rawPostToolUseFailure = rawCommon.extend({
   tool_name: z.string().min(1),
   tool_input: rawToolInput,
-  tool_use_id: z.string().optional(),
-  duration_ms: z.number().int().min(0).optional(),
+  tool_use_id: z.string().nullish(),
+  duration_ms: z.number().int().min(0).nullish(),
 });
 const rawPreCompact = rawCommon.extend({ trigger: z.enum(["manual", "auto"]) });
 const rawPostCompact = rawCommon.extend({
@@ -219,7 +219,7 @@ export function parseClaudeEvent(
           kind: "TOOL_STARTED",
           payload: {
             toolName: r.data.tool_name,
-            ...(r.data.tool_use_id === undefined ? {} : { toolUseId: r.data.tool_use_id }),
+            ...(r.data.tool_use_id == null ? {} : { toolUseId: r.data.tool_use_id }),
             phase: "pre",
             targets: extractClaudeTargets(r.data.tool_name, r.data.tool_input),
             inputDigest: ctx.digest(JSON.stringify(r.data.tool_input)),
@@ -238,7 +238,7 @@ export function parseClaudeEvent(
           kind: "TOOL_COMPLETED",
           payload: {
             toolName: r.data.tool_name,
-            ...(r.data.tool_use_id === undefined ? {} : { toolUseId: r.data.tool_use_id }),
+            ...(r.data.tool_use_id == null ? {} : { toolUseId: r.data.tool_use_id }),
             phase: "post",
             targets: extractClaudeTargets(r.data.tool_name, r.data.tool_input),
             inputDigest: ctx.digest(JSON.stringify(r.data.tool_input)),
@@ -246,7 +246,7 @@ export function parseClaudeEvent(
               ? {}
               : { responseDigest: ctx.digest(JSON.stringify(r.data.tool_response)) }),
             status: "succeeded",
-            ...(r.data.duration_ms === undefined ? {} : { durationMs: r.data.duration_ms }),
+            ...(r.data.duration_ms == null ? {} : { durationMs: r.data.duration_ms }),
           },
         },
         ctx,
@@ -261,12 +261,12 @@ export function parseClaudeEvent(
           kind: "TOOL_FAILED",
           payload: {
             toolName: r.data.tool_name,
-            ...(r.data.tool_use_id === undefined ? {} : { toolUseId: r.data.tool_use_id }),
+            ...(r.data.tool_use_id == null ? {} : { toolUseId: r.data.tool_use_id }),
             phase: "failure",
             targets: extractClaudeTargets(r.data.tool_name, r.data.tool_input),
             inputDigest: ctx.digest(JSON.stringify(r.data.tool_input)),
             status: "failed",
-            ...(r.data.duration_ms === undefined ? {} : { durationMs: r.data.duration_ms }),
+            ...(r.data.duration_ms == null ? {} : { durationMs: r.data.duration_ms }),
           },
         },
         ctx,

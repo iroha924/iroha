@@ -22,9 +22,13 @@ import { z } from "zod";
 const rawCommon = z.object({
   session_id: z.string().min(1),
   cwd: z.string().min(1),
-  model: z.string().optional(),
-  permission_mode: z.string().optional(),
-  turn_id: z.string().optional(),
+  // `.nullish()` (nullable + optional) so an explicit JSON `null` does not reject
+  // the whole event — it is normalized to "absent" in `baseEvent`. Rejecting it
+  // would fail open on `PreToolUse` (contracts/hooks.md §6), skipping Guardrail
+  // evaluation entirely for a shape the Claude adapter accepts.
+  model: z.string().nullish(),
+  permission_mode: z.string().nullish(),
+  turn_id: z.string().nullish(),
 });
 
 const rawToolInput = z.record(z.string(), z.unknown());
@@ -36,13 +40,13 @@ const rawUserPromptSubmit = rawCommon.extend({ prompt: z.string() });
 const rawPreToolUse = rawCommon.extend({
   tool_name: z.string().min(1),
   tool_input: rawToolInput,
-  tool_use_id: z.string().optional(),
+  tool_use_id: z.string().nullish(),
 });
 const rawPostToolUse = rawCommon.extend({
   tool_name: z.string().min(1),
   tool_input: rawToolInput,
   tool_response: z.unknown(),
-  tool_use_id: z.string().optional(),
+  tool_use_id: z.string().nullish(),
 });
 const rawCompact = rawCommon.extend({ trigger: z.enum(["manual", "auto"]) });
 const rawStop = rawCommon.extend({
@@ -53,6 +57,11 @@ const rawStop = rawCommon.extend({
 type RawCommon = z.infer<typeof rawCommon>;
 
 function baseEvent(common: RawCommon, ctx: NormalizationContext) {
+  // `?? undefined` folds an explicit `null` into "absent" so the optional field
+  // is omitted rather than set to `null` (exactOptionalPropertyTypes + strict schema).
+  const platformTurnId = common.turn_id ?? undefined;
+  const model = common.model ?? undefined;
+  const permissionMode = common.permission_mode ?? undefined;
   return {
     schemaVersion: 1 as const,
     eventId: ctx.newEventId(),
@@ -60,9 +69,9 @@ function baseEvent(common: RawCommon, ctx: NormalizationContext) {
     occurredAt: ctx.occurredAt(),
     platformSessionId: common.session_id,
     cwdFingerprint: ctx.digest(common.cwd),
-    ...(common.turn_id === undefined ? {} : { platformTurnId: common.turn_id }),
-    ...(common.model === undefined ? {} : { model: common.model }),
-    ...(common.permission_mode === undefined ? {} : { permissionMode: common.permission_mode }),
+    ...(platformTurnId === undefined ? {} : { platformTurnId }),
+    ...(model === undefined ? {} : { model }),
+    ...(permissionMode === undefined ? {} : { permissionMode }),
   };
 }
 
@@ -212,7 +221,7 @@ export function parseCodexEvent(
         kind: "TOOL_STARTED",
         payload: {
           toolName: r.data.tool_name,
-          ...(r.data.tool_use_id === undefined ? {} : { toolUseId: r.data.tool_use_id }),
+          ...(r.data.tool_use_id == null ? {} : { toolUseId: r.data.tool_use_id }),
           phase: "pre",
           targets: extractCodexTargets(r.data.tool_name, r.data.tool_input),
           inputDigest: ctx.digest(JSON.stringify(r.data.tool_input)),
@@ -228,7 +237,7 @@ export function parseCodexEvent(
         kind: "TOOL_COMPLETED",
         payload: {
           toolName: r.data.tool_name,
-          ...(r.data.tool_use_id === undefined ? {} : { toolUseId: r.data.tool_use_id }),
+          ...(r.data.tool_use_id == null ? {} : { toolUseId: r.data.tool_use_id }),
           phase: "post",
           targets: extractCodexTargets(r.data.tool_name, r.data.tool_input),
           inputDigest: ctx.digest(JSON.stringify(r.data.tool_input)),
@@ -269,7 +278,11 @@ export function parseCodexEvent(
           stopHookActive: r.data.stop_hook_active,
           // Codex has no background-task payload on Stop.
           backgroundTaskCount: 0,
-          ...(lastMessage ? { lastMessageDigest: ctx.digest(lastMessage) } : {}),
+          // `== null` (absent or null), not truthiness: an empty final message is
+          // a message the turn produced, and the Claude adapter digests it. A
+          // truthiness guard would give the two platforms different
+          // `TURN_STOPPED` shapes for identical input.
+          ...(lastMessage == null ? {} : { lastMessageDigest: ctx.digest(lastMessage) }),
         },
       });
     }

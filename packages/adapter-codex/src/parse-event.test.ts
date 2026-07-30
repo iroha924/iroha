@@ -341,6 +341,85 @@ describe("parseCodexEvent — forward-compatibility and errors", () => {
     expect(event).toMatchObject({ kind: "SESSION_STARTED", payload: { source: "resume" } });
   });
 
+  it("tolerates explicit JSON null on optional common fields instead of dropping the event", () => {
+    const { ctx } = makeFakeCtx();
+    // Codex may send `null` (not omit) for an optional common field; the whole
+    // event must still parse, with the field treated as absent — the Claude
+    // adapter treats exactly this shape as a forward-compatibility requirement
+    // (contracts/hooks.md §2).
+    const start = unwrap(
+      parseCodexEvent(
+        {
+          ...common,
+          hook_event_name: "SessionStart",
+          source: "startup",
+          model: null,
+          permission_mode: null,
+          turn_id: null,
+        },
+        ctx,
+      ),
+    );
+    expect(start).toMatchObject({ kind: "SESSION_STARTED" });
+    expect(start).not.toHaveProperty("model");
+    expect(start).not.toHaveProperty("permissionMode");
+    expect(start).not.toHaveProperty("platformTurnId");
+  });
+
+  it("normalizes a PreToolUse with a null permission_mode instead of failing open", () => {
+    const { ctx } = makeFakeCtx();
+    // `run-hook.ts` turns an adapter `err(...)` into the documented fail-open
+    // (contracts/hooks.md §6), which skips Guardrail evaluation. So the event
+    // parsing at all — with its targets intact — is what keeps an approved
+    // Guardrail in the path for this shape.
+    // `tool_use_id` sits in the same shape and drops the event the same way, so a
+    // null on either must not cost the Guardrail its chance to deny.
+    const event = unwrap(
+      parseCodexEvent(
+        {
+          ...common,
+          hook_event_name: "PreToolUse",
+          permission_mode: null,
+          tool_use_id: null,
+          tool_name: "Bash",
+          tool_input: { command: "rm -rf /" },
+        },
+        ctx,
+      ),
+    );
+    expect(event).toMatchObject({
+      kind: "TOOL_STARTED",
+      payload: {
+        toolName: "Bash",
+        phase: "pre",
+        targets: [{ kind: "command", value: "rm", operation: "execute" }],
+      },
+    });
+    expect(event).not.toHaveProperty("payload.toolUseId");
+  });
+
+  it("digests an empty last_assistant_message on Stop, as the Claude adapter does", () => {
+    const { ctx, digested } = makeFakeCtx();
+    const event = unwrap(
+      parseCodexEvent(
+        {
+          ...common,
+          hook_event_name: "Stop",
+          stop_hook_active: false,
+          last_assistant_message: "",
+        },
+        ctx,
+      ),
+    );
+    expect(event).toMatchObject({
+      kind: "TURN_STOPPED",
+      payload: { lastMessageDigest: FIXED_DIGEST },
+    });
+    // The fake returns FIXED_DIGEST for every input, so the assertion above only
+    // proves the field is present. This is what proves `""` is what got digested.
+    expect(digested).toContain("");
+  });
+
   it("returns INVALID_INPUT when a mapped event is missing a required field", () => {
     const { ctx } = makeFakeCtx();
     const result = parseCodexEvent(

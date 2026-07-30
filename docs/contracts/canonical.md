@@ -276,7 +276,6 @@ repository_id: repo_01K...
 default_language: ja
 canonical:
   require_human_approval: true
-  session_auto_publish: false
 search:
   embedding:
     enabled: false
@@ -297,7 +296,7 @@ Rules:
 - No secret and no secret *location* may appear. Provider credentials live in `$XDG_CONFIG_HOME/iroha/credentials.json` (default `~/.config/iroha/`, ADR-018); `api_key_env`/`api_token_env` were removed in 0.6.0. A config an earlier version wrote still parses — the keys are dropped on read — and `iroha init` rewrites the file without them.
 - `repository_id` is generated once and committed.
 - Local overrides are stored under the Git internal iroha directory, not in this file.
-- Unknown configuration keys are rejected for schema v1.
+- Unknown configuration keys are rejected for schema v1. `canonical.session_auto_publish` was removed the same way as the secret-location keys above: §8 forbids the only behaviour it could have enabled, and no code read it, so a team could commit a value the contract rules out and get no error.
 - `forge.review_learning_threshold` is the only key above with a default (`3`), so a config that omits it still parses even though unknown keys are rejected. It is the floor on how many distinct pull requests a review-comment pattern must recur across before `iroha sync` proposes it as a `review_learning` candidate; the schema's own floor is `2`, since a "recurrence" of one is a single comment. `iroha init` writes it explicitly and the serializer re-emits it, so a committed config carries it.
 
 ## 10. Labels
