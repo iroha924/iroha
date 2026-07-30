@@ -1,10 +1,12 @@
 import type { Clock, IrohaError, RandomSource, Result, TypedId } from "@iroha/domain";
 import { ok } from "@iroha/domain";
 import {
+  type CheckpointOutcome,
   countPendingReviewLearnings,
   type DenialByRule,
   type Executor,
   getDenialFacts,
+  getLatestCheckpointForRepository,
   getOverviewCounts,
   getSyncCursor,
   type KnowledgeEntityType,
@@ -52,6 +54,40 @@ export interface OverviewDenials {
   clusters: { items: DenialCluster[]; total: number; truncated: boolean };
 }
 
+/**
+ * The Checkpoint an agent is handed back, and the only Checkpoint anything reads
+ * — `listCheckpointsBySession(db, sessionId, 1)` in the SessionStart hook, in
+ * `get_session_state`, and in `get_context`. Shown because that text passes no
+ * review step: only a Checkpoint's `proposals` become Candidates a human
+ * approves, while `summary` and `unresolved` are stored as written. An agent
+ * receives them at SessionStart after a compaction or a resume, and whenever it
+ * calls `get_context` or `get_session_state` — not on an ordinary tool call,
+ * which reads nothing (#199). It is not an activity volume — the count of
+ * Checkpoints written stays deliberately absent (`dashboard-api.md` §7).
+ */
+export interface OverviewLatestCheckpoint {
+  id: string;
+  outcome: CheckpointOutcome;
+  summary: string;
+  unresolved: string[];
+  createdAt: string;
+  /** The session it belongs to, so a reader can tell whose text this is. */
+  sessionId: string;
+}
+
+/**
+ * `unresolved_json` is a JSON array by DB CHECK, but a rebuilt or hand-edited
+ * index could hold anything, and one malformed row must not fail the whole page.
+ */
+function parseUnresolved(json: string): string[] {
+  try {
+    const parsed: unknown = JSON.parse(json);
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 export interface OverviewData {
   pendingCandidates: number;
   oldestPendingCreatedAt: string | null;
@@ -68,6 +104,8 @@ export interface OverviewData {
    * different numbers.
    */
   pendingReviewLearnings: number;
+  /** `null` when no Checkpoint has been written in this repository yet. */
+  latestCheckpoint: OverviewLatestCheckpoint | null;
 }
 
 /** The window the denial facts cover. */
@@ -179,6 +217,10 @@ export async function getOverview(
       if (!learnings.ok) {
         return learnings;
       }
+      const latest = await getLatestCheckpointForRepository(ctx.db, ctx.repo.repositoryId);
+      if (!latest.ok) {
+        return latest;
+      }
       const clusters = denialClusters(denials.value.targets);
       const shown = clusters.slice(0, MAX_CLUSTERS);
       return ok({
@@ -200,6 +242,17 @@ export async function getOverview(
           },
         },
         pendingReviewLearnings: learnings.value,
+        latestCheckpoint:
+          latest.value === null
+            ? null
+            : {
+                id: latest.value.id,
+                outcome: latest.value.outcome,
+                summary: latest.value.summary,
+                unresolved: parseUnresolved(latest.value.unresolvedJson),
+                createdAt: latest.value.createdAt,
+                sessionId: latest.value.sessionId,
+              },
       });
     },
   );

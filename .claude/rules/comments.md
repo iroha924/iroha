@@ -22,6 +22,16 @@ Code is read in its final state, not as a diff. Do not narrate how it got there:
 
 That context belongs in git history and the pull request, not in the source. A decision's *reasoning* may stay (see above); its chronology may not.
 
+## Do not count a set whose members live somewhere else
+
+"Two residual divergences", "exact for enums and patterns", "the three shapes below" — when the cases themselves are documented in other files or the set is open-ended, the count is the first thing to go wrong and the next reader trusts it over the list. Describe each case where it lives, and name the set by its property rather than its size.
+
+A numbered procedure whose steps are immediately below it is not this. Adding a sixth step to a list of five forces the renumber in the same edit, so nothing can silently disagree.
+
+This is also not the stale-claim rule below. Both halves can be individually true and verified and still contradict: one comment records that the timestamp arm has a residual difference, while a summary in another file says patterns are exact. Nothing decayed — they were written at different moments and never read together.
+
+So before writing a comment that characterizes a set, grep for the other comments about that set and read them in one pass. Both occurrences of this in one change — a "three shapes" list that had four, a "two residuals" summary that had three — were caught by a reviewer, not by the author.
+
 ## When editing
 
 Delete comments that have decayed into restatement, narrative, or a stale claim. Removing a comment that no longer earns its place is part of the change, not scope creep.
