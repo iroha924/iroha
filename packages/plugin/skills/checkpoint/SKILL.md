@@ -25,7 +25,19 @@ A Checkpoint becomes a **local, pending candidate** — it is never authoritativ
 
 Write the content in the repository's `config.default_language`, then check it **before** you call the tool. You are the only check there is: of everything a Checkpoint stores, only `proposals` reaches a human, while `summary` and `unresolved` are kept as written and read back into a later session. Nothing downstream can catch prose that a native speaker would not write, and no check iroha could ship would either — deciding whether a phrase is idiomatic is not something a dictionary or a pattern set does.
 
-Spend the effort here. Do **five separate reads, one lens each**, on every free-text field. A single combined skim does not work: while you are looking for one class you are blind to the others, and every class below has been shipped into a real Checkpoint by an agent that believed it had proofread.
+### What the passes cover, and what they must not touch
+
+Read **only the prose**: `objective`, `summary`, `unresolved`, and each proposal's `title`, `summary`, and the text under its headings.
+
+Leave these exactly as written — they are machine-significant, and "improving" one turns the Checkpoint into a false record of what happened:
+
+- `validation[].command` and `implementation[].file`/`symbol` — the command that actually ran and the artifact that actually changed;
+- `references[].ref`/`url` and any path or identifier inside prose;
+- **the canonical H2 headings** (`Context`, `Observation`, `Recommended action`, …). They are contract constants compared as exact English strings in every locale, so translating one is rejected as a missing section — even in a repository whose content language is Japanese.
+
+### The five passes
+
+Do **five separate reads, one lens each**. A single combined skim does not work: while you are looking for one class you are blind to the others, and every class below has been shipped into a real Checkpoint by an agent that believed it had proofread.
 
 1. **Does each word exist?** Check every 漢語 compound you *reached for* rather than knew. Wrong-kanji substitution produces a plausible-looking non-word, and it is invisible while composing.
 2. **Is it Japanese, or English wearing Japanese?** If a sentence maps suspiciously one-to-one onto an English sentence, it is a calque. Rewrite from the meaning, not from the English.
@@ -33,7 +45,7 @@ Spend the effort here. Do **five separate reads, one lens each**, on every free-
 4. **Is the terminology the established one?** An invented compound where the surrounding text already has a name for the thing is the single largest source of the defects above.
 5. **Is anything padding?** Stacked nouns, nominalization, and restating the previous sentence all read as machine output even when every word is correct.
 
-Each class below is a real defect that reached a stored Checkpoint, with the wording it should have had:
+The classes below are the ones observed in **Japanese** content; each is a real defect that reached a stored Checkpoint, with the wording it should have had. When the content language is not Japanese, the five lenses still apply — the specific shapes will differ.
 
 | Lens | Written | Should be |
 |---|---|---|
