@@ -104,7 +104,9 @@ prose quoted the trigger phrase caused a cloud-chat run that authored its own co
 reported back on the PR. A user or team mention is the same class of mistake, minus the code.
 
 Name the bot and its triggers in prose instead — "the Codex trigger phrase", "a `codex review`
-comment" — and never with a literal `@`. Grep the rendered draft for `@` before posting.
+comment" — and never with a literal `@`. A code span does not neutralise it: the finding that fired the
+cloud chat had the phrase inside backticks. `post-summary.sh` enforces this by refusing any draft
+containing `@` followed by an identifier character, so a mention is a posting failure, not a surprise.
 
 ### Never paste raw command output
 

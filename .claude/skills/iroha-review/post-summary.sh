@@ -32,9 +32,40 @@ if [ "$drafted" != "$current" ]; then
   exit 1
 fi
 
-pr="$(gh pr view --json number --jq .number 2>/dev/null || true)"
-if [ -z "$pr" ]; then
-  echo "No pull request for the current branch. Create it first, then re-run this."
+# An @-mention in the body fires for real: the posting account has write access, and the Codex trigger
+# phrase in a body full of other text starts a cloud chat rather than a review (it happened on PR #191,
+# from a finding that merely quoted the phrase). The template forbids mentions, but a rule that only
+# exists in prose does not survive a generated body, so enforce it here. `@` not followed by an
+# identifier character is fine — that is how the template refers to mentions in the first place.
+if mentions="$(grep -nE '@[A-Za-z0-9]' "$draft")"; then
+  echo "Refusing to post: the draft contains an @-mention, which would notify a real account or start"
+  echo "a Codex cloud chat. Name the bot and its triggers in prose instead. Offending lines:"
+  printf '%s\n' "$mentions"
+  exit 1
+fi
+
+# Distinguish "no PR" from a lookup that failed for another reason — swallowing stderr here would
+# report "create a PR first" for what is actually an auth or connectivity problem.
+if ! pr_info="$(gh pr view --json number,baseRefName --jq '"\(.number) \(.baseRefName)"' 2>&1)"; then
+  case "$pr_info" in
+    *"no pull requests found"*)
+      echo "No pull request for the current branch. Create it first, then re-run this." ;;
+    *)
+      echo "Could not look up the pull request — this is not the same as there being none:"
+      printf '%s\n' "$pr_info" ;;
+  esac
+  exit 1
+fi
+pr="${pr_info%% *}"
+pr_base="${pr_info##* }"
+
+# The review computed its range against the default branch, so a PR targeting anything else has a
+# different diff than the one the draft describes.
+default_base="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')"
+default_base="${default_base:-main}"
+if [ "$pr_base" != "$default_base" ]; then
+  echo "Refusing to post: PR #${pr} targets '${pr_base}', but the review computed its range against"
+  echo "'${default_base}'. Re-review against the PR's actual base before posting."
   exit 1
 fi
 
