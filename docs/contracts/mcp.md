@@ -13,7 +13,7 @@ The iroha MCP server is the stable agent-facing API shared by Claude Code and Co
 - Transport: stdio.
 - Runtime: bundled Node.js ESM entrypoint.
 - Server name: `iroha`.
-- Protocol SDK baseline: `@modelcontextprotocol/sdk` 1.29.0.
+- Protocol SDK baseline: `@modelcontextprotocol/sdk` 1.30.0.
 - One server process per agent host configuration.
 - Open the repository DB lazily after resolving an MCP root or request path.
 - Write protocol logs only to stderr. Stdout is reserved for MCP frames.

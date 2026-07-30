@@ -99,7 +99,7 @@ iroha の開発に使っている技術を「何か / iroha での役割 / い�
 
 | 技術 | 何か / iroha での役割 | いつ使う（トリガー） |
 |---|---|---|
-| **@modelcontextprotocol/sdk 1.29** | Claude Code / Codex へ検索等のツールを公開。**stdio トランスポート**（HTTP transport は不使用＝該当脆弱性に到達しない） | `packages/mcp`。ツールは `dispatchTool` 経由、承認は human 経路（`approveCandidate`） |
+| **@modelcontextprotocol/sdk 1.30** | Claude Code / Codex へ検索等のツールを公開。**stdio トランスポート**（HTTP transport は不使用＝該当脆弱性に到達しない） | `packages/mcp`。ツールは `dispatchTool` 経由、承認は human 経路（`approveCandidate`） |
 
 ## 10. Forge（GitHub 連携、WP-12）
 

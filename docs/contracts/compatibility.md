@@ -21,7 +21,7 @@ This document fixes the runtime, package, operating-system, plugin-surface, and 
 | Hono | 4.12.30 | exact through pnpm catalog |
 | Zod | 4.4.3 | exact through pnpm catalog |
 | `@libsql/client` | 0.17.4 | exact through pnpm catalog |
-| MCP TypeScript SDK | 1.29.0 | exact through pnpm catalog |
+| MCP TypeScript SDK | 1.30.0 | exact through pnpm catalog |
 | Vitest | 4.1.10 | exact through pnpm catalog |
 | Playwright | 1.61.1 | exact through pnpm catalog |
 | tsdown | 0.22.9 | exact through pnpm catalog |
