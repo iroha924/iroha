@@ -7,11 +7,13 @@ import {
   type RelationType,
 } from "@iroha/storage";
 import { runIdempotentWrite } from "./idempotency.js";
+import { type FieldRedaction, redactField } from "./redact.js";
 import { verifySessionToken } from "./verify-session-token.js";
 import { withMcpRepository } from "./with-repository.js";
 
 export interface McpLinkEntitiesData {
   relationId: TypedId<"rel">;
+  redactions: FieldRedaction[];
   deduplicated: boolean;
 }
 
@@ -32,7 +34,9 @@ const OPERATION = "link_entities";
 
 function storedToData(responseJson: string): McpLinkEntitiesData {
   const parsed = JSON.parse(responseJson) as McpLinkEntitiesData;
-  return { ...parsed, deduplicated: true };
+  // A row stored before `redactions` existed (an idempotency retry across an
+  // upgrade) lacks the field, which the type promises is an array.
+  return { ...parsed, redactions: parsed.redactions ?? [], deduplicated: true };
 }
 
 /**
@@ -81,6 +85,17 @@ export async function mcpLinkEntities(
         return err(new IrohaErrorClass("NOT_FOUND", "toEntityId does not exist"));
       }
 
+      // `evidence` is unconstrained agent free text and is stored at rest in
+      // `relations.source_ref`, so it is scanned before the insert like every
+      // other local-write tool's free-text fields (contracts/mcp.md §8). A
+      // candidate redacts and reports rather than rejecting, unlike a canonical
+      // write; a scanner failure is an error, so nothing is stored unscanned.
+      const evidence = await redactField("evidence", input.evidence);
+      if (!evidence.ok) {
+        return err(evidence.error);
+      }
+      const redactions = evidence.value.redaction === undefined ? [] : [evidence.value.redaction];
+
       const relationId = makeTypedId("rel", ctx.clock, ctx.random);
       const nowIso = ctx.clock.now().toISOString();
 
@@ -102,7 +117,7 @@ export async function mcpLinkEntities(
             relationType: input.relationType,
             toEntityId: input.toEntityId,
             sourceKind: "inferred",
-            sourceRef: input.evidence,
+            sourceRef: evidence.value.value,
             confidence: input.confidence,
             createdAt: nowIso,
           });
@@ -122,7 +137,11 @@ export async function mcpLinkEntities(
           if (!stored.ok) {
             return err(stored.error);
           }
-          return ok({ relationId: stored.value?.id ?? relationId, deduplicated: false });
+          return ok({
+            relationId: stored.value?.id ?? relationId,
+            redactions,
+            deduplicated: false,
+          });
         },
       });
     },

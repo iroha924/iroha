@@ -8,6 +8,12 @@ import { mcpLinkEntities } from "./link-entities.js";
 const clock = new FixedClock(new Date("2026-01-01T00:00:00.000Z"));
 const random = new CryptoRandomSource();
 
+// Same known-detected private-key shape `redact.test.ts` uses, so this test does
+// not depend on the added `ist_` pattern rule.
+const PRIVATE_KEY_BODY =
+  "MIIEowIBAAKCAQEA1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyz+/==";
+const SECRET = `-----BEGIN RSA PRIVATE KEY-----\n${PRIVATE_KEY_BODY}\n-----END RSA PRIVATE KEY-----`;
+
 async function seedEntity(dbPath: string, repo: McpTestRepo, id: string): Promise<void> {
   const db = await openDatabase(dbPath);
   if (!db.ok) {
@@ -180,5 +186,47 @@ describe("mcpLinkEntities", () => {
     // already exists → the second call must return the SAME real relation id
     // (the ON CONFLICT DO NOTHING insert stored nothing new), not a phantom.
     expect(second.value.relationId).toBe(first.value.relationId);
+  }, 15000);
+
+  it("redacts a secret in evidence instead of storing it in relations.source_ref", async () => {
+    repo = await setupMcpRepo(random);
+    const seedDb = await openDatabase(repo.dbPath);
+    if (!seedDb.ok) return;
+    const seeded = await seedSessionWithToken(seedDb.value, repo, clock, random);
+    await closeDatabase(seedDb.value);
+
+    const fromId = makeTypedId("dec", clock, random);
+    const toId = makeTypedId("dec", clock, random);
+    await seedEntity(repo.dbPath, repo, fromId);
+    await seedEntity(repo.dbPath, repo, toId);
+
+    const result = await mcpLinkEntities({
+      cwd: repo.repoDir,
+      clock,
+      random,
+      sessionToken: seeded.token,
+      idempotencyKey: "idem-link-000000000020",
+      fromEntityId: fromId,
+      relationType: "RELATED_TO",
+      toEntityId: toId,
+      evidence: `linked per the deploy notes ${SECRET}`,
+      confidence: 0.9,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.redactions).toEqual([
+      { field: "evidence", reason: expect.stringContaining("privatekey") },
+    ]);
+
+    const db = await openDatabase(repo.dbPath);
+    if (!db.ok) return;
+    const neighbors = await getNeighbors(db.value, fromId, {});
+    await closeDatabase(db.value);
+    expect(neighbors.ok).toBe(true);
+    if (!neighbors.ok) return;
+    const sourceRef = neighbors.value[0]?.sourceRef ?? "";
+    expect(sourceRef).not.toContain(PRIVATE_KEY_BODY);
+    expect(sourceRef).toContain("redacted");
   }, 15000);
 });

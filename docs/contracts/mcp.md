@@ -391,7 +391,19 @@ interface LinkEntitiesInput {
 }
 ```
 
+Output data:
+
+```ts
+interface LinkEntitiesData {
+  relationId: string;
+  redactions: Array<{ field: string; reason: string }>;
+  deduplicated: boolean;
+}
+```
+
 Self-relations are rejected except `RELATED_TO`. Unknown entity IDs are rejected; tools do not invent placeholder entities.
+
+`evidence` is agent free text stored at rest in `relations.source_ref`, so it is secret-scanned before the insert (§8). A finding replaces the whole field with a placeholder and is reported in `redactions[]`; unlike a canonical write, the call still succeeds.
 
 ## 7. Knowledge proposal contract
 
