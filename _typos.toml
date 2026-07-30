@@ -7,6 +7,13 @@
 ignore-hidden = false
 extend-exclude = [".git/"]
 
+# An ALL-CAPS token with a lowercase plural `s` is split before the final capital
+# and the prefix matched against the dictionary, so the correct word `CHECKs` is
+# reported as a typo of `CHECK` on `CHEC`. Suppressing the split also skips a
+# genuine all-caps typo ending in `s`; every finding of this shape here was false.
+[default]
+extend-ignore-re = ["\\b[A-Z]{2,}s\\b"]
+
 # typos (crate-ci/typos) configuration.
 # Rule reference: https://github.com/crate-ci/typos
 #

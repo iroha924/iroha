@@ -200,7 +200,7 @@ the **trigger** (when to run it).
   local convenience, deliberately **not** a CI job (it is slow and network-bound).
 - **Convention:** `verdaccio` is spawned as a binary from the zx script (not imported), and `zx` runs
   the script — knip resolves both, so no `knip.json` entry is needed (unlike a purely runtime-string
-  dependency). Both are pinned in the strict catalog (`verdaccio@6.8.0`, `zx@8.8.5`).
+  dependency). Both are pinned in the strict catalog (`verdaccio@6.9.0`, `zx@8.8.5`).
 
 ## Local CI reproduction — act
 
