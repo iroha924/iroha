@@ -289,6 +289,32 @@ const negativeFixtures: Array<[string, unknown]> = [
       review_learning: { category: "vibes" },
     }),
   ],
+  // The three shapes the JSON Schema accepted while Zod rejected them (#169).
+  // RFC 3339 `date-time` permits a leap second, `{"type":"integer"}` has no
+  // upper bound, and `format: uri` accepts an empty authority — none of which
+  // `z.iso.datetime()`, `.int()`, or `z.url()` allow. The fixture guard is what
+  // keeps the pair from drifting apart again, so these have to stay.
+  ["approved_at leap second", withFrontmatter({ approved_at: "2026-12-31T23:59:60Z" })],
+  ["created_at hour 24", withFrontmatter({ created_at: "2026-07-18T24:00:00Z" })],
+  ["revision past MAX_SAFE_INTEGER", withFrontmatter({ revision: 1e21 })],
+  [
+    "sources[].line_start past MAX_SAFE_INTEGER",
+    withFrontmatter({
+      sources: [{ type: "file", ref: "packages/a.ts", path: "packages/a.ts", line_start: 1e21 }],
+    }),
+  ],
+  [
+    "sources[].url scheme-only",
+    withFrontmatter({ sources: [{ type: "url", ref: "r", url: "http://" }] }),
+  ],
+  [
+    "session.run_count past MAX_SAFE_INTEGER",
+    doc({
+      ...baseFields({ id: `ses_${ULID_A}`, title: "Session" }),
+      type: "session_summary",
+      session: { platforms: ["claude_code"], run_count: 1e21, outcome: "completed" },
+    }),
+  ],
 ];
 
 describe("canonical document schema: AJV/Zod equivalence", () => {
@@ -303,6 +329,37 @@ describe("canonical document schema: AJV/Zod equivalence", () => {
     it(`rejects (both validators): ${label}`, () => {
       expect(ajvValidate(fixture)).toBe(false);
       expect(zodValid(fixture)).toBe(false);
+    });
+  }
+
+  // The bounds added for #169 sit one step above these values, so a tighter
+  // bound would start rejecting legitimate documents. Asserting the accepted
+  // side is what makes the negative fixtures above a bound rather than a ban.
+  const boundaryFixtures: Array<[string, unknown]> = [
+    ["revision at MAX_SAFE_INTEGER", withFrontmatter({ revision: Number.MAX_SAFE_INTEGER })],
+    [
+      "timestamp with no fractional seconds",
+      withFrontmatter({ approved_at: "2026-07-18T00:00:00Z" }),
+    ],
+    [
+      "timestamp with six fractional digits",
+      withFrontmatter({ approved_at: "2026-07-18T00:00:00.123456Z" }),
+    ],
+    ["second 59 and hour 23", withFrontmatter({ approved_at: "2026-12-31T23:59:59Z" })],
+    [
+      "url with an empty host but a path",
+      withFrontmatter({ sources: [{ type: "url", ref: "r", url: "http:///path" }] }),
+    ],
+    [
+      "non-http scheme with no authority",
+      withFrontmatter({ sources: [{ type: "url", ref: "r", url: "urn:isbn:0451450523" }] }),
+    ],
+  ];
+
+  for (const [label, fixture] of boundaryFixtures) {
+    it(`accepts (both validators): ${label}`, () => {
+      expect(ajvValidate(fixture)).toBe(true);
+      expect(zodValid(fixture)).toBe(true);
     });
   }
 });

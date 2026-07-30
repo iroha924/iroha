@@ -186,6 +186,16 @@ const negativeFixtures: Array<[string, unknown]> = [
     "proposal confidence out of range",
     baseInput({ proposals: [{ ...minimalProposal, confidence: 1.5 }] }),
   ],
+  // Shapes the JSON Schema accepted while Zod rejected them (#169): `integer`
+  // carries no upper bound, and `format: uri` accepts an empty authority.
+  [
+    "validation[].durationMs past MAX_SAFE_INTEGER",
+    baseInput({ validation: [{ result: "passed", durationMs: 1e21 }] }),
+  ],
+  [
+    "references[].url scheme-only",
+    baseInput({ references: [{ type: "url", ref: "r", url: "http://" }] }),
+  ],
 ];
 
 describe("checkpoint input schema: AJV/Zod equivalence", () => {
@@ -200,6 +210,25 @@ describe("checkpoint input schema: AJV/Zod equivalence", () => {
     it(`rejects (both validators): ${label}`, () => {
       expect(ajvValidate(fixture)).toBe(false);
       expect(zodValid(fixture)).toBe(false);
+    });
+  }
+
+  // The accepted side of the #169 bounds — a tighter bound would reject these.
+  const boundaryFixtures: Array<[string, unknown]> = [
+    [
+      "validation[].durationMs at MAX_SAFE_INTEGER",
+      baseInput({ validation: [{ result: "passed", durationMs: Number.MAX_SAFE_INTEGER }] }),
+    ],
+    [
+      "references[].url with an empty host but a path",
+      baseInput({ references: [{ type: "url", ref: "r", url: "http:///path" }] }),
+    ],
+  ];
+
+  for (const [label, fixture] of boundaryFixtures) {
+    it(`accepts (both validators): ${label}`, () => {
+      expect(ajvValidate(fixture)).toBe(true);
+      expect(zodValid(fixture)).toBe(true);
     });
   }
 });
