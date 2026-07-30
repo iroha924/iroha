@@ -1,7 +1,7 @@
 ---
 name: iroha-review
 description: |
-  The self-review pipeline for this repository — the only one. Targets committed changes (default: everything since the merge-base with main), reviewing them through a multi-stage pipeline: deterministic checks (lint/typecheck/test/build/secret grep) → launch fresh-context reviewers (security-reviewer / spec-compliance-reviewer / adversarial-reviewer, plus security-diff-reviewer when the diff touches packages/git, packages/forge*, or packages/adapter-*) in parallel → reproduce-and-verify HIGH/CRITICAL findings with finding-validator. Can be invoked at any time, with or without a PR, and is what to run before pushing a fix to a security-sensitive package. If the working tree has uncommitted changes, use AskUserQuestion to confirm whether to include them. Zero side effects (no commit, push, or state writes), fail-open (this skill itself does not block the merge; it only reports findings). Invoked by "self-review this", "review this", or "/iroha-review". Not for reviewing a GitHub pull request — use `/review` for that; this reviews the local branch's diff and needs no PR.
+  The self-review pipeline for this repository — the only one. Targets committed changes (default: everything since the merge-base with main), reviewing them through a multi-stage pipeline: deterministic checks (lint/typecheck/test/build/secret grep) → launch fresh-context reviewers (security-reviewer / spec-compliance-reviewer / adversarial-reviewer, plus security-diff-reviewer when the diff touches packages/git, packages/forge*, or packages/adapter-*) in parallel → reproduce-and-verify HIGH/CRITICAL findings with finding-validator. Can be invoked at any time, with or without a PR, and is what to run before pushing a fix to a security-sensitive package. If the working tree has uncommitted changes, use AskUserQuestion to confirm whether to include them. No commit, push, or PR creation — its only write is the PR-comment draft inside `.git/`, which is never committed. fail-open (this skill itself does not block the merge; it only reports findings). Invoked by "self-review this", "review this", or "/iroha-review". Not for reviewing a GitHub pull request — use `/review` for that; this reviews the local branch's diff and needs no PR.
 user-invocable: true
 allowed-tools: Bash(git rev-parse *) Bash(git symbolic-ref *) Bash(git show-ref *) Bash(git merge-base *) Bash(git diff *) Bash(git status *) Bash(pnpm lint) Bash(pnpm lint:packages) Bash(pnpm knip) Bash(pnpm typecheck) Bash(pnpm test) Bash(pnpm build) Bash(grep *) Read Grep Glob AskUserQuestion Agent(security-reviewer) Agent(spec-compliance-reviewer) Agent(adversarial-reviewer) Agent(security-diff-reviewer) Agent(finding-validator) ReportFindings
 ---
@@ -15,7 +15,7 @@ The *thinking* that belongs before a security-sensitive change — what a patter
 ## Approach
 
 - **By default, only committed changes are in scope**. If there are uncommitted changes, always confirm with the user (do not include or exclude them on your own).
-- **Zero side effects**. Do not create state files like `.mumei`, and do not commit or push. Report the findings and stop.
+- **One write, nothing else**. The only file this skill creates is the Step 6 PR-comment draft inside `.git/`, which is never committed. Do not create state files like `.mumei`, and do not commit, push, or create a PR.
 - **fail-open**. This skill itself is not what decides "whether the merge is allowed". It presents the severity of the findings and the verification results; the user decides whether to act on them.
 - **fresh-context principle**. Each reviewer Agent is invoked without the context of this conversation (why this change was made). Reviewing within the same context introduces confirmation bias (the same reason as `.claude/agents/security-diff-reviewer.md`).
 - **The tree stays frozen while reviewers run.** They are given a commit range and read it with `git diff`, so uncommitted edits are outside their scope — but a reviewer that also opens a file sees whatever is on disk *now*. Do not edit tracked files between launching Step 3 and collecting its results; if you must, commit first and re-run against the new range.
@@ -104,7 +104,7 @@ The reviewers run blind to each other, so expect overlap — in practice three o
 
 ## Step 4 — Adjudicate the findings that need it
 
-**Validate only a HIGH/CRITICAL finding that arrived without a reproduction.** A reviewer that ran the failure and pasted the output has already done this work; sending it to `finding-validator` re-derives a demonstrated fact.
+**Validate only a HIGH/CRITICAL finding that arrived without a reproduction.** A reviewer that ran the failure and pasted the output has already done this work; sending it to `finding-validator` re-derives a demonstrated fact. The reviewers describe consequences, not levels — you assign the severity, using the table in `pr-comment-template.md`, which is what makes this gate reproducible instead of a guess.
 
 ```text
 Agent(finding-validator, prompt: "<one finding: file, line, failure scenario>")
@@ -129,14 +129,33 @@ Alongside it, state in the conversation:
 1. The review scope (committed only / including uncommitted, diff size, base ref).
 2. The Step 2 deterministic results — what passed, what failed.
 3. **What is not covered.** Be specific: "Windows-only behaviour was not verified on this machine (macOS)", "no live Forge credentials, so the GitHub path is untested". Do not paper over what you do not know (the evaluation-honesty principle in `~/.claude/CLAUDE.md`).
-4. That this skill changed nothing (no commit, no push).
+4. That this skill made no commit and no push — its only write is the Step 6 draft, and the path to it.
 
-**If the user has already asked for the findings to be fixed** — they said "review and fix", or the review is running inside work they told you to finish — then report first, exactly as above, and continue into the fixes without waiting for a second instruction. The "wait for instructions" default exists so a review does not become an unrequested rewrite; it is not a reason to ignore an instruction you already have. Fix in severity order, apply Step 3.5's folding, and verify each fix goes red on the pre-fix code before claiming it works.
+**If the user has already asked for the findings to be fixed** — they said "review and fix", or the review is running inside work they told you to finish — then report first, exactly as above, and continue into the fixes without waiting for a second instruction. The "wait for instructions" default exists so a review does not become an unrequested rewrite; it is not a reason to ignore an instruction you already have. Fix in severity order, apply Step 3.5's folding, and verify each fix goes red on the pre-fix code before claiming it works. Write the draft (Step 6) *before* starting the fixes, then as each fix lands update its Outcome row **and** the draft's `iroha-review-draft-head` marker to the new `HEAD`, and list the fix commits as not themselves reviewed. The reviewed range stays as it was — the reviewers never saw the fixes — so both facts have to be recorded separately, or the comment either cannot be posted or claims coverage it does not have.
+
+## Step 6 — Draft the PR comment
+
+Otherwise the review is gone once the session moves on, and it holds the one thing a human reviewer cannot reconstruct from the diff: what was deliberately **not** covered, and which findings were raised and then fixed.
+
+Render `.claude/skills/iroha-review/pr-comment-template.md` from the same data you just passed to `ReportFindings` — the tool call and the draft must not disagree — and `Write` it to the draft path, then print that path:
+
+```bash
+draft="$(git rev-parse --git-path iroha-review-draft.md)"
+case "$draft" in /*) ;; *) draft="$PWD/$draft" ;; esac   # Write needs an absolute path
+echo "$draft"
+```
+
+- Record **two SHAs**, as the template requires: the reviewed range stays whatever the reviewers read, and the hidden `iroha-review-draft-head` marker is the commit the draft is current as of. `post-summary.sh` compares that marker against `HEAD`, so re-render it on every update to the draft.
+- `--git-path` is how the product resolves its own local state (`packages/git/src/location.ts`, `docs/contracts/database.md` §2), so the draft stays correct under a linked worktree or a separate git dir and needs no `.gitignore` entry. It deliberately does *not* go under `<git-path iroha>/`, which is the product's local-state namespace — dev tooling does not squat in product state.
+- **The write may prompt, and that is not something to engineer away.** `.git/` is a protected path, and permission allow-rules are not consulted for one, so adding `Write` (or `Edit(//…)`) to `allowed-tools` does not reliably suppress the prompt here — what it does reliably is pre-approve unprompted writes to every *other* path for the rest of the turn. Reproduced against Claude Code 2.1.220: a skill granted bare `Write` wrote an out-of-project absolute path unprompted, while the same grant was refused for a path under `.git/`. The observed behaviour depends on the session's permission mode. If the write is refused, no draft means no comment — the documented no-comment case, not a failure.
+- **Write no draft when Step 3 launched zero reviewers *and* Step 2 was clean** (the first row of Step 3's table). A passing check belongs in the PR body's "How verified" section, and a comment saying no reviewers ran is noise. But a Step 2 *failure* — a failed check, a secret-pattern match — is a confirmed finding, and the template requires it in the findings list; a docs-only diff does not make it disappear. Draft in that case.
+- A review that found nothing still gets a draft (`Findings: none`) — "Not covered" is the part worth posting.
+- This skill does not post it. Posting is `bash .claude/skills/iroha-review/post-summary.sh`, run after `gh pr create` per `CLAUDE.md` and `AGENTS.md`.
 
 ## What this skill does not do
 
 - Do not commit, push, or create a PR.
-- Do not create state files like `.mumei`.
+- Do not create state files like `.mumei`. The Step 6 draft inside `.git/` is the one exception, and it is never committed.
 - Do not auto-fix findings **unless the user has already asked for it** (Step 5) — a review must not become an unrequested rewrite.
 - Do not treat a high-severity finding as confirmed on reasoning alone. Either its reporter reproduced it or `finding-validator` did (Step 4).
 - Do not tell a reviewer to be conservative, to report only high-confidence findings, or to filter its own output. Suppression instructions are followed literally and cost real findings; filtering is Step 4's job, not the reviewer's.
@@ -162,10 +181,11 @@ diff: 8 files changed, +640/-12 → new logic in one package, no security-sensit
 
 Step 2 deterministic checks: lint OK / typecheck OK / test OK (83 passed) / build OK / secret patterns: none detected
 
-[ReportFindings: 1 finding (MEDIUM, verdict: CONFIRMED), or an empty array]
+[ReportFindings: 1 finding (HIGH, verdict: CONFIRMED), or an empty array]
 
 Duplicates collapsed: 2 (both reviewers raised the same unchecked boundary — corroborated, counted once)
 Not covered: Windows-specific newline/path behavior was not verified in this environment (macOS).
 
-This skill changed nothing (no commit, no push).
+PR comment draft: /path/to/repo/.git/iroha-review-draft.md (post it after `gh pr create`)
+This skill made no commit and no push.
 ```

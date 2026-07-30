@@ -1,3 +1,12 @@
+[files]
+# typos skips hidden paths by default, which silently excluded all of `.claude/**`
+# and `.github/**` — 30 files, and the largest English prose corpus in this repo
+# outside `docs/` (see .claude/rules/distributable-language.md). That gap applied
+# to CI's docs-lint job too, so nothing checked them. Git internals are not prose,
+# so `.git/` is excluded explicitly; without it the walk picks up ~682 files there.
+ignore-hidden = false
+extend-exclude = [".git/"]
+
 # typos (crate-ci/typos) configuration.
 # Rule reference: https://github.com/crate-ci/typos
 #

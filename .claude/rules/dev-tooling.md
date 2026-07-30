@@ -32,9 +32,9 @@ the **trigger** (when to run it).
   `pnpm install --frozen-lockfile` in CI (`ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION`). Pin a version
   that is already older than the cutoff, or add a `minimumReleaseAgeExclude` entry with a reason.
 - **typos allowlist.** A tool whose name looks like a misspelling (e.g. `sherif` → "sheriff") trips the
-  CI `typos` check. Add it to `_typos.toml` `[default.extend-words]` as `name = "name"`. `typos` is a
-  CI-only gate (not in the pre-commit/pre-push hooks), so a local `pnpm install` will not catch this —
-  the failure only shows up in the `docs-lint` job.
+  `typos` check. Add it to `_typos.toml` `[default.extend-words]` as `name = "name"`. `typos` is not an
+  npm dependency, so `pnpm install` does not provide it — see the typos entry below for how it is
+  installed and where it runs.
 
 ## Toolchain pinning — mise
 
@@ -91,6 +91,37 @@ the **trigger** (when to run it).
     report it as an unlisted binary.
 - When knip flags a genuinely unused export that is still used **within its own file**, remove the
   `export` keyword (make it file-local) rather than deleting the symbol.
+
+## Spell check — typos
+
+- **What:** `pnpm typos` runs [crate-ci/typos](https://github.com/crate-ci/typos), a source-code spell
+  checker, against the `_typos.toml` allowlist. It checks code and prose alike, not just `docs/`.
+  ~30ms on this repo.
+- **Trigger:** it runs itself — the `pre-commit` hook checks the **staged files**, and CI's `docs-lint`
+  job checks the tree. Run `pnpm typos` by hand when you want the whole tree without committing.
+- **Install it:** `brew install typos-cli` on macOS; on Linux/WSL2 (both Tier 1 per
+  `docs/contracts/compatibility.md`) use `cargo install typos-cli` or a
+  [release binary](https://github.com/crate-ci/typos/releases). It is a Rust binary, like `semgrep` is
+  a pipx tool — hence the `knip.json` `ignoreBinaries` entry.
+- **Hidden paths are skipped by default, so `_typos.toml` turns that off.** Without
+  `[files] ignore-hidden = false`, all of `.claude/**` and `.github/**` — 30 files, the largest English
+  prose corpus here outside `docs/` — is silently unchecked, **in CI too** (the pinned action runs
+  `typos .` with stock defaults). `.git/` is excluded explicitly, since enabling hidden paths otherwise
+  pulls in ~682 files of Git internals. The hook is unaffected either way: it passes staged paths
+  explicitly, and an explicit path is checked regardless of being hidden.
+- **Not installed is not a failure.** The hook degrades to a warning rather than blocking, the same way
+  `secret-scan` treats `gitleaks`, because CI's `docs-lint` job remains the authoritative gate. So a
+  contributor without the binary is never blocked, and never silently protected either.
+- **`typos` resolves its config from each target file's location — your cwd is irrelevant.** Measured:
+  a file inside the repo passes even when you run from `/tmp`, and a file in `/tmp` fails even when you
+  run from the repo (`sherif` flagged despite the allowlist). So never point it at paths outside the
+  repository and read the result as meaningful.
+- **A version mismatch is the first thing to check when a result surprises you.** The dictionary changes
+  monthly and nothing keeps brew in step with the CI pin: Renovate bumps the pinned action, brew is on
+  its own. Measured on this tree, typos 1.47.0 flags `inferrable` and `requestors`, which 1.48.0
+  accepts — so an out-of-date local install blocks a commit CI would pass, and the output gives no hint
+  that the version is why. Compare `typos --version` against the pin in `.github/workflows/ci.yml`.
+- A false positive belongs in `_typos.toml` with a one-line reason, not in a hook exclusion.
 
 ## Dependency upgrades — taze
 

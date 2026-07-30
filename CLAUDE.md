@@ -72,6 +72,24 @@ pnpm test:package
 
 Do not claim a command passed unless it was executed. Record skipped verification and the reason in the final response and in the Checkpoint fixture when applicable.
 
+Immediately after `gh pr create`, post the development self-review as a PR comment — a posted
+self-review is evidence, a checkbox is not:
+
+```bash
+bash .claude/skills/iroha-review/post-summary.sh
+```
+
+That script is the only place the posting rules live, so the two do not drift. It exits quietly when
+`/iroha-review` left no draft (the review is optional — no draft means no comment, never an empty
+placeholder), refuses when the draft is not current with `HEAD` rather than attaching a summary that
+misdescribes the diff, and identifies the existing comment by its hidden
+`<!-- iroha-review-summary -->` marker — among the comments your own account owns — so a later run
+updates it in place, and deletes the draft once the post succeeds so nothing accumulates in `.git/`.
+Do not reach for `gh pr comment --edit-last` instead: it targets your *last* comment, which after a
+Codex trigger comment or a triage reply is not the summary. The body must contain no `@`-mention at
+all — the Codex trigger phrase inside a summary starts a cloud chat. Format:
+`.claude/skills/iroha-review/pr-comment-template.md`.
+
 After pushing to a pull request, a green `gh pr checks` is not the whole verdict: the Codex reviewer
 appears in no status check at all. Run the `pr-review-status` skill before reporting the work as
 done — it also decides whether a re-review is worth its rate limit, and how to reply without

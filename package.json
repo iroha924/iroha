@@ -14,6 +14,7 @@
     "lint:packages": "sherif",
     "knip": "knip",
     "semgrep": "semgrep --config .semgrep/ --error .",
+    "typos": "typos",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:contracts": "turbo run test:contracts",
