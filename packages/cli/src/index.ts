@@ -13,7 +13,7 @@ import { syncCommand } from "./commands/sync.js";
 import { muted, title } from "./render.js";
 import { renderUsage, renderValidationErrors, validationErrorsRendered } from "./usage.js";
 
-export const CLI_VERSION = "0.6.1";
+export const CLI_VERSION = "0.6.2";
 
 const mainCommand = define({
   name: "iroha",

@@ -9,6 +9,43 @@ Entries are written by hand as part of the release, alongside the four version
 strings (`PLUGIN_VERSION`, the plugin `package.json`, `CLI_VERSION`, `SERVER_VERSION`)
 that `manifests.test.ts` asserts agree.
 
+## 0.6.2
+
+- **The dashboard's front page now shows the Checkpoint your agent is handed
+  back.** Of everything a Checkpoint stores, only its proposals reach you in the
+  review queue; the `summary` and `unresolved` items are kept exactly as written
+  and read back to the agent when a session starts after a compaction or a
+  resume, and whenever it asks for its own state. Until now nothing displayed
+  them, so there was no way to notice a summary that had gone wrong — or an
+  unresolved entry describing work that is actually finished, which tells the
+  next session that completed work still needs action.
+
+  Overview carries the latest one, read-only: its id, outcome, session, summary,
+  and each unresolved item. One row, no history and no list — browsing an
+  activity log is still not what this product is for.
+
+- **`@modelcontextprotocol/sdk` moves to 1.30.0**, which widens its
+  `@hono/node-server` range past GHSA-frvp-7c67-39w9 and so retires the override
+  that forced a patched 2.x. `@hono/node-server` resolves to a single 2.0.11 in
+  the tree with no 1.x anywhere. Nothing about iroha's MCP surface changes; the
+  server still uses the stdio transport.
+
+- **Two configuration keys were doing nothing, and one of them was documented as
+  a working safeguard.** `pnpm-workspace.yaml` carried a
+  `minimumReleaseAgeExclude` list with no `minimumReleaseAge` for it to exclude
+  from, so `pnpm install` never applied a release-age floor — while the
+  contributor docs described exactly such a gate failing CI. The dead list is
+  gone and the docs now say what is true: the only age policy is Renovate's, it
+  delays when the bot proposes a bump, and it places no constraint on a bump
+  written by hand.
+
+- **Contract fixes with no runtime effect.** The published JSON Schemas rejected
+  a leap-second timestamp and an unbounded integer that the Zod validators
+  already refused, so a third-party tool validating a `.iroha/` file now agrees
+  with what iroha will actually read. Two divergences are deliberately left and
+  recorded in the schemas themselves: `url` is a different grammar on each side,
+  and `maxLength` counts code points where Zod counts UTF-16 units.
+
 ## 0.6.1
 
 - **Your agent is now asked to proofread a Checkpoint before saving it.** If your
