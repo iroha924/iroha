@@ -397,9 +397,11 @@ Output data:
 interface LinkEntitiesData {
   relationId: string;
   redactions: Array<{ field: string; reason: string }>;
-  deduplicated: boolean;
+  deduplicated: boolean;                // true only on an idempotency-key retry
 }
 ```
+
+`deduplicated: false` does not promise a relation was created. This is the only tool with a second de-duplication mechanism the flag does not describe: the `(from, type, to, source_kind)` unique constraint. A call whose tuple already exists returns that tuple's `relationId` with `deduplicated: false`, having written nothing — and, because the scan runs before the insert, it still reports any `redactions[]` for evidence that was never stored. To learn whether this call is the one that created the relation, compare the returned `relationId` against the one it generated.
 
 Self-relations are rejected except `RELATED_TO`. Unknown entity IDs are rejected; tools do not invent placeholder entities.
 
@@ -442,7 +444,7 @@ A `guardrail` proposal without a machine-evaluable guard spec is invalid. A prop
 - Unknown fields are rejected.
 - Repository paths must resolve within the Git worktree after realpath normalization.
 - Absolute paths are converted to repository-relative paths before persistence.
-- Tool commands in Checkpoints remain local and undergo secret redaction.
+- Tool commands in Checkpoints remain local and undergo secret redaction. So does every other unconstrained free-text field a local-write tool stores, including `link_entities`' `evidence` (§6.8) — a scanner failure is an error, so a field is never stored unscanned.
 - Prompt/transcript content is not accepted by any MCP tool field.
 - Text sent to an Embedding provider is recorded by content hash and category, not plaintext log.
 - Results may include approved canonical body text because the user explicitly chose retrieval; they never include local raw events.

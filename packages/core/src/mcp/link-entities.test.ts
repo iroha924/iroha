@@ -190,8 +190,11 @@ describe("mcpLinkEntities", () => {
 
   it("redacts a secret in evidence instead of storing it in relations.source_ref", async () => {
     repo = await setupMcpRepo(random);
+    // `throw`, not `return`, the way `seedEntity` does: an early return would make
+    // this test green with no assertion run, and what it asserts is that a
+    // credential never reaches the stored evidence.
     const seedDb = await openDatabase(repo.dbPath);
-    if (!seedDb.ok) return;
+    if (!seedDb.ok) throw new Error(`open failed: ${seedDb.error.code}`);
     const seeded = await seedSessionWithToken(seedDb.value, repo, clock, random);
     await closeDatabase(seedDb.value);
 
@@ -213,18 +216,18 @@ describe("mcpLinkEntities", () => {
       confidence: 0.9,
     });
 
-    expect(result.ok).toBe(true);
+    expect(result.ok, result.ok ? "" : result.error.message).toBe(true);
     if (!result.ok) return;
     expect(result.value.redactions).toEqual([
       { field: "evidence", reason: expect.stringContaining("privatekey") },
     ]);
 
     const db = await openDatabase(repo.dbPath);
-    if (!db.ok) return;
+    if (!db.ok) throw new Error(`open failed: ${db.error.code}`);
     const neighbors = await getNeighbors(db.value, fromId, {});
     await closeDatabase(db.value);
-    expect(neighbors.ok).toBe(true);
-    if (!neighbors.ok) return;
+    if (!neighbors.ok) throw new Error(`getNeighbors failed: ${neighbors.error.code}`);
+    expect(neighbors.value).toHaveLength(1);
     const sourceRef = neighbors.value[0]?.sourceRef ?? "";
     expect(sourceRef).not.toContain(PRIVATE_KEY_BODY);
     expect(sourceRef).toContain("redacted");

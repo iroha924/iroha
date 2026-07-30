@@ -202,10 +202,12 @@ describe("initRepository", () => {
 
     await writeFile(
       configPath,
-      (await readFile(configPath, "utf8")).replace(
-        "  require_human_approval: true",
-        "  require_human_approval: true\n  session_auto_publish: true",
-      ),
+      (await readFile(configPath, "utf8"))
+        .replace(
+          "  require_human_approval: true",
+          "  require_human_approval: true\n  session_auto_publish: true",
+        )
+        .replace("default_language: en", "default_language: ja"),
       "utf8",
     );
 
@@ -214,7 +216,13 @@ describe("initRepository", () => {
 
     // `.iroha/config.yaml` is committed and team-shared, so a value canonical.md
     // §8 forbids has to leave the file, not just the parse.
-    expect(await readFile(configPath, "utf8")).not.toContain("session_auto_publish");
+    const after = await readFile(configPath, "utf8");
+    expect(after).not.toContain("session_auto_publish");
+    // The same guards its sibling above carries: a rewrite that fell back to
+    // serializing a fresh default config would regenerate `repository_id` and
+    // desynchronize this file from the `repositories` row for good.
+    expect(after).toContain("default_language: ja");
+    expect(after).toContain(first.value.repositoryId);
   });
 
   it("keeps the comments a team wrote around the keys it deletes", async () => {
