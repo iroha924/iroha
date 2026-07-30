@@ -561,9 +561,18 @@ async function handleToolSettled(
   return noOutput;
 }
 
+/**
+ * Kept short on purpose. Listing the fields to "include" read as an instruction
+ * to fill every one at length, which produced Checkpoints whose `summary` ran
+ * past 2,000 characters — slow to write, slow to re-read before saving, and no
+ * more useful to the next session. What earns detail is `unresolved`: it is the
+ * only field two consumers read back (`get_context` and `get_session_state`),
+ * so it is what a later session actually resumes from.
+ */
 const CONTINUATION_REASON =
   "Save an iroha checkpoint with the create_checkpoint MCP tool, then finish. " +
-  "Include implementation, validation, decisions, and unresolved items. " +
+  "Keep it short — what changed, what it verified, what is still open — and put " +
+  "the detail in unresolved, which the next session reads back. " +
   "Do not invent work that did not occur.";
 
 /**

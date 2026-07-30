@@ -5,13 +5,19 @@ description: Save a structured Checkpoint of the current work as a local iroha c
 
 # Save an iroha Checkpoint
 
-Do NOT run a CLI command for this. Call the iroha MCP tool **`create_checkpoint`** exposed by the `iroha` MCP server. Provide:
+Do NOT run a CLI command for this. Call the iroha MCP tool **`create_checkpoint`** exposed by the `iroha` MCP server.
 
-- **intent** — what this unit of work was trying to achieve;
-- **changes** — what actually changed (files, behavior);
-- **decisions** — choices made and why, with alternatives considered;
-- **unresolved** — open questions or follow-ups;
-- **proposals** — reusable knowledge (decisions, rules, patterns) worth keeping.
+**Keep it short, and spend the length where it is read back.** Only three fields reach a later session, so those are the ones worth writing carefully:
+
+| Field | Who reads it | What to put there |
+|---|---|---|
+| `unresolved` | `get_context` **and** `get_session_state` — the only field two consumers read | What a later session must pick up: the open question, the blocked step, the decision still owed. Specific enough to act on without this conversation. |
+| `summary` | `get_session_state` | What changed, what it verified, what is still open. A few sentences, not a report. |
+| `references` | `get_session_state`, but **only** `issue` and `pull_request` entries | The issue/PR this belongs to. Other types are stored and never surfaced. |
+| `objective`, `implementation`, `validation` | Nothing reads these back | A terse record — the changed file and a one-line what, the command and its result. Not prose. |
+| `proposals` | A human, in the dashboard | Reusable knowledge worth keeping past this session. The one field a reviewer actually sees. |
+
+`outcome` (`completed` / `partial` / `blocked` / `no_change`) is read back too — set it honestly; `partial` with a clear `unresolved` is more useful than `completed` on unfinished work.
 
 A Checkpoint becomes a **local, pending candidate** — it is never authoritative and is excluded from retrieval until a human approves it in the iroha dashboard. Do not write raw prompts, transcripts, secrets, or credentials into a Checkpoint.
 
