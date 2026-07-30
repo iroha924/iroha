@@ -14,41 +14,21 @@ ignoreUntil = 2027-01-25
 # expiry (has the dashboard moved to v8, or a 7.x-compatible fix appeared).
 reason = "react-router GHSA-qwww-vcr4-c8h2 is RSC-mode-only; the dashboard is a client SPA with no RSC usage, so it is unreachable. No 7.x fix exists."
 
-# The next four are all transitive dependencies of **verdaccio** — a
-# devDependency that only backs the local `pnpm release:smoke` registry
-# (see `.claude/rules/dev-tooling.md`). verdaccio is never in the published
-# `@irohalabs/iroha` artifact (bin-only) and is never run in CI (release:smoke is
-# local-only), and even locally it is a loopback registry serving our own
-# artifact + an npmjs proxy — none of these DoS/bounds bugs take attacker input.
-# So they are unreachable in anything shipped or CI-run. Re-evaluate at expiry
-# (a verdaccio bump may drop these transitives) rather than forcing a version:
-# the only uuid fix is a v8→v11 major jump that could break verdaccio itself.
-
-[[IgnoredVulns]]
-id = "GHSA-52cp-r559-cp3m"
-ignoreUntil = 2027-07-25
-# js-yaml quadratic-complexity DoS via merge keys (fixed 4.3.0), pulled by
-# @verdaccio/config. verdaccio parses only its own config / package metadata.
-reason = "js-yaml DoS reachable only through verdaccio (devDependency, local release:smoke registry); not in any shipped or CI-run code."
-
-[[IgnoredVulns]]
-id = "GHSA-h67p-54hq-rp68"
-ignoreUntil = 2027-07-25
-# js-yaml quadratic-complexity DoS in merge-key handling (fixed 4.2.0), same
-# @verdaccio/config path as GHSA-52cp-r559-cp3m.
-reason = "js-yaml DoS reachable only through verdaccio (devDependency, local release:smoke registry); not in any shipped or CI-run code."
-
 [[IgnoredVulns]]
 id = "GHSA-q8mj-m7cp-5q26"
 ignoreUntil = 2027-07-25
-# qs remotely-triggerable DoS in qs.stringify (fixed 6.15.2), pulled by
-# verdaccio's express stack. The registry is loopback-only.
-reason = "qs DoS reachable only through verdaccio (devDependency, local release:smoke registry); not in any shipped or CI-run code."
-
-[[IgnoredVulns]]
-id = "GHSA-w5hq-g745-h8pq"
-ignoreUntil = 2027-07-25
-# uuid missing buffer-bounds check in v3/v5/v6 (fixed 11.1.1), pulled by
-# verdaccio. IDs are internally generated, not attacker-controlled. The only fix
-# is uuid v8→v11 (a major jump), which is not forced to avoid breaking verdaccio.
-reason = "uuid bounds bug reachable only through verdaccio (devDependency, local release:smoke registry); not in any shipped or CI-run code, and no in-range (v8) fix exists."
+# qs remotely-triggerable DoS in qs.stringify (fixed 6.15.2), reached only through
+# **verdaccio** — a devDependency backing the local `pnpm release:smoke` registry
+# (see `.claude/rules/dev-tooling.md`). verdaccio is never in the published
+# `@irohalabs/iroha` artifact (bin-only) and never runs in CI (release:smoke is
+# local-only); locally it is a loopback registry serving our own artifact plus an
+# npmjs proxy, so the DoS takes no attacker input.
+#
+# No version bump clears it. verdaccio 6.9.0 pins `express: 4.22.2` (which wants
+# `qs ~6.15.1`, patched), but it also pins `@verdaccio/middleware: 8.1.0`, and
+# that package pins `express: 4.22.1` exactly — which wants `qs ~6.14.0` and so
+# holds 6.14.2 in the tree. `@verdaccio/middleware@8.1.0` is the latest release,
+# so the old express is not bumpable from here. Forcing qs across the 6.14→6.15
+# minor with an override was rejected: it would trade this ignore for a
+# resolution risk inside express's own parser, on a path already unreachable.
+reason = "qs DoS reachable only through verdaccio (devDependency, local release:smoke registry); not in any shipped or CI-run code, and no in-range fix exists (@verdaccio/middleware@8.1.0, the latest, pins express 4.22.1 which pins qs ~6.14.0)."

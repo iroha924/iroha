@@ -82,7 +82,7 @@ catalog:
   tsdown: 0.22.14
   typescript: 7.0.2
   unist-util-visit: 5.1.0
-  verdaccio: 6.8.0
+  verdaccio: 6.9.0
   vite: 8.1.5
   vitest: 4.1.10
   yaml: 2.9.0
