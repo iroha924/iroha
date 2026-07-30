@@ -56,6 +56,13 @@ Confirm the assembled name/version and the file list look right. `check:package`
 this CLI package (see [[dev-tooling]]). Do **not** run a real `npm publish` locally — the release goes
 through the workflow so it is attested.
 
+## Both workflow runs finish in about a minute
+
+Measured on the 0.6.1 release: the dry run took **51 s** and the publish **55 s**. That is far shorter
+than CI's `verify` matrix (roughly two minutes per runner), so do not carry CI's polling cadence over
+to the two steps below — a 30-second poll interval spends more time waiting than the run does. Check
+after about 20 seconds, then every 10.
+
 ## 4. Dry-run the Release workflow
 
 GitHub → **Actions** → **Release** → **Run workflow**: `version: X.Y.Z`, `publish: false`.
