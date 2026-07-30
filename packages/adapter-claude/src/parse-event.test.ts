@@ -186,9 +186,9 @@ describe("parseClaudeEvent — tool events and target extraction", () => {
   });
 
   // Without this mapping the `failure` phase that `tool_events` models is never
-  // written, so the Digest's stumbles section can only ever see guardrail denials —
-  // a repository with no guardrails configured shows an empty section however many
-  // tools actually failed.
+  // written, so a failed command reads as one that succeeded — and
+  // `requiresCheckpoint` stops prompting on the turn whose unresolved work most
+  // needs recording, however many tools actually failed.
   it("maps PostToolUseFailure to TOOL_FAILED", () => {
     const { ctx } = makeFakeCtx();
     const event = unwrap(

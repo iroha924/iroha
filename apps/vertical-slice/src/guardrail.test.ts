@@ -88,7 +88,7 @@ describe("Guardrail flow", () => {
       expect(cells.some((cell) => cell.includes(marker))).toBe(false);
 
       // Every denial names the Rule that produced it, on the row the hook
-      // already wrote — the attribution the Digest groups its local metric by.
+      // already wrote — the attribution Overview's denials-by-rule card groups by.
       // Without it a denial count carries no lesson.
       expect(events.rows.length).toBeGreaterThan(0);
       expect(events.rows.map((row) => String(row.denied_by_rule_id))).toEqual(

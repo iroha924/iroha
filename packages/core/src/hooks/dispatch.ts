@@ -447,8 +447,8 @@ async function handleToolStarted(
     status: denial === null ? "started" : "denied",
     occurredAt: event.occurredAt,
     // Attribute the denial to the Rule that produced it, on this same insert —
-    // the Digest's local metric is a count *per Rule*, and an extra write here
-    // would exceed the §7 budget (see `dispatchHookEvent`).
+    // Overview's denials-by-rule card counts *per Rule* (`getDenialFacts`), and a
+    // second write here would exceed the §7 budget (see `dispatchHookEvent`).
     ...(denial === null ? {} : { deniedByRuleId: denial.ruleId }),
   });
 
@@ -713,8 +713,8 @@ async function handleSessionEnd(
  * either: a busy wait is latency, not an error. Hook activity stays observable
  * through the Turn/Run/Tool Event rows the handlers already write, where a
  * denial is `tool_events.phase = 'denied'` carrying the Rule that denied it in
- * `denied_by_rule_id` — which is how the Digest attributes denials to Rules
- * without the hook writing a second row.
+ * `denied_by_rule_id` — which is how Overview's denials-by-rule card attributes
+ * denials to Rules without the hook writing a second row.
  */
 export async function dispatchHookEvent(
   event: NormalizedEvent,
