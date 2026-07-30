@@ -8,9 +8,11 @@ Read `CLAUDE.md`, then `docs/architecture.md`, then whichever contract under `do
 
 ## Rules you must actively read (not auto-loaded for you)
 
-Claude Code loads `.claude/rules/*.md` automatically based on each file's own scope; you do not get that for free. Read whichever of these applies to what you are touching, in full, before reviewing or writing code there:
+Claude Code loads `.claude/rules/*.md` automatically based on each file's own scope; you do not get that for free. Read whichever of these applies to what you are doing, in full, before you start:
 
 - `.claude/rules/typescript-conventions.md` — always relevant: module resolution (`.js` import extensions), the `Result<T, E>`/`IrohaError` error-handling pattern, Zod 4 conventions, test/build setup.
+- `.claude/rules/distributable-language.md` — which language anything you write goes in: artifacts and everything under `.claude/**` are English, while a Checkpoint's or Proposal's `title`/`summary`/`body` follow the repository's `config.default_language`.
+- `.claude/rules/japanese-prose.md` — writing a Checkpoint or Proposal in Japanese. Re-read the drafted Japanese as a separate pass before calling `create_checkpoint`/`propose_knowledge`; the rule lists the failure classes (non-words from wrong-kanji substitution, calques of English phrasing, misused collocations) and why no deterministic check replaces the read.
 - `.claude/rules/path-and-symlink-safety.md` — any path-joining, symlink resolution, or repository-boundary check (`packages/*/src/**/*.ts`). Four regressions of the same defect class shipped in this codebase before this rule existed; read it before touching this kind of code, not after.
 - `.claude/rules/secure-subprocess-and-credentials.md` — any `child_process` call or code that touches credentials/secrets (`packages/*/src/**/*.ts`).
 - `.claude/rules/windows-ci-compat.md` — any test file, test helper, or code near database open/close (`packages/*/src/**/*.test.ts`, `packages/*/src/test-helpers/**/*.ts`). Also records why Windows CI verification was removed (`compatibility.md` §6) — do not re-propose adding it back without reading it first.
