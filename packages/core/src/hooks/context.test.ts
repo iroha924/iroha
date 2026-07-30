@@ -112,4 +112,25 @@ describe("formatSessionContext", () => {
       expect(text).not.toContain(other);
     },
   );
+
+  // Emitted per locale, so asserting only that `ja` has it would also pass on an
+  // unconditional line — which would put Japanese-specific guidance in front of
+  // an `en` repository.
+  it.each([
+    { knowledgeLanguage: "ja" as const, expected: true },
+    { knowledgeLanguage: "en" as const, expected: false },
+  ])(
+    "emits the prose-check line for default_language $knowledgeLanguage: $expected",
+    ({ knowledgeLanguage, expected }) => {
+      const text = formatSessionContext({
+        token: "ist_abc",
+        sessionId: "ses_x",
+        runId: "run_x",
+        knowledgeLanguage,
+      });
+      expect(text.includes("check that Japanese in separate reads")).toBe(expected);
+      // The closing tag stays last either way — the line is inserted before it.
+      expect(text.endsWith("[/iroha]")).toBe(true);
+    },
+  );
 });

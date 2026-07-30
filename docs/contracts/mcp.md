@@ -288,6 +288,8 @@ Annotations: local-write, idempotent by `idempotencyKey`, non-canonical.
 
 Input must validate against `checkpoint-v1.schema.json`.
 
+The tool description requires the caller to check every free-text field before calling — in separate reads for non-words, calques of English phrasing, unnatural collocation, invented terminology, and padding — and the `checkpoint` skill carries the full procedure. This is a caller obligation, not a server-side check: iroha ships nothing that can decide whether a phrase is idiomatic, and a morphological dictionary would be 8-18x the whole published package. It matters most for `summary` and `unresolved`, which unlike `proposals` are stored with no approval step and are read back by a later session through §6.4 `get_session_state`. `hooks.md` §9 states the same requirement in the SessionStart block, emitted per locale.
+
 Transaction:
 
 1. validate and authenticate session token;

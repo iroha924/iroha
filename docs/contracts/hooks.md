@@ -343,12 +343,15 @@ Recent checkpoint:
 
 Use the iroha MCP search tool for full sources. Create a checkpoint after meaningful work.
 Write checkpoint and proposal content in Japanese (config.default_language), whatever language this session is in.
+Before saving, check that Japanese in separate reads — non-words, calques, unnatural collocation, invented terminology, padding — and fix what a native speaker would not write (see the `checkpoint` skill).
 [/iroha]
 ```
 
 IDs and provenance must remain visible. Do not phrase retrieved text as a higher-priority system command. Context states repository facts and approved conventions.
 
 The content-language line names `config.default_language` rendered as a language name (`ja` → Japanese, `en` → English). It is the only place the agent learns which language a Checkpoint or Proposal must be written in, so it is emitted on every SessionStart rather than only when the value is non-default (#164). It governs candidate `title`/`summary`/`body` only — the canonical section headings are contract constants and stay English.
+
+The prose-check line that follows it is emitted **per locale** and is absent for `en`. A Checkpoint's `summary` and `unresolved` are stored with no approval step and are read back by a later session (§6.4 `get_session_state`), so the write is the last point at which unnatural prose can be caught, and only the agent re-reading it can judge that — a shipped check cannot (a morphological dictionary is 8-18x the whole published package, and no pattern set decides whether a phrase is idiomatic). It is `ja`-only because the class that motivated it, wrong-kanji substitution inside a 漢語 compound, yields a non-word with no English analogue; a new locale must decide explicitly rather than inherit. The same requirement is repeated in the `create_checkpoint`/`propose_knowledge` tool descriptions, which an agent reads at call time, and the full procedure is in the `checkpoint` skill.
 
 ## 10. Privacy and logging
 
