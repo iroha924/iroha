@@ -401,7 +401,7 @@ interface LinkEntitiesData {
 }
 ```
 
-`deduplicated: false` does not promise a relation was created. This is the only tool with a second de-duplication mechanism the flag does not describe: the `(from, type, to, source_kind)` unique constraint. A call whose tuple already exists returns that tuple's `relationId` with `deduplicated: false`, having written nothing — and, because the scan runs before the insert, it still reports any `redactions[]` for evidence that was never stored. To learn whether this call is the one that created the relation, compare the returned `relationId` against the one it generated.
+`deduplicated: false` does not promise a relation was created. This is the only tool with a second de-duplication mechanism the flag does not describe: the `(from, type, to, source_kind)` unique constraint. A call whose tuple already exists returns that tuple's `relationId` with `deduplicated: false`, having written nothing — and, because the scan runs before the insert, it still reports any `redactions[]` for evidence that was never stored. A caller cannot tell the two outcomes apart from the response: the id it attempted is generated inside the tool, and the response carries only the id now on record. Distinguishing them would take a new field, not an inference.
 
 Self-relations are rejected except `RELATED_TO`. Unknown entity IDs are rejected; tools do not invent placeholder entities.
 
