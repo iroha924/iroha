@@ -372,12 +372,15 @@ describe("parseCodexEvent — forward-compatibility and errors", () => {
     // (contracts/hooks.md §6), which skips Guardrail evaluation. So the event
     // parsing at all — with its targets intact — is what keeps an approved
     // Guardrail in the path for this shape.
+    // `tool_use_id` sits in the same shape and drops the event the same way, so a
+    // null on either must not cost the Guardrail its chance to deny.
     const event = unwrap(
       parseCodexEvent(
         {
           ...common,
           hook_event_name: "PreToolUse",
           permission_mode: null,
+          tool_use_id: null,
           tool_name: "Bash",
           tool_input: { command: "rm -rf /" },
         },
@@ -392,10 +395,11 @@ describe("parseCodexEvent — forward-compatibility and errors", () => {
         targets: [{ kind: "command", value: "rm", operation: "execute" }],
       },
     });
+    expect(event).not.toHaveProperty("payload.toolUseId");
   });
 
   it("digests an empty last_assistant_message on Stop, as the Claude adapter does", () => {
-    const { ctx } = makeFakeCtx();
+    const { ctx, digested } = makeFakeCtx();
     const event = unwrap(
       parseCodexEvent(
         {
@@ -411,6 +415,9 @@ describe("parseCodexEvent — forward-compatibility and errors", () => {
       kind: "TURN_STOPPED",
       payload: { lastMessageDigest: FIXED_DIGEST },
     });
+    // The fake returns FIXED_DIGEST for every input, so the assertion above only
+    // proves the field is present. This is what proves `""` is what got digested.
+    expect(digested).toContain("");
   });
 
   it("returns INVALID_INPUT when a mapped event is missing a required field", () => {

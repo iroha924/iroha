@@ -392,6 +392,44 @@ describe("parseClaudeEvent — forward-compatibility and errors", () => {
     );
     expect(stop).toMatchObject({ kind: "TURN_STOPPED" });
     expect(stop).not.toHaveProperty("payload.lastMessageDigest");
+
+    // The tool-event fields matter most: dropping a PreToolUse fails open, which
+    // costs an approved Guardrail its chance to deny (contracts/hooks.md §6).
+    const pre = unwrap(
+      parseClaudeEvent(
+        {
+          ...common,
+          hook_event_name: "PreToolUse",
+          tool_use_id: null,
+          tool_name: "Bash",
+          tool_input: { command: "rm -rf /" },
+        },
+        ctx,
+      ),
+    );
+    expect(pre).toMatchObject({
+      kind: "TOOL_STARTED",
+      payload: { targets: [{ kind: "command", value: "rm", operation: "execute" }] },
+    });
+    expect(pre).not.toHaveProperty("payload.toolUseId");
+
+    const post = unwrap(
+      parseClaudeEvent(
+        {
+          ...common,
+          hook_event_name: "PostToolUse",
+          tool_use_id: null,
+          duration_ms: null,
+          tool_name: "Bash",
+          tool_input: { command: "ls" },
+          tool_response: { ok: true },
+        },
+        ctx,
+      ),
+    );
+    expect(post).toMatchObject({ kind: "TOOL_COMPLETED" });
+    expect(post).not.toHaveProperty("payload.toolUseId");
+    expect(post).not.toHaveProperty("payload.durationMs");
   });
 
   it("returns ok(null) for a recognized but unmapped event", () => {

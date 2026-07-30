@@ -40,13 +40,13 @@ const rawUserPromptSubmit = rawCommon.extend({ prompt: z.string() });
 const rawPreToolUse = rawCommon.extend({
   tool_name: z.string().min(1),
   tool_input: rawToolInput,
-  tool_use_id: z.string().optional(),
+  tool_use_id: z.string().nullish(),
 });
 const rawPostToolUse = rawCommon.extend({
   tool_name: z.string().min(1),
   tool_input: rawToolInput,
   tool_response: z.unknown(),
-  tool_use_id: z.string().optional(),
+  tool_use_id: z.string().nullish(),
 });
 const rawCompact = rawCommon.extend({ trigger: z.enum(["manual", "auto"]) });
 const rawStop = rawCommon.extend({
@@ -221,7 +221,7 @@ export function parseCodexEvent(
         kind: "TOOL_STARTED",
         payload: {
           toolName: r.data.tool_name,
-          ...(r.data.tool_use_id === undefined ? {} : { toolUseId: r.data.tool_use_id }),
+          ...(r.data.tool_use_id == null ? {} : { toolUseId: r.data.tool_use_id }),
           phase: "pre",
           targets: extractCodexTargets(r.data.tool_name, r.data.tool_input),
           inputDigest: ctx.digest(JSON.stringify(r.data.tool_input)),
@@ -237,7 +237,7 @@ export function parseCodexEvent(
         kind: "TOOL_COMPLETED",
         payload: {
           toolName: r.data.tool_name,
-          ...(r.data.tool_use_id === undefined ? {} : { toolUseId: r.data.tool_use_id }),
+          ...(r.data.tool_use_id == null ? {} : { toolUseId: r.data.tool_use_id }),
           phase: "post",
           targets: extractCodexTargets(r.data.tool_name, r.data.tool_input),
           inputDigest: ctx.digest(JSON.stringify(r.data.tool_input)),
