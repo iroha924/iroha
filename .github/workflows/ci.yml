@@ -101,7 +101,7 @@ jobs:
       - name: markdownlint
         run: pnpm run lint:md
       - name: typos
-        uses: crate-ci/typos@bee27e3a4fd1ea2111cf90ab89cd076c870fce14 # v1.48.0
+        uses: crate-ci/typos@8a48f81b6c64dcfea44b3633223084c4be58ac5f # v1.49.0
       - name: actionlint
         # Downloaded from the release and checksum-verified rather than run via a
         # marketplace action, so the exact binary is pinned (no tag to reswizzle).
@@ -141,10 +141,10 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: github/codeql-action/init@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
+      - uses: github/codeql-action/init@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
         with:
           languages: javascript-typescript
-      - uses: github/codeql-action/analyze@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
+      - uses: github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
 
   # Trivy filesystem scan. It overlaps osv-scanner (deps) and gitleaks (secrets),
   # so it is kept advisory (exit-code 0); its unique value here is config/IaC
@@ -165,7 +165,7 @@ jobs:
           format: sarif
           output: trivy-results.sarif
           exit-code: "0"
-      - uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
+      - uses: github/codeql-action/upload-sarif@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
         with:
           sarif_file: trivy-results.sarif
 
