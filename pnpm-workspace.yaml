@@ -15,73 +15,73 @@ catalog:
   # one `.length` but two terminal cells, so column alignment needs real widths.
   ansis: 4.3.1
   "@arethetypeswrong/cli": 0.18.5
-  "@biomejs/biome": 2.5.5
+  "@biomejs/biome": 2.5.7
   "@commitlint/cli": 21.2.1
   "@commitlint/config-conventional": 21.2.0
   # @iroha/forge-github (WP-12): octokit GraphQL stack + typed codegen
   "@graphql-codegen/cli": 7.2.0
   "@graphql-codegen/typed-document-node": 7.1.0
   "@graphql-codegen/typescript": 6.1.0
-  "@graphql-codegen/typescript-operations": 6.1.2
+  "@graphql-codegen/typescript-operations": 6.1.5
   "@graphql-typed-document-node/core": 3.2.0
-  "@octokit/core": 7.0.6
+  "@octokit/core": 7.0.7
   "@octokit/graphql-schema": 15.26.1
   "@octokit/plugin-paginate-graphql": 6.0.0
-  "@octokit/plugin-retry": 8.1.0
-  "@octokit/plugin-throttling": 11.0.3
-  "@hono/node-server": 2.0.11
+  "@octokit/plugin-retry": 8.1.1
+  "@octokit/plugin-throttling": 11.0.5
+  "@hono/node-server": 2.1.0
   # @iroha/api dashboard routes: OpenAPI 3.1 generation + request validation from
   # the existing Zod schemas. Bundles @hono/zod-validator, so it is the only
   # direct dep needed (validator is used transitively by `.openapi()` routes).
   "@hono/zod-openapi": 1.5.1
   "@libsql/client": 0.17.4
   "@modelcontextprotocol/sdk": 1.30.0
-  "@playwright/test": 1.61.1
+  "@playwright/test": 1.62.1
   "@secretlint/node": 13.0.4
   "@secretlint/secretlint-rule-pattern": 13.0.4
   "@secretlint/secretlint-rule-preset-recommend": 13.0.4
-  "@size-limit/file": 13.0.1
+  "@size-limit/file": 13.0.3
   "@tailwindcss/vite": 4.3.3
   "@tanstack/react-query": 5.101.4
   "@testing-library/jest-dom": 7.0.0
   "@testing-library/react": 16.3.2
-  "@testing-library/user-event": 14.6.1
+  "@testing-library/user-event": 14.6.3
   "@types/node": 24.13.3
   "@types/picomatch": 4.0.3
-  "@types/react": 19.2.17
-  "@types/react-dom": 19.2.3
-  "@vitejs/plugin-react": 6.0.4
+  "@types/react": 19.2.18
+  "@types/react-dom": 19.2.4
+  "@vitejs/plugin-react": 6.0.5
   "@xyflow/react": 12.11.2
   czg: 1.13.1
   fast-check: 4.9.0
   graphql: 16.14.2
   gunshi: 0.37.1
-  hono: 4.12.32
+  hono: 4.13.0
   jsdom: 29.1.1
-  knip: 6.29.0
+  knip: 6.31.0
   lefthook: 2.1.10
-  markdownlint-cli2: 0.23.1
+  markdownlint-cli2: 0.23.2
   mdast-util-from-markdown: 2.0.3
   mdast-util-to-string: 4.0.0
   picomatch: 4.0.5
-  publint: 0.3.22
+  publint: 0.3.23
   react: 19.2.8
   react-dom: 19.2.8
   react-markdown: 10.1.0
-  react-router-dom: 7.18.1
+  react-router-dom: 7.18.2
   remark-gfm: 4.0.1
   secretlint: 13.0.4
   sherif: 1.13.0
-  size-limit: 13.0.1
+  size-limit: 13.0.3
   string-width: 8.2.2
   tailwindcss: 4.3.3
-  taze: 19.16.0
+  taze: 19.17.2
   ts-pattern: 5.9.0
   tsdown: 0.22.14
   typescript: 7.0.2
   unist-util-visit: 5.1.0
-  verdaccio: 6.9.0
-  vite: 8.1.5
+  verdaccio: 6.9.2
+  vite: 8.2.0
   vitest: 4.1.10
   yaml: 2.9.0
   zod: 4.4.3
@@ -89,15 +89,15 @@ catalog:
   # apps/dashboard shadcn/ui: Base UI primitives + cva/clsx/tailwind-merge, Lucide icons,
   # the shadcn CLI (dev-only), tw-animate-css keyframes, the Calendar/Chart deps
   # (react-day-picker + date-fns, recharts), and the Command palette (cmdk).
-  "@base-ui/react": 1.6.0
+  "@base-ui/react": 1.7.0
   class-variance-authority: 0.7.1
   clsx: 2.1.1
   cmdk: 1.1.1
   date-fns: 4.4.0
-  lucide-react: 1.26.0
+  lucide-react: 1.28.0
   react-day-picker: 10.0.1
-  recharts: 3.10.0
-  shadcn: 4.14.1
+  recharts: 3.10.1
+  shadcn: 4.16.1
   tailwind-merge: 3.6.0
   tw-animate-css: 1.4.0
 
@@ -125,6 +125,6 @@ allowBuilds:
 #     latest, 0.23.1, pins it); 5.2.2 is the patch. Scoped to 5.2.1 so the
 #     unrelated 3.x/4.x js-yaml still in the tree keep their own major.
 overrides:
-  fast-uri: 3.1.4
-  brace-expansion: 5.0.8
-  "js-yaml@5.2.1": 5.2.2
+  fast-uri: 3.1.5
+  brace-expansion: 5.0.9
+  "js-yaml@5.2.1": 5.2.3
